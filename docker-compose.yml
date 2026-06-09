@@ -1,0 +1,43 @@
+# LEADer local stack. `docker compose up -d db` is enough for local dev;
+# the full app service is provided for a one-command containerised run.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: leader-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: leader
+      POSTGRES_PASSWORD: leader
+      POSTGRES_DB: leader
+    ports:
+      - "5432:5432"
+    volumes:
+      - leader-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leader -d leader"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: leader-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://leader:leader@db:5432/leader?schema=public"
+      NEXTAUTH_URL: "http://localhost:3000"
+      AUTH_SECRET: "dev-secret-change-me"
+      DEV_USER_EMAIL: "owner@leader.local"
+      # AI runs in MOCK mode unless you supply a key here.
+      LLM_API_KEY: ""
+      LLM_BASE_URL: "https://api.openai.com/v1"
+      LLM_MODEL: "gpt-4o-mini"
+    ports:
+      - "3000:3000"
+    profiles: ["full"] # `docker compose --profile full up` to run the app too
+
+volumes:
+  leader-db-data:
