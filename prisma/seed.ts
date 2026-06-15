@@ -5,13 +5,16 @@
  *
  *   npm run db:seed
  */
+import "dotenv/config";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { scoreOpportunity } from "../src/lib/scoring";
 import { DEFAULT_WEIGHTS } from "../src/lib/scoring/config";
+import { hashPassword } from "../src/lib/auth/password";
 
 const db = new PrismaClient();
 
 const OWNER_EMAIL = process.env.DEV_USER_EMAIL || "owner@leader.local";
+const OWNER_PASSWORD = process.env.SEED_PASSWORD || "leader-demo-1234";
 const day = 24 * 60 * 60 * 1000;
 const future = (d: number) => new Date(Date.now() + d * day);
 const past = (d: number) => new Date(Date.now() - d * day);
@@ -20,12 +23,15 @@ async function main() {
   console.log("🌱 Seeding LEADer…");
 
   // ── Power user ──────────────────────────────────────────────────────────
+  const passwordHash = await hashPassword(OWNER_PASSWORD);
   const user = await db.user.upsert({
     where: { email: OWNER_EMAIL },
-    update: {},
+    update: { passwordHash },
     create: {
       email: OWNER_EMAIL,
       name: "Tobias",
+      passwordHash,
+      role: "OWNER",
       headline: "Fullstack developer · AI builder · MVP & product advisor",
       bio: "Solo technical partner for startups, founders and SMEs. I turn funded ideas into shipped MVPs — fullstack build, AI features and a pragmatic product roadmap. Prefer active, directly-applicable assignments under 100,000 DKK.",
       preferredProjectTypes: [
@@ -306,6 +312,7 @@ async function main() {
     lists: await db.list.count({ where: { ownerId: user.id } }),
   };
   console.log("✅ Seed complete:", counts);
+  console.log(`\n🔑 Sign in at /login with:\n   email:    ${OWNER_EMAIL}\n   password: ${OWNER_PASSWORD}\n`);
 }
 
 main()

@@ -5,6 +5,7 @@ import { exportRequestSchema, parseFilters } from "@/lib/validators";
 import { buildWhere, buildOrderBy } from "@/lib/opportunities";
 import { exportOpportunities } from "@/lib/export";
 import type { OpportunityFilter } from "@/lib/types";
+import { apiError } from "@/lib/api";
 
 const EXPORT_INCLUDE = {
   source: true,
@@ -57,6 +58,6 @@ export async function POST(req: Request) {
       },
     });
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return apiError(err);
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { noteCreateSchema } from "@/lib/validators";
+import { apiError } from "@/lib/api";
 
 type Ctx = { params: { id: string } };
 
@@ -41,6 +42,6 @@ export async function POST(req: Request, ctx: Ctx) {
 
     return NextResponse.json(note, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return apiError(err);
   }
 }

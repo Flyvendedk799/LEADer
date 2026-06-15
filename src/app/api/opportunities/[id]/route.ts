@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { opportunityUpdateSchema } from "@/lib/validators";
+import { apiError } from "@/lib/api";
 
 type Ctx = { params: { id: string } };
 
@@ -26,7 +27,7 @@ export async function GET(_req: Request, ctx: Ctx) {
     }
     return NextResponse.json(opp);
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return apiError(err);
   }
 }
 
@@ -87,7 +88,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
     return NextResponse.json(updated);
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return apiError(err);
   }
 }
 
@@ -102,6 +103,6 @@ export async function DELETE(_req: Request, ctx: Ctx) {
     await db.opportunity.delete({ where: { id: ctx.params.id } });
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return apiError(err);
   }
 }

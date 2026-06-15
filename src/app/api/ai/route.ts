@@ -6,6 +6,7 @@ import { runAi } from "@/lib/ai";
 import { formatBudget, formatDate } from "@/lib/utils";
 import type { AiAction, DraftKind } from "@/lib/types";
 import type { Prisma } from "@prisma/client";
+import { apiError } from "@/lib/api";
 
 // action → DraftKind mapping for persisting AI text output.
 const DRAFT_KIND: Partial<Record<AiAction, DraftKind>> = {
@@ -145,6 +146,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json(result);
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return apiError(err);
   }
 }

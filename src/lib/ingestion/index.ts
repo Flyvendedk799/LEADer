@@ -199,20 +199,47 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
   }
 }
 
+// Source types the scheduler is allowed to fetch (mirrors the compliance gate).
+const AUTOMATABLE = ["RSS", "NEWSLETTER", "PUBLIC_WEB", "PROCUREMENT", "ACCELERATOR", "API"];
+
+/** Is this source due to run, given its frequency and last-checked time? */
+export function isSourceDue(
+  source: { frequency: string; lastCheckedAt: Date | null },
+  now = new Date(),
+): boolean {
+  if (source.frequency === "MANUAL") return false;
+  if (!source.lastCheckedAt) return true;
+  const elapsed = now.getTime() - source.lastCheckedAt.getTime();
+  const intervals: Record<string, number> = {
+    HOURLY: 60 * 60 * 1000,
+    DAILY: 24 * 60 * 60 * 1000,
+    WEEKLY: 7 * 24 * 60 * 60 * 1000,
+  };
+  const interval = intervals[source.frequency];
+  return interval == null ? true : elapsed >= interval;
+}
+
 /** Run discovery for all enabled, automatable, due sources of a given owner. */
 export async function runDueDiscovery(ownerId: string): Promise<RunResult[]> {
-  const sources = await db.source.findMany({
-    where: { ownerId, enabled: true },
-  });
+  const sources = await db.source.findMany({ where: { ownerId, enabled: true } });
   const results: RunResult[] = [];
   for (const s of sources) {
-    // Skip community/manual types up front.
-    if (!["RSS", "NEWSLETTER", "PUBLIC_WEB", "PROCUREMENT", "ACCELERATOR", "API"].includes(s.type)) {
-      continue;
-    }
+    if (!AUTOMATABLE.includes(s.type)) continue; // skip community/manual up front
+    if (!isSourceDue(s)) continue; // respect each source's frequency
     results.push(await runDiscoveryForSource(s.id));
   }
   return results;
+}
+
+/** Run due discovery across every owner — the multi-tenant scheduler entrypoint. */
+export async function runDueDiscoveryAllOwners(): Promise<Record<string, RunResult[]>> {
+  const owners = await db.user.findMany({ select: { id: true } });
+  const byOwner: Record<string, RunResult[]> = {};
+  for (const o of owners) {
+    const results = await runDueDiscovery(o.id);
+    if (results.length) byOwner[o.id] = results;
+  }
+  return byOwner;
 }
 
 export { type OpportunityCandidate, dedupeHash };

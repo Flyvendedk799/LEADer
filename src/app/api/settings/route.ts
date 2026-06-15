@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, requireOwnerId } from "@/lib/auth";
 import { settingsSchema } from "@/lib/validators";
+import { apiError } from "@/lib/api";
 import type { Prisma } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -34,8 +35,8 @@ export async function GET() {
       return NextResponse.json({ error: "No user found" }, { status: 404 });
     }
     return NextResponse.json(safeUser(user));
-  } catch {
-    return NextResponse.json({ error: "Failed to load settings" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -68,7 +69,7 @@ export async function PATCH(req: Request) {
 
     const user = await db.user.update({ where: { id: ownerId }, data });
     return NextResponse.json(safeUser(user));
-  } catch {
-    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }

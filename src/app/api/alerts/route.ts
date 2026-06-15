@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { getDashboardMetrics } from "@/lib/dashboard";
+import { apiError } from "@/lib/api";
 
 // Alerts: local, in-app notifications. Email delivery is a future hook —
 // when EMAIL_PROVIDER is configured, a DIGEST alert with channel EMAIL would be
@@ -20,10 +21,7 @@ export async function GET() {
     });
     return NextResponse.json(alerts);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to load alerts" },
-      { status: 500 },
-    );
+    return apiError(err);
   }
 }
 
@@ -45,10 +43,7 @@ export async function PATCH(req: Request) {
     }
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to update alert" },
-      { status: 500 },
-    );
+    return apiError(err);
   }
 }
 
@@ -91,9 +86,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json(alert);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to generate digest" },
-      { status: 500 },
-    );
+    return apiError(err);
   }
 }

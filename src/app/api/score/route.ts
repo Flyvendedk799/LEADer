@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { scoreOpportunity } from "@/lib/scoring";
 import type { ScoreWeights } from "@/lib/types";
+import { apiError } from "@/lib/api";
 
 // POST /api/score — (re)compute match scores for given ids or all owner leads.
 export async function POST(req: Request) {
@@ -57,6 +58,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ updated });
   } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return apiError(err);
   }
 }

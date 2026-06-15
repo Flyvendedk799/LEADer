@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { ScoringWeightsForm } from "@/components/settings/scoring-weights-form";
 import { PreferencesForm } from "@/components/settings/preferences-form";
+import { SecurityForm } from "@/components/settings/security-form";
 
 type AiKeys = { provider?: string; baseUrl?: string; model?: string } | null;
 
@@ -49,6 +50,7 @@ export default async function SettingsPage() {
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-6">
@@ -102,6 +104,21 @@ export default async function SettingsPage() {
 
         <TabsContent value="preferences">
           <PreferencesForm user={{ exportPrefs, aiKeys }} />
+        </TabsContent>
+
+        <TabsContent value="security" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Account</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
+              <div className="text-muted-foreground">Email</div>
+              <div className="font-medium">{user.email}</div>
+              <div className="text-muted-foreground">Role</div>
+              <div className="font-medium">{user.role}</div>
+            </CardContent>
+          </Card>
+          <SecurityForm hasPassword={Boolean(user.passwordHash)} />
         </TabsContent>
       </Tabs>
     </div>

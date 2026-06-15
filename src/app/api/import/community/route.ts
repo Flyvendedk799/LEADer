@@ -6,6 +6,7 @@ import { dedupeHash } from "@/lib/ingestion/dedupe";
 import { aiExtract } from "@/lib/ai";
 import { scoreOpportunity } from "@/lib/scoring";
 import type { AiExtractResult, ScoreWeights, Workspace } from "@/lib/types";
+import { apiError } from "@/lib/api";
 import { z } from "zod";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -31,8 +32,8 @@ export async function GET() {
       take: 50,
     });
     return NextResponse.json(imports);
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -77,8 +78,8 @@ export async function POST(req: Request) {
 
     const updated = await db.communityImport.findUnique({ where: { id: row.id } });
     return NextResponse.json({ import: updated ?? row, extracted });
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -204,7 +205,7 @@ export async function PATCH(req: Request) {
     });
 
     return NextResponse.json({ opportunityId: opp.id });
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }

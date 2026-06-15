@@ -1,13 +1,25 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Moon, Search, Sun } from "lucide-react";
+import { LogOut, Moon, Search, Settings, Sun, User as UserIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-/** Top bar: page-aware quick search + DK/Global workspace hint + theme toggle. */
-export function Topbar() {
+interface TopbarProps {
+  user?: { name: string | null; email: string };
+}
+
+/** Top bar: page-aware quick search + DK/Global workspace hint + theme + account. */
+export function Topbar({ user }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const params = useSearchParams();
@@ -21,6 +33,19 @@ export function Topbar() {
     const base = onGlobal ? "/global" : "/opportunities";
     router.push(`${base}?q=${encodeURIComponent(q)}`);
   }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
+
+  const initials = (user?.name || user?.email || "?")
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase())
+    .join("");
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/70 px-4 backdrop-blur">
@@ -59,6 +84,36 @@ export function Topbar() {
           <Sun className="h-4 w-4 dark:hidden" />
           <Moon className="hidden h-4 w-4 dark:block" />
         </Button>
+
+        {user && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Account menu"
+                className="rounded-full bg-primary/15 text-xs font-semibold text-primary hover:bg-primary/25"
+              >
+                {initials || <UserIcon className="h-4 w-4" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="flex flex-col">
+                <span className="truncate font-medium">{user.name || "Account"}</span>
+                <span className="truncate text-xs font-normal text-muted-foreground">{user.email}</span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings" className="cursor-pointer">
+                  <Settings className="mr-2 h-4 w-4" /> Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive focus:text-destructive">
+                <LogOut className="mr-2 h-4 w-4" /> Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </header>
   );

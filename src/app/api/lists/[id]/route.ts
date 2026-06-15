@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { OPPORTUNITY_INCLUDE } from "@/lib/opportunities";
 import { listCreateSchema } from "@/lib/validators";
+import { apiError } from "@/lib/api";
 
 // GET /api/lists/[id] — one list with its opportunities.
 export async function GET(_req: Request, ctx: { params: { id: string } }) {
@@ -20,8 +21,8 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
     });
     if (!list) return NextResponse.json({ error: "List not found" }, { status: 404 });
     return NextResponse.json(list);
-  } catch {
-    return NextResponse.json({ error: "Failed to load list" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -46,8 +47,8 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       include: { _count: { select: { items: true } } },
     });
     return NextResponse.json(list);
-  } catch {
-    return NextResponse.json({ error: "Failed to update list" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -63,7 +64,7 @@ export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
 
     await db.list.delete({ where: { id: ctx.params.id } });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Failed to delete list" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }

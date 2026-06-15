@@ -22,6 +22,21 @@ export const zAiAction = z.enum([
   "draftPitch", "draftEmail", "checklist", "compare", "similar", "nextAction",
 ]);
 
+// ── Auth ─────────────────────────────────────────────────────────────────────
+export const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  name: z.string().min(1).optional(),
+});
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1, "Password is required"),
+});
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().default(""),
+  newPassword: z.string().min(8, "New password must be at least 8 characters"),
+});
+
 // ── Source ───────────────────────────────────────────────────────────────────
 export const sourceCreateSchema = z.object({
   name: z.string().min(2),
