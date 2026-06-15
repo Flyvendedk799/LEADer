@@ -5,6 +5,7 @@ import { LogOut, Moon, Search, Settings, Sun, User as UserIcon } from "lucide-re
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AlertsBell } from "@/components/layout/alerts-bell";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -84,6 +85,8 @@ export function Topbar({ user }: TopbarProps) {
           <Sun className="h-4 w-4 dark:hidden" />
           <Moon className="hidden h-4 w-4 dark:block" />
         </Button>
+
+        <AlertsBell />
 
         {user && (
           <DropdownMenu>
