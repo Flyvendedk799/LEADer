@@ -26,11 +26,12 @@ scoring, compliant ingestion, AI assistance, and one-click exports.
 | **Watchlists & lists** | Watchlist, custom lists, tags, saved searches, status pipeline, priorities, reminders. |
 | **Opportunity detail** | Summary, requirements, contacts, attachments, notes, activity timeline, saved AI drafts, related opportunities. |
 | **Search & filtering** | Keyword, budget min/max, deadline range, active-only, source, category, score, status, tags, region, has-budget, application route. |
-| **AI suite** | Summarise · extract · classify · explain match · draft application/pitch/email/checklist · compare · find similar · next action. Provider-agnostic, **runs offline with mock output**. |
+| **AI suite** | Summarise · extract · classify · explain match · draft application/pitch/email/checklist · compare · **find similar (embeddings)** · next action. Provider-agnostic, **runs offline with mock output + local embeddings**. |
 | **Dashboard** | New/active leads, upcoming deadlines, best matches, watchlist, applied, won/lost, pipeline value, leads by source/category/status. |
 | **Exporting** | CSV · XLSX · PDF report · Markdown · Notion-ready — fixed field contract. |
-| **Alerts** | Deadline reminders, new high-match alerts, digests, needs-action (local now, email-ready). |
-| **Settings** | Profile, preferred project types, excluded categories, budget limits, scoring weights, sources, API config, export preferences. |
+| **Alerts** | In-app alerts inbox (bell + unread badge), deadline reminders, new high-match alerts, digests — **delivered by email** when a provider is configured. |
+| **Auth** | Real multi-user accounts: register/login, scrypt-hashed passwords, opaque server-side sessions, route-gating middleware, per-user data isolation. |
+| **Settings** | Profile, preferred project types, excluded categories, budget limits, scoring weights, sources, API config, export preferences, **password / security**. |
 
 ---
 
@@ -63,20 +64,28 @@ npm run setup                 # = prisma generate && prisma db push && db:seed
 npm run dev                   # http://localhost:3000
 ```
 
+Then **sign in at http://localhost:3000/login** with the credentials the seed prints
+(default `owner@leader.local` / `leader-demo-1234`), or register a new account at
+`/register`. Prefer to skip login while hacking locally? Set `AUTH_DEV_BYPASS=true`
+(ignored in production) to run as the seeded user.
+
 That's it — the dashboard, opportunities, sources, lists, watchlist, import and settings
 pages are all populated by the seed. **No API keys needed**: the AI layer returns
-deterministic mock output until you set `LLM_API_KEY`.
+deterministic mock output (and a local embedding model powers "find similar") until you
+set `LLM_API_KEY`.
 
 ### Useful scripts
 ```bash
 npm run dev          # dev server
 npm run build        # production build
-npm run db:studio    # Prisma Studio (browse the DB)
-npm run db:seed      # re-seed demo data (idempotent)
-npm run discover     # run the discovery pipeline manually (see note below)
-npm run typecheck    # tsc --noEmit
-npm run test         # vitest unit tests
-npm run test:e2e     # Playwright E2E (after `npx playwright install`)
+npm run db:studio          # Prisma Studio (browse the DB)
+npm run db:seed            # re-seed demo data (idempotent)
+npm run discover           # run the discovery pipeline manually (see note below)
+npm run embeddings:backfill # embed any opportunities missing a vector
+npm run typecheck          # tsc --noEmit
+npm run lint               # next lint
+npm run test               # vitest unit tests
+npm run test:e2e           # Playwright E2E (after `npx playwright install`)
 ```
 
 ### Run everything in containers
@@ -102,11 +111,21 @@ docker compose --profile full up --build   # app + Postgres
    instructions included for EHSYS, Beyond Beta, Erhvervshuse, accelerators, procurement)
    and set the source's `parserKey`.
 
-3. **Scheduled discovery** — `POST /api/cron/discover` runs due automatable sources. Wire it
-   to Vercel Cron, a system cron, or `npm run discover`. Protect it with `CRON_SECRET`.
+3. **Scheduled discovery** — `POST /api/cron/discover` runs due automatable sources for every
+   owner (frequency-aware). Wire it to Vercel Cron, a system cron, or `npm run discover`.
+   Protect it with `CRON_SECRET` (sent as the `x-cron-secret` header).
 
-4. **Email alerts** — set `EMAIL_PROVIDER`/`EMAIL_API_KEY` to deliver digests & reminders
-   (v1 logs them locally as `Alert` rows).
+4. **Email alerts** — set `EMAIL_PROVIDER=resend` + `EMAIL_API_KEY` + `EMAIL_FROM` to deliver
+   digests & deadline reminders for real (use `console` to print them in dev). With no provider
+   set, alerts stay in-app (`Alert` rows, surfaced by the topbar bell). Schedule
+   `POST /api/cron/alerts` (also `CRON_SECRET`-guarded) for daily reminders/digests.
+
+5. **Semantic search** — "find similar" uses embeddings. With `LLM_API_KEY` set it calls the
+   configured `/embeddings` endpoint; offline it uses a deterministic local vector. Run
+   `npm run embeddings:backfill` after importing data, or rely on auto-embedding at create time.
+
+6. **Auth** — accounts are real out of the box (scrypt + server-side sessions). For SSO/OAuth,
+   swap the body of `register`/`login` in `src/lib/auth` — every query already scopes by `ownerId`.
 
 ---
 
@@ -138,13 +157,17 @@ docs/           PLAN · ARCHITECTURE · COMPLIANCE · ROADMAP
 scripts/        run-discovery.ts
 ```
 
-Auth is a **single seam** (`src/lib/auth.ts → getCurrentUser()`) returning the seeded power
-user; swap its body for NextAuth/Clerk later — every query already scopes by `ownerId`.
+Auth is **real and multi-user** (`src/lib/auth/`): scrypt password hashing, opaque
+server-side sessions (token hashed at rest), `getCurrentUser()` resolved from the session
+cookie, and a middleware gate. Every query scopes by `ownerId`, so adding SSO/OAuth later is
+a localised change to `register`/`login`.
 
 ---
 
 ## Status & roadmap
 
-This is a **foundation to keep improving**, not a toy demo. Next highest-leverage steps
-(site-specific parsers, real embeddings, email delivery, auth) are tracked in
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+A working daily-use tool, not a demo. Real multi-user auth, structured-data + site parsers,
+embeddings-backed similarity, email delivery, an alerts inbox, multi-tenant scheduled
+discovery, and CI (lint · typecheck · unit · build · E2E) are all in place. Remaining
+nice-to-haves (OAuth/SSO, OCR for screenshots, browser-extension capture, auto-tuned scoring
+weights) are tracked in [`docs/ROADMAP.md`](docs/ROADMAP.md).

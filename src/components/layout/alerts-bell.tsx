@@ -110,7 +110,7 @@ export function AlertsBell() {
 
         <div className="max-h-80 overflow-y-auto scrollbar-thin">
           {count === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">You're all caught up.</p>
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">You&apos;re all caught up.</p>
           ) : (
             alerts.map((a) => {
               const Icon = ICONS[a.type] ?? Bell;

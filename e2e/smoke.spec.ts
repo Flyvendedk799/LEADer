@@ -1,7 +1,18 @@
 import { expect, test } from "@playwright/test";
 
 // Smoke flow: the core triage journey works end-to-end against seeded data.
-// Requires: app running + DB seeded (npm run setup && npm run dev).
+// Requires: app running + DB seeded (npm run setup && npm run start).
+// The `setup` project (auth.setup.ts) signs in first; these tests run authed.
+
+test("unauthenticated visitors are redirected to login", async ({ browser }) => {
+  // A fresh context with no stored session should be bounced to /login.
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const page = await context.newPage();
+  await page.goto("/opportunities");
+  await expect(page).toHaveURL(/\/login/);
+  await expect(page.getByRole("heading", { name: /welcome back/i })).toBeVisible();
+  await context.close();
+});
 
 test("dashboard loads and shows pipeline stats", async ({ page }) => {
   await page.goto("/");
