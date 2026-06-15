@@ -24,11 +24,12 @@ function emailConfig() {
   };
 }
 
-/** True when a real delivery provider is configured. */
+/** True when a *supported* delivery provider is configured. */
 export function emailEnabled(): boolean {
   const { provider, apiKey } = emailConfig();
   if (provider === "console") return true;
-  return Boolean(provider && apiKey);
+  if (provider === "resend") return Boolean(apiKey);
+  return false; // unknown/empty providers never claim to be enabled
 }
 
 async function sendViaResend(msg: EmailMessage): Promise<SendResult> {

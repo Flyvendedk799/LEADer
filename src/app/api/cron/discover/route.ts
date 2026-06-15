@@ -10,23 +10,13 @@
 // lib/ingestion (assertAutomatable / AUTOMATABLE skip list), so community/manual
 // sources (Facebook, uploads, manual entry) are never fetched here.
 import { NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { runDiscoveryForSource, runDueDiscovery, runDueDiscoveryAllOwners } from "@/lib/ingestion";
-import { apiError } from "@/lib/api";
+import { apiError, validCronSecret } from "@/lib/api";
 
 const bodySchema = z.object({ sourceId: z.string().optional() });
-
-function validCronSecret(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const provided = req.headers.get("x-cron-secret") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  const a = Buffer.from(provided);
-  const b = Buffer.from(secret);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 export async function POST(req: Request) {
   try {

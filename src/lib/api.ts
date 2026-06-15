@@ -1,6 +1,24 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { UnauthorizedError } from "@/lib/auth";
+
+/**
+ * Constant-time check of the cron shared secret. Accepts it via the
+ * `x-cron-secret` header or `Authorization: Bearer <secret>`. Returns false when
+ * CRON_SECRET is unset (so unauthenticated scheduler calls are always rejected).
+ */
+export function validCronSecret(req: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  const provided =
+    req.headers.get("x-cron-secret") ??
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    "";
+  const a = Buffer.from(provided);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 // Consistent error → HTTP mapping for route handlers. Keeps auth/validation
 // failures from collapsing into opaque 500s.

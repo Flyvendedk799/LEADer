@@ -52,21 +52,8 @@ export async function generateDeadlineReminders(ownerId: string): Promise<Dispat
 
   if (due.length === 0) return { created: 0, emailed: 0, provider: "none" };
 
-  // One Alert per opportunity (so the in-app inbox is granular + de-dupable).
-  for (const o of due) {
-    await db.alert.create({
-      data: {
-        ownerId,
-        type: "DEADLINE",
-        channel: emailEnabled() ? "EMAIL" : "LOCAL",
-        title: `Deadline ${o.daysLeft <= 0 ? "today" : `in ${o.daysLeft} day(s)`}: ${o.title}`,
-        body: `${o.title} closes ${o.deadline.toLocaleDateString("da-DK")}.`,
-        payload: { opportunityId: o.id, daysLeft: o.daysLeft, deadline: o.deadline.toISOString() },
-      },
-    });
-  }
-
-  // A single grouped email for all due deadlines.
+  // Send a single grouped email first, so each Alert's channel reflects whether
+  // it was actually delivered (not merely that a provider is configured).
   let emailed = 0;
   let provider = "none";
   if (emailEnabled()) {
@@ -77,6 +64,21 @@ export async function generateDeadlineReminders(ownerId: string): Promise<Dispat
       provider = res.provider;
       if (res.delivered) emailed = due.length;
     }
+  }
+  const channel = emailed > 0 ? "EMAIL" : "LOCAL";
+
+  // One Alert per opportunity (so the in-app inbox is granular + de-dupable).
+  for (const o of due) {
+    await db.alert.create({
+      data: {
+        ownerId,
+        type: "DEADLINE",
+        channel,
+        title: `Deadline ${o.daysLeft <= 0 ? "today" : `in ${o.daysLeft} day(s)`}: ${o.title}`,
+        body: `${o.title} closes ${o.deadline.toLocaleDateString("da-DK")}.`,
+        payload: { opportunityId: o.id, daysLeft: o.daysLeft, deadline: o.deadline.toISOString() },
+      },
+    });
   }
 
   return { created: due.length, emailed, provider };
@@ -132,7 +134,9 @@ export async function dispatchForOwner(
 }
 
 /** Multi-tenant scheduler entrypoint: reminders for everyone (+ optional digest). */
-export async function dispatchForAllOwners(opts: { digest?: boolean } = {}): Promise<Record<string, unknown>> {
+export async function dispatchForAllOwners(
+  opts: { digest?: boolean; workspace?: Workspace } = {},
+): Promise<Record<string, unknown>> {
   const owners = await db.user.findMany({ select: { id: true } });
   const out: Record<string, unknown> = {};
   for (const o of owners) {

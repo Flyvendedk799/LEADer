@@ -6,25 +6,15 @@
 //
 // Body: { digest?: boolean, workspace?: "DK" | "GLOBAL" }
 import { NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { dispatchForAllOwners, dispatchForOwner } from "@/lib/alerts/dispatch";
-import { apiError } from "@/lib/api";
+import { apiError, validCronSecret } from "@/lib/api";
 
 const bodySchema = z.object({
   digest: z.boolean().optional(),
   workspace: z.enum(["DK", "GLOBAL"]).optional(),
 });
-
-function validCronSecret(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const provided = req.headers.get("x-cron-secret") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  const a = Buffer.from(provided);
-  const b = Buffer.from(secret);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 export async function POST(req: Request) {
   try {

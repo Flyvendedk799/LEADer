@@ -4,32 +4,46 @@ import { cosineSimilarity, embed, opportunityEmbedText } from "@/lib/ai/embeddin
 // Semantic "find similar" over stored embeddings, with a keyword-overlap fallback
 // when embeddings are missing or models are mismatched.
 
-type EmbeddableOpp = {
+type TextFields = {
   id: string;
   title: string | null;
   description: string | null;
   organization: string | null;
   category: string | null;
   rawContent: string | null;
+};
+
+type EmbeddableOpp = TextFields & {
   embedding: number[];
   embeddingModel: string | null;
 };
 
-/** Compute + persist an opportunity's embedding. Best-effort; returns success. */
-export async function ensureEmbedding(opportunityId: string): Promise<boolean> {
-  const o = await db.opportunity.findUnique({ where: { id: opportunityId } });
-  if (!o) return false;
-  if (o.embedding.length > 0 && o.embeddingModel) return true;
+/** Compute + persist an embedding for an already-loaded row. Returns the vector. */
+async function embedAndStore(o: TextFields): Promise<{ vector: number[]; model: string } | null> {
   try {
     const { vector, model } = await embed(opportunityEmbedText(o));
     await db.opportunity.update({
-      where: { id: opportunityId },
+      where: { id: o.id },
       data: { embedding: vector, embeddingModel: model, embeddedAt: new Date() },
     });
-    return true;
+    return { vector, model };
   } catch {
-    return false; // never block the caller on embedding failures
+    return null; // never block the caller on embedding failures
   }
+}
+
+/** Compute + persist an opportunity's embedding if missing. Best-effort. */
+export async function ensureEmbedding(opportunityId: string): Promise<boolean> {
+  const o = await db.opportunity.findUnique({
+    where: { id: opportunityId },
+    select: {
+      id: true, title: true, description: true, organization: true, category: true,
+      rawContent: true, embedding: true, embeddingModel: true,
+    },
+  });
+  if (!o) return false;
+  if (o.embedding.length > 0 && o.embeddingModel) return true;
+  return (await embedAndStore(o)) != null;
 }
 
 /** Embed all of an owner's opportunities that don't yet have a vector. */
@@ -81,9 +95,7 @@ export async function findSimilar(
   opportunityId: string,
   limit = 6,
 ): Promise<SimilarResult[]> {
-  // Make sure the target is embedded before we compare.
-  await ensureEmbedding(opportunityId);
-
+  // Load the target once (avoids a separate ensureEmbedding round-trip).
   const target = (await db.opportunity.findFirst({
     where: { id: opportunityId, ownerId },
     select: {
@@ -92,6 +104,18 @@ export async function findSimilar(
     },
   })) as (EmbeddableOpp & { workspace: string }) | null;
   if (!target) return [];
+
+  // Embed the target inline if it has no vector yet (reuses the loaded row).
+  let targetVector = target.embedding;
+  let targetModel = target.embeddingModel;
+  if (!(targetVector.length > 0 && targetModel)) {
+    const stored = await embedAndStore(target);
+    if (stored) {
+      targetVector = stored.vector;
+      targetModel = stored.model;
+    }
+  }
+  const canEmbed = targetVector.length > 0 && Boolean(targetModel);
 
   const peers = (await db.opportunity.findMany({
     where: { ownerId, id: { not: opportunityId }, workspace: target.workspace as "DK" | "GLOBAL" },
@@ -103,32 +127,35 @@ export async function findSimilar(
     take: 500,
   })) as (EmbeddableOpp & { matchScore: number | null; deadline: Date | null; status: string })[];
 
-  const canEmbed = target.embedding.length > 0 && Boolean(target.embeddingModel);
-  const targetTokens = keywordTokens(opportunityEmbedText(target));
-
-  const scored = peers.map((p) => {
-    let similarity = 0;
-    let method: "embedding" | "keyword" = "keyword";
-    if (canEmbed && p.embedding.length === target.embedding.length && p.embeddingModel === target.embeddingModel) {
-      similarity = cosineSimilarity(target.embedding, p.embedding);
-      method = "embedding";
-    } else {
-      similarity = jaccard(targetTokens, keywordTokens(opportunityEmbedText(p)));
-    }
-    return {
-      id: p.id,
-      title: p.title,
-      organization: p.organization,
-      category: p.category,
-      matchScore: p.matchScore,
-      deadline: p.deadline,
-      status: p.status,
-      similarity,
-      method,
-    } satisfies SimilarResult;
+  const meta = (p: (typeof peers)[number]) => ({
+    id: p.id,
+    title: p.title,
+    organization: p.organization,
+    category: p.category,
+    matchScore: p.matchScore,
+    deadline: p.deadline,
+    status: p.status,
   });
 
-  return scored
+  // Prefer embeddings: rank peers with a comparable vector by cosine. Only fall
+  // back to keyword (Jaccard) for the *whole* set when no comparable embeddings
+  // exist — never mix the two incomparable score scales in one ranking.
+  if (canEmbed) {
+    const comparable = peers.filter(
+      (p) => p.embedding.length === targetVector.length && p.embeddingModel === targetModel,
+    );
+    if (comparable.length > 0) {
+      return comparable
+        .map((p) => ({ ...meta(p), similarity: cosineSimilarity(targetVector, p.embedding), method: "embedding" as const }))
+        .filter((s) => s.similarity > 0.01)
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, limit);
+    }
+  }
+
+  const targetTokens = keywordTokens(opportunityEmbedText(target));
+  return peers
+    .map((p) => ({ ...meta(p), similarity: jaccard(targetTokens, keywordTokens(opportunityEmbedText(p))), method: "keyword" as const }))
     .filter((s) => s.similarity > 0.01)
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, limit);

@@ -110,7 +110,11 @@ export async function changePassword(userId: string, currentPassword: string, ne
   // If the account already has a password, require the current one.
   if (user.passwordHash) {
     const ok = await verifyPassword(currentPassword, user.passwordHash);
-    if (!ok) throw new Error("Current password is incorrect");
+    if (!ok) {
+      const err = new Error("Current password is incorrect") as Error & { status: number };
+      err.status = 400;
+      throw err;
+    }
   }
   const passwordHash = await hashPassword(newPassword);
   await db.user.update({ where: { id: userId }, data: { passwordHash } });
@@ -118,6 +122,6 @@ export async function changePassword(userId: string, currentPassword: string, ne
   await revokeAllSessions(userId);
 }
 
-export { SESSION_COOKIE };
-export { hashPassword, verifyPassword } from "./password";
-export { createSession, destroyCurrentSession, revokeAllSessions } from "./session";
+// Re-export the already-imported bindings (not `export … from`, which can
+// resolve to undefined under bundling when the same name is also imported here).
+export { SESSION_COOKIE, hashPassword, verifyPassword, createSession, destroyCurrentSession, revokeAllSessions };

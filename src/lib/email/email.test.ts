@@ -60,6 +60,20 @@ describe("email provider selection", () => {
     expect(res.provider).toBe("none");
   });
 
+  it("treats an unknown provider as disabled (won't claim EMAIL delivery)", async () => {
+    process.env.EMAIL_PROVIDER = "sendgrid"; // not implemented
+    process.env.EMAIL_API_KEY = "key";
+    expect(emailEnabled()).toBe(false);
+    const res = await sendEmail({ to: "a@b.dk", subject: "s", html: "h", text: "t" });
+    expect(res.delivered).toBe(false);
+  });
+
+  it("resend without an API key is disabled", () => {
+    process.env.EMAIL_PROVIDER = "resend";
+    delete process.env.EMAIL_API_KEY;
+    expect(emailEnabled()).toBe(false);
+  });
+
   it("console provider delivers without network", async () => {
     process.env.EMAIL_PROVIDER = "console";
     const log = vi.spyOn(console, "log").mockImplementation(() => {});

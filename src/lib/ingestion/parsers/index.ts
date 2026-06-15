@@ -110,8 +110,11 @@ function fromConfig(cfg: CardConfig): SiteParser {
     const structured = extractStructured($, pageUrl);
     const cards = extractCards($, pageUrl, cfg);
     if (!structured.length) return cards;
-    const seen = new Set(structured.map((c) => c.url));
-    return [...structured, ...cards.filter((c) => !seen.has(c.url))];
+    // Dedupe cards against structured items by URL — but never by the pageUrl
+    // fallback, or a single structured node would wipe out every card that
+    // lacks an absolute link (they all fall back to pageUrl).
+    const seen = new Set(structured.map((c) => c.url).filter((u) => u && u !== pageUrl));
+    return [...structured, ...cards.filter((c) => c.url === pageUrl || !seen.has(c.url))];
   };
 }
 
