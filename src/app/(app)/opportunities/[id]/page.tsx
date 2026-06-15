@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
+import { findSimilar } from "@/lib/opportunities/similar";
 import {
   Card,
   CardContent,
@@ -87,18 +88,8 @@ export default async function OpportunityDetailPage({
     ? (opportunity.extractedRequirements as unknown[]).map(String)
     : [];
 
-  const related = opportunity.category
-    ? await db.opportunity.findMany({
-        where: {
-          ownerId,
-          category: opportunity.category,
-          id: { not: opportunity.id },
-        },
-        select: { id: true, title: true, matchScore: true },
-        orderBy: { matchScore: "desc" },
-        take: 5,
-      })
-    : [];
+  // Semantic similarity (embeddings, with keyword fallback) — see lib/opportunities/similar.
+  const related = await findSimilar(ownerId, opportunity.id, 5);
 
   return (
     <div className="px-6 py-6">
@@ -306,10 +297,17 @@ export default async function OpportunityDetailPage({
 
           <AiActionPanel opportunityId={opportunity.id} />
 
-          {/* Related */}
+          {/* Related (semantic) */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Related opportunities</CardTitle>
+              <CardTitle className="flex items-center justify-between gap-2 text-sm">
+                <span>Related opportunities</span>
+                {related[0] && (
+                  <span className="text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                    {related[0].method === "embedding" ? "semantic" : "keyword"}
+                  </span>
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {related.length === 0 ? (
@@ -324,7 +322,12 @@ export default async function OpportunityDetailPage({
                       >
                         {r.title}
                       </Link>
-                      <ScoreBadge score={r.matchScore} size="sm" />
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        <span className="tnum text-xs text-muted-foreground">
+                          {Math.round(r.similarity * 100)}%
+                        </span>
+                        <ScoreBadge score={r.matchScore} size="sm" />
+                      </span>
                     </li>
                   ))}
                 </ul>

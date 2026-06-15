@@ -19,6 +19,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "discover": "tsx scripts/run-discovery.ts",
+    "embeddings:backfill": "tsx scripts/backfill-embeddings.ts",
     "setup": "prisma generate && prisma db push && tsx prisma/seed.ts"
   },
   "prisma": {

@@ -7,6 +7,7 @@ import { dedupeHash } from "@/lib/ingestion/dedupe";
 import { scoreOpportunity } from "@/lib/scoring";
 import type { ScoreWeights } from "@/lib/types";
 import { apiError } from "@/lib/api";
+import { ensureEmbedding } from "@/lib/opportunities/similar";
 
 // GET /api/opportunities — paginated, filtered list (owner-scoped).
 export async function GET(req: Request) {
@@ -93,6 +94,9 @@ export async function POST(req: Request) {
       },
       include: OPPORTUNITY_INCLUDE,
     });
+
+    // Embed for semantic similarity (best-effort; offline uses a local vector).
+    await ensureEmbedding(created.id);
 
     return NextResponse.json(created, { status: 201 });
   } catch (err) {

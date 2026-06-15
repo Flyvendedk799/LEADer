@@ -10,6 +10,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { scoreOpportunity } from "../src/lib/scoring";
 import { DEFAULT_WEIGHTS } from "../src/lib/scoring/config";
 import { hashPassword } from "../src/lib/auth/password";
+import { LOCAL_EMBED_MODEL, localEmbed, opportunityEmbedText } from "../src/lib/ai/embeddings";
 
 const db = new PrismaClient();
 
@@ -240,6 +241,11 @@ async function main() {
         ingestMethod: d.ingest ?? "AUTOMATED",
         matchScore: breakdown.total,
         scoreBreakdown: breakdown as object,
+        embedding: localEmbed(
+          opportunityEmbedText({ title: d.title, description: d.description, organization: d.org, category: d.category }),
+        ),
+        embeddingModel: LOCAL_EMBED_MODEL,
+        embeddedAt: new Date(),
         dedupeHash: `seed-${Buffer.from(d.title).toString("base64").slice(0, 24)}`,
         contacts: d.contacts?.length ? { create: d.contacts } : undefined,
         activities: { create: { type: "IMPORT", message: `Seeded (${d.ingest ?? "AUTOMATED"})` } },

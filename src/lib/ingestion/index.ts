@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { scoreOpportunity } from "@/lib/scoring";
+import { embed, opportunityEmbedText } from "@/lib/ai/embeddings";
 import type { ScoreWeights, SourceType } from "@/lib/types";
 import { assertAutomatable } from "./compliance";
 import { type OpportunityCandidate, dedupeHash } from "./dedupe";
@@ -160,6 +161,16 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
           },
         });
         created++;
+        // Embed for semantic similarity (best-effort; never fail the run).
+        try {
+          const { vector, model } = await embed(opportunityEmbedText(opp));
+          await db.opportunity.update({
+            where: { id: opp.id },
+            data: { embedding: vector, embeddingModel: model, embeddedAt: new Date() },
+          });
+        } catch {
+          /* embedding is non-critical; backfill later */
+        }
         // High-match alert.
         if (breakdown.total >= 80) {
           await db.alert.create({
