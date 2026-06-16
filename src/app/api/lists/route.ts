@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { listCreateSchema } from "@/lib/validators";
+import { apiError } from "@/lib/api";
 
 // GET /api/lists — all lists for the owner, with item counts.
 export async function GET() {
@@ -13,8 +14,8 @@ export async function GET() {
       include: { _count: { select: { items: true } } },
     });
     return NextResponse.json(lists);
-  } catch {
-    return NextResponse.json({ error: "Failed to load lists" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
       include: { _count: { select: { items: true } } },
     });
     return NextResponse.json(list);
-  } catch {
-    return NextResponse.json({ error: "Failed to create list" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }

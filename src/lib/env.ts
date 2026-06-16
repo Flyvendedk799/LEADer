@@ -20,7 +20,13 @@ const schema = z.object({
   CRAWLER_ENABLE_PLAYWRIGHT: z.string().default("false"),
   // Ops
   CRON_SECRET: z.string().default(""),
-  EMAIL_PROVIDER: z.string().default(""),
+  // Email delivery (digests + deadline reminders). Empty => log-only (LOCAL alerts).
+  EMAIL_PROVIDER: z.enum(["", "resend", "console"]).default(""),
+  EMAIL_API_KEY: z.string().default(""),
+  EMAIL_FROM: z.string().default("LEADer <onboarding@resend.dev>"),
+  APP_URL: z.string().default("http://localhost:3000"),
+  // Deadline reminder horizon (days).
+  REMINDER_WINDOW_DAYS: z.coerce.number().default(7),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 

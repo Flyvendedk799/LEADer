@@ -2,14 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
-import { getDashboardMetrics } from "@/lib/dashboard";
+import { dispatchForOwner, generateDigest } from "@/lib/alerts/dispatch";
+import { apiError } from "@/lib/api";
 
-// Alerts: local, in-app notifications. Email delivery is a future hook —
-// when EMAIL_PROVIDER is configured, a DIGEST alert with channel EMAIL would be
-// dispatched here instead of (or in addition to) being stored as a LOCAL alert.
+// Alerts: in-app notification inbox + on-demand generation. When EMAIL_PROVIDER
+// is configured, DIGEST/DEADLINE alerts are also delivered by email.
 
 const markReadSchema = z.object({ id: z.string().min(1) });
-const postSchema = z.object({ type: z.literal("DIGEST") });
+const postSchema = z.object({
+  type: z.enum(["DIGEST", "REMINDERS"]).default("DIGEST"),
+  workspace: z.enum(["DK", "GLOBAL"]).optional(),
+});
 
 export async function GET() {
   try {
@@ -20,10 +23,7 @@ export async function GET() {
     });
     return NextResponse.json(alerts);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to load alerts" },
-      { status: 500 },
-    );
+    return apiError(err);
   }
 }
 
@@ -45,10 +45,7 @@ export async function PATCH(req: Request) {
     }
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to update alert" },
-      { status: 500 },
-    );
+    return apiError(err);
   }
 }
 
@@ -56,44 +53,19 @@ export async function POST(req: Request) {
   try {
     const ownerId = await requireOwnerId();
     const json = await req.json();
-    const parsed = postSchema.safeParse(json);
+    const parsed = postSchema.safeParse(json ?? {});
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    // Build a simple digest from the current DK pipeline counts.
-    const metrics = await getDashboardMetrics(ownerId, "DK");
-    const lines = [
-      `${metrics.newLeads} new lead${metrics.newLeads === 1 ? "" : "s"}`,
-      `${metrics.activeLeads} active`,
-      `${metrics.upcomingDeadlines.length} upcoming deadline${metrics.upcomingDeadlines.length === 1 ? "" : "s"}`,
-      `${metrics.appliedCount} applied · ${metrics.wonCount} won · ${metrics.lostCount} lost`,
-    ];
+    if (parsed.data.type === "REMINDERS") {
+      const { reminders } = await dispatchForOwner(ownerId, { workspace: parsed.data.workspace });
+      return NextResponse.json({ type: "REMINDERS", ...reminders });
+    }
 
-    const alert = await db.alert.create({
-      data: {
-        ownerId,
-        type: "DIGEST",
-        channel: "LOCAL", // EMAIL_PROVIDER future hook: switch to EMAIL + send.
-        title: "Your pipeline digest",
-        body: lines.join(" · "),
-        payload: {
-          newLeads: metrics.newLeads,
-          activeLeads: metrics.activeLeads,
-          upcomingDeadlines: metrics.upcomingDeadlines.length,
-          appliedCount: metrics.appliedCount,
-          wonCount: metrics.wonCount,
-          lostCount: metrics.lostCount,
-          pipelineValue: metrics.pipelineValue,
-        },
-      },
-    });
-
-    return NextResponse.json(alert);
+    const result = await generateDigest(ownerId, parsed.data.workspace ?? "DK");
+    return NextResponse.json({ type: "DIGEST", ...result });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to generate digest" },
-      { status: 500 },
-    );
+    return apiError(err);
   }
 }

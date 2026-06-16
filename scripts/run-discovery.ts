@@ -9,6 +9,7 @@
  * placeholders). Point Sources at real PUBLIC pages/feeds and implement the
  * site-specific parsers in src/lib/ingestion/parsers to get live results.
  */
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { runDiscoveryForSource, runDueDiscovery } from "../src/lib/ingestion";
 

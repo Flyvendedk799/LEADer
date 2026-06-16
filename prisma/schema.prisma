@@ -102,12 +102,19 @@ enum CommunityImportStatus {
 
 // ─────────────────────────────── Models ──────────────────────────────
 
+enum UserRole {
+  OWNER
+  MEMBER
+}
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String? // scrypt hash; null = no password set yet (legacy/dev seed)
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Profile / preferences (drives scoring + AI context)
   headline             String? // e.g. "Fullstack dev · AI builder · MVP/product advisor"
@@ -130,6 +137,24 @@ model User {
   alerts         Alert[]
   drafts         Draft[]
   notes          Note[]
+  sessions       Session[]
+}
+
+// Server-side sessions (opaque token hashed at rest). The auth cookie holds the
+// raw token; we store only its SHA-256 so a DB leak can't resurrect sessions.
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  userAgent  String?
+  ip         String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Source {
@@ -199,6 +224,12 @@ model Opportunity {
   whyRelevant     String? @db.Text
   nextAction      String? @db.Text
   extractedRequirements Json? // string[]
+
+  // Semantic search: embedding vector + the model that produced it (only vectors
+  // from the same model/dimension are comparable). Backfilled async; see lib/ai/embeddings.
+  embedding      Float[]  @default([])
+  embeddingModel String?
+  embeddedAt     DateTime?
 
   dedupeHash String? @unique
 

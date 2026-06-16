@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireOwnerId } from "@/lib/auth";
 import { getDashboardMetrics } from "@/lib/dashboard";
 import type { Workspace } from "@/lib/types";
+import { apiError } from "@/lib/api";
 
 export async function GET(req: Request) {
   try {
@@ -11,9 +12,6 @@ export async function GET(req: Request) {
     const metrics = await getDashboardMetrics(ownerId, workspace);
     return NextResponse.json(metrics);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to load dashboard metrics" },
-      { status: 500 },
-    );
+    return apiError(err);
   }
 }

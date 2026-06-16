@@ -4,6 +4,7 @@ import { requireOwnerId } from "@/lib/auth";
 import { sourceCreateSchema } from "@/lib/validators";
 import { assertPublicUrl, SsrfError } from "@/lib/ingestion/net";
 import { AUTOMATABLE_SOURCE_TYPES } from "@/lib/types";
+import { apiError } from "@/lib/api";
 
 // GET /api/sources — list the current owner's sources (newest first) with opportunity counts.
 export async function GET() {
@@ -15,8 +16,8 @@ export async function GET() {
       include: { _count: { select: { opportunities: true } } },
     });
     return NextResponse.json(sources);
-  } catch {
-    return NextResponse.json({ error: "Failed to load sources" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
       include: { _count: { select: { opportunities: true } } },
     });
     return NextResponse.json(source, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Failed to create source" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }

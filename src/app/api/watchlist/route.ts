@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { OPPORTUNITY_INCLUDE } from "@/lib/opportunities";
 import { watchlistSchema, listItemSchema } from "@/lib/validators";
+import { apiError } from "@/lib/api";
 
 // GET /api/watchlist — pinned opportunities, highest priority first.
 export async function GET() {
@@ -14,8 +15,8 @@ export async function GET() {
       include: { opportunity: { include: OPPORTUNITY_INCLUDE } },
     });
     return NextResponse.json(items);
-  } catch {
-    return NextResponse.json({ error: "Failed to load watchlist" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -56,8 +57,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(item);
-  } catch {
-    return NextResponse.json({ error: "Failed to update watchlist" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -74,7 +75,7 @@ export async function DELETE(req: Request) {
       where: { ownerId, opportunityId: parsed.data.opportunityId },
     });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Failed to remove from watchlist" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }

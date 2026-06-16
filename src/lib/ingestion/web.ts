@@ -3,6 +3,7 @@ import type { OpportunityCandidate } from "./dedupe";
 import { crawlerSettings, isAllowedByRobots, rateLimit } from "./compliance";
 import { assertPublicUrl, safeFetch } from "./net";
 import { getParser } from "./parsers";
+import { extractStructured } from "./parsers/structured";
 
 /**
  * Fetch a PUBLIC web page (no login, robots-checked, rate-limited) and extract
@@ -52,11 +53,16 @@ export async function fetchWebCandidates(
 }
 
 /**
- * Generic extractor: looks for repeated "card"-like structures, else falls back
- * to the page's main heading + meta description as a single candidate.
- * Real site-specific selectors belong in lib/ingestion/parsers (see TODOs there).
+ * Generic extractor. Order of preference:
+ *   1. Structured data (JSON-LD / microdata) — reliable across modern sites.
+ *   2. Repeated "card"-like structures.
+ *   3. The page's main heading + meta description as a single candidate.
+ * Site-specific selectors live in lib/ingestion/parsers (referenced by parserKey).
  */
 function genericExtract($: cheerio.CheerioAPI, pageUrl: string): OpportunityCandidate[] {
+  const structured = extractStructured($, pageUrl);
+  if (structured.length) return structured;
+
   const origin = new URL(pageUrl).origin;
   const out: OpportunityCandidate[] = [];
 

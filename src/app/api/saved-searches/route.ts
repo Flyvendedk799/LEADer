@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { savedSearchSchema } from "@/lib/validators";
+import { apiError } from "@/lib/api";
 import { z } from "zod";
 
 const deleteSchema = z.object({ id: z.string() });
@@ -15,8 +16,8 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(searches);
-  } catch {
-    return NextResponse.json({ error: "Failed to load saved searches" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -33,8 +34,8 @@ export async function POST(req: Request) {
       data: { ownerId, name: parsed.data.name, filters: parsed.data.filters as object },
     });
     return NextResponse.json(search);
-  } catch {
-    return NextResponse.json({ error: "Failed to save search" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -49,7 +50,7 @@ export async function DELETE(req: Request) {
     }
     await db.savedSearch.deleteMany({ where: { id: parsed.data.id, ownerId } });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Failed to delete saved search" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { hasLlmKey } from "@/lib/env";
+import { emailEnabled } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export async function GET() {
       status: dbOk ? "ok" : "degraded",
       db: dbOk ? "up" : "down",
       ai: hasLlmKey() ? "live" : "mock",
+      email: emailEnabled() ? "live" : "off",
       latencyMs: Date.now() - started,
     },
     { status: dbOk ? 200 : 503 },

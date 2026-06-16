@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { sourceUpdateSchema } from "@/lib/validators";
+import { apiError } from "@/lib/api";
 
 // GET /api/sources/[id] — fetch one owner-scoped source.
 export async function GET(_req: Request, ctx: { params: { id: string } }) {
@@ -13,8 +14,8 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
     });
     if (!source) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(source);
-  } catch {
-    return NextResponse.json({ error: "Failed to load source" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -41,8 +42,8 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       include: { _count: { select: { opportunities: true } } },
     });
     return NextResponse.json(source);
-  } catch {
-    return NextResponse.json({ error: "Failed to update source" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -55,7 +56,7 @@ export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
 
     await db.source.delete({ where: { id: existing.id } });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Failed to delete source" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }

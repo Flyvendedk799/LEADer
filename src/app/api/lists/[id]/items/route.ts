@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { listItemSchema } from "@/lib/validators";
+import { apiError } from "@/lib/api";
 
 // Confirms the parent list belongs to the owner before any mutation.
 async function ownedList(listId: string, ownerId: string) {
@@ -36,8 +37,8 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       create: { listId: ctx.params.id, opportunityId: parsed.data.opportunityId },
     });
     return NextResponse.json(item);
-  } catch {
-    return NextResponse.json({ error: "Failed to add item" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
 
@@ -58,7 +59,7 @@ export async function DELETE(req: Request, ctx: { params: { id: string } }) {
       where: { listId: ctx.params.id, opportunityId: parsed.data.opportunityId },
     });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Failed to remove item" }, { status: 500 });
+  } catch (err) {
+    return apiError(err);
   }
 }
