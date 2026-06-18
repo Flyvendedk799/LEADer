@@ -36,3 +36,21 @@ test("community import page shows the compliance notice", async ({ page }) => {
   await page.goto("/import");
   await expect(page.getByText(/compliant/i).first()).toBeVisible();
 });
+
+test("mobile users can navigate via the hamburger drawer", async ({ page }) => {
+  // Below the `md` breakpoint the sidebar is hidden — the drawer is the only nav.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const menuButton = page.getByRole("button", { name: /open navigation menu/i });
+  await expect(menuButton).toBeVisible();
+
+  await menuButton.click();
+  const oppLink = page.getByRole("link", { name: "Opportunities" });
+  await expect(oppLink).toBeVisible();
+
+  await oppLink.click();
+  await expect(page).toHaveURL(/\/opportunities/);
+  // Drawer auto-closes on navigation, so its links are no longer in the DOM.
+  await expect(page.getByRole("link", { name: "Community import" })).toHaveCount(0);
+});

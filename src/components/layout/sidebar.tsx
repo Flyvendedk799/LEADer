@@ -1,35 +1,13 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  ClipboardPaste,
-  Globe2,
-  LayoutDashboard,
-  ListChecks,
-  Radar,
-  Settings,
-  Star,
-  Target,
-  type LucideIcon,
-} from "lucide-react";
+import { Target } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const ICONS: Record<string, LucideIcon> = {
-  LayoutDashboard, Target, Star, ListChecks, Radar, ClipboardPaste, Settings, Globe2,
-};
-
-const NAV = [
-  { href: "/", label: "Dashboard", icon: "LayoutDashboard" },
-  { href: "/opportunities", label: "Opportunities", icon: "Target" },
-  { href: "/watchlist", label: "Watchlist", icon: "Star" },
-  { href: "/lists", label: "Lists", icon: "ListChecks" },
-  { href: "/sources", label: "Sources", icon: "Radar" },
-  { href: "/import", label: "Community import", icon: "ClipboardPaste" },
-];
+import { GLOBAL_NAV, isNavActive, PRIMARY_NAV, SETTINGS_NAV } from "./nav";
 
 export function Sidebar() {
   const pathname = usePathname();
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const isActive = (href: string) => isNavActive(pathname, href);
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface/60 px-3 py-4 md:flex">
@@ -44,8 +22,8 @@ export function Sidebar() {
       </Link>
 
       <nav className="flex flex-1 flex-col gap-0.5">
-        {NAV.map((item) => {
-          const Icon = ICONS[item.icon];
+        {PRIMARY_NAV.map((item) => {
+          const Icon = item.icon;
           return (
             <Link
               key={item.href}
@@ -67,28 +45,28 @@ export function Sidebar() {
           Global
         </div>
         <Link
-          href="/global"
+          href={GLOBAL_NAV.href}
           className={cn(
             "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-            isActive("/global")
+            isActive(GLOBAL_NAV.href)
               ? "bg-accent/15 text-accent"
               : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
           )}
         >
-          <Globe2 className="h-4 w-4" />
-          International
+          <GLOBAL_NAV.icon className="h-4 w-4" />
+          {GLOBAL_NAV.label}
         </Link>
       </nav>
 
       <Link
-        href="/settings"
+        href={SETTINGS_NAV.href}
         className={cn(
           "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-          isActive("/settings") ? "bg-primary/12 text-primary" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+          isActive(SETTINGS_NAV.href) ? "bg-primary/12 text-primary" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
         )}
       >
-        <Settings className="h-4 w-4" />
-        Settings
+        <SETTINGS_NAV.icon className="h-4 w-4" />
+        {SETTINGS_NAV.label}
       </Link>
     </aside>
   );

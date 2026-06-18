@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertsBell } from "@/components/layout/alerts-bell";
+import { MobileNav } from "@/components/layout/mobile-nav";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,6 +51,7 @@ export function Topbar({ user }: TopbarProps) {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/70 px-4 backdrop-blur">
+      <MobileNav />
       <form onSubmit={submitSearch} className="relative w-full max-w-md">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
