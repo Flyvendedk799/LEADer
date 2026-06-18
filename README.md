@@ -24,6 +24,7 @@ scoring, compliant ingestion, AI assistance, and one-click exports.
 | **Community import** | Compliant, **manual-only** Facebook/community import (paste text+URL → AI extract → confirm). Never scrapes closed groups. |
 | **Lead scoring** | Explainable **0–100** match score with a per-criterion breakdown, fully **customisable weights** in Settings. |
 | **Watchlists & lists** | Watchlist, custom lists, tags, saved searches, status pipeline, priorities, reminders. |
+| **Pipeline board** | Kanban view of your pipeline — drag opportunities between status columns to update them (optimistic, owner-scoped). DK/Global workspace toggle. |
 | **Bulk actions** | Multi-select opportunities, then set status/priority, add to watchlist, add to a list, export, or delete — all in one batch (owner-scoped server-side). |
 | **Command palette** | `⌘K` / `Ctrl+K` opens a global palette: live opportunity search, jump to any page, create a new opportunity, toggle theme — keyboard-first. |
 | **Opportunity detail** | Summary, requirements, contacts, attachments, notes, activity timeline, saved AI drafts, related opportunities. |

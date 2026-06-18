@@ -95,3 +95,17 @@ test("bulk-selecting opportunities exposes batch actions", async ({ page }) => {
   await page.getByRole("menuitem", { name: /contacted/i }).click();
   await expect(page.getByText(/2 selected/)).toHaveCount(0);
 });
+
+test("pipeline board renders columns and drag updates status", async ({ page }) => {
+  await page.goto("/board");
+  await expect(page.getByRole("heading", { name: /pipeline board/i })).toBeVisible();
+  // Status columns are present.
+  await expect(page.getByText("New", { exact: true })).toBeVisible();
+  await expect(page.getByText("Contacted", { exact: true })).toBeVisible();
+
+  const card = page.locator('article[draggable="true"]').first();
+  await expect(card).toBeVisible();
+  // HTML5 drag onto an adjacent, on-screen column → optimistic move + PATCH + toast.
+  await card.dragTo(page.getByText("Interesting", { exact: true }));
+  await expect(page.getByText(/Status updated/i)).toBeVisible({ timeout: 5000 });
+});
