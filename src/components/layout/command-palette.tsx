@@ -1,0 +1,292 @@
+"use client";
+
+import * as React from "react";
+import { useRouter } from "next/navigation";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { useTheme } from "next-themes";
+import {
+  CornerDownLeft,
+  Loader2,
+  Moon,
+  Plus,
+  Search,
+  Sun,
+} from "lucide-react";
+import { cn, formatBudget } from "@/lib/utils";
+import { ScoreBadge } from "@/components/shared/score-badge";
+import { GLOBAL_NAV, PRIMARY_NAV, SETTINGS_NAV, type NavItem } from "./nav";
+
+const NAV_ALL: NavItem[] = [...PRIMARY_NAV, GLOBAL_NAV, SETTINGS_NAV];
+
+/** Custom event other components (e.g. the topbar button) can fire to open the palette. */
+export const COMMAND_EVENT = "leader:command-palette";
+export function openCommandPalette() {
+  window.dispatchEvent(new Event(COMMAND_EVENT));
+}
+
+interface OppHit {
+  id: string;
+  title: string;
+  organization: string | null;
+  budgetMin: number | null;
+  budgetMax: number | null;
+  currency: string | null;
+  matchScore: number | null;
+}
+
+interface Result {
+  id: string;
+  group: string;
+  label: string;
+  hint?: string;
+  icon: React.ReactNode;
+  score?: number | null;
+  perform: () => void;
+}
+
+export function CommandPalette() {
+  const router = useRouter();
+  const { theme, setTheme } = useTheme();
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [hits, setHits] = React.useState<OppHit[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [active, setActive] = React.useState(0);
+  const listRef = React.useRef<HTMLDivElement>(null);
+
+  // Open via ⌘K / Ctrl+K, or a dispatched COMMAND_EVENT (e.g. topbar button).
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setOpen((o) => !o);
+      }
+    }
+    function onEvent() {
+      setOpen(true);
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener(COMMAND_EVENT, onEvent);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(COMMAND_EVENT, onEvent);
+    };
+  }, []);
+
+  // Reset transient state each time the palette opens.
+  React.useEffect(() => {
+    if (open) {
+      setQuery("");
+      setHits([]);
+      setActive(0);
+    }
+  }, [open]);
+
+  // Debounced opportunity search while the palette is open.
+  React.useEffect(() => {
+    if (!open) return;
+    const term = query.trim();
+    if (!term) {
+      setHits([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const controller = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/opportunities?q=${encodeURIComponent(term)}&pageSize=6`,
+          { signal: controller.signal },
+        );
+        if (!res.ok) throw new Error();
+        const data = (await res.json()) as { items: OppHit[] };
+        setHits(data.items ?? []);
+      } catch {
+        if (!controller.signal.aborted) setHits([]);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }, 200);
+    return () => {
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [query, open]);
+
+  function close() {
+    setOpen(false);
+  }
+
+  const results = React.useMemo<Result[]>(() => {
+    const term = query.trim().toLowerCase();
+    const out: Result[] = [];
+
+    // Opportunities (only when searching) come first — the most specific hits.
+    for (const o of hits) {
+      out.push({
+        id: `opp-${o.id}`,
+        group: "Opportunities",
+        label: o.title,
+        hint: [o.organization, formatBudget(o.budgetMin, o.budgetMax, o.currency ?? "DKK")]
+          .filter(Boolean)
+          .join(" · "),
+        icon: <Search className="h-4 w-4 text-muted-foreground" />,
+        score: o.matchScore,
+        perform: () => {
+          router.push(`/opportunities/${o.id}`);
+          close();
+        },
+      });
+    }
+
+    const navMatches = NAV_ALL.filter((n) => !term || n.label.toLowerCase().includes(term));
+    for (const n of navMatches) {
+      const Icon = n.icon;
+      out.push({
+        id: `nav-${n.href}`,
+        group: "Go to",
+        label: n.label,
+        icon: <Icon className="h-4 w-4 text-muted-foreground" />,
+        perform: () => {
+          router.push(n.href);
+          close();
+        },
+      });
+    }
+
+    const actions: Result[] = [
+      {
+        id: "act-new",
+        group: "Actions",
+        label: "New opportunity",
+        icon: <Plus className="h-4 w-4 text-muted-foreground" />,
+        perform: () => {
+          router.push("/opportunities?new=1");
+          close();
+        },
+      },
+      {
+        id: "act-theme",
+        group: "Actions",
+        label: theme === "dark" ? "Switch to light theme" : "Switch to dark theme",
+        icon:
+          theme === "dark" ? (
+            <Sun className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <Moon className="h-4 w-4 text-muted-foreground" />
+          ),
+        perform: () => {
+          setTheme(theme === "dark" ? "light" : "dark");
+          close();
+        },
+      },
+    ];
+    for (const a of actions) {
+      if (!term || a.label.toLowerCase().includes(term)) out.push(a);
+    }
+
+    return out;
+  }, [hits, query, router, setTheme, theme]);
+
+  // Keep the active index in range whenever the result set changes.
+  React.useEffect(() => {
+    setActive((i) => (results.length === 0 ? 0 : Math.min(i, results.length - 1)));
+  }, [results.length]);
+
+  // Scroll the active row into view.
+  React.useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((i) => (results.length ? (i + 1) % results.length : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((i) => (results.length ? (i - 1 + results.length) % results.length : 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      results[active]?.perform();
+    }
+  }
+
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content
+          onKeyDown={onKeyDown}
+          className="fixed left-1/2 top-[12vh] z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-2xl duration-150 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+        >
+          <DialogPrimitive.Title className="sr-only">Command palette</DialogPrimitive.Title>
+          <DialogPrimitive.Description className="sr-only">
+            Search opportunities, jump to a page, or run an action.
+          </DialogPrimitive.Description>
+
+          <div className="flex items-center gap-2 border-b border-border px-3">
+            {loading ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+            ) : (
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search opportunities or jump to…"
+              className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+            <kbd className="hidden rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">
+              ESC
+            </kbd>
+          </div>
+
+          <div ref={listRef} className="max-h-[60vh] overflow-y-auto scrollbar-thin p-2">
+            {results.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                {query.trim() ? "No matches." : "Type to search…"}
+              </p>
+            ) : (
+              results.map((r, i) => {
+                const showHeader = i === 0 || results[i - 1].group !== r.group;
+                const isActive = i === active;
+                return (
+                  <React.Fragment key={r.id}>
+                    {showHeader && (
+                      <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                        {r.group}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      data-index={i}
+                      onClick={() => r.perform()}
+                      onMouseMove={() => setActive(i)}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors",
+                        isActive ? "bg-primary/12 text-foreground" : "text-muted-foreground hover:bg-surface-2",
+                      )}
+                    >
+                      {r.icon}
+                      <span className="min-w-0 flex-1 truncate text-foreground">{r.label}</span>
+                      {r.hint && (
+                        <span className="hidden max-w-[45%] truncate text-xs text-muted-foreground sm:inline">
+                          {r.hint}
+                        </span>
+                      )}
+                      {r.score != null && <ScoreBadge score={r.score} size="sm" />}
+                      {isActive && <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                    </button>
+                  </React.Fragment>
+                );
+              })
+            )}
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}

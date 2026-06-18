@@ -86,6 +86,36 @@ export const opportunityUpdateSchema = opportunityBase.partial().extend({
 
 export const noteCreateSchema = z.object({ body: z.string().min(1), pinned: z.boolean().optional() });
 
+// Bulk operations over a selection of opportunities (owner-scoped server-side).
+export const zBulkAction = z.enum([
+  "setStatus",
+  "setPriority",
+  "addToWatchlist",
+  "removeFromWatchlist",
+  "addToList",
+  "delete",
+]);
+export const bulkOpportunitySchema = z
+  .object({
+    ids: z.array(z.string()).min(1, "Select at least one opportunity").max(500),
+    action: zBulkAction,
+    status: zStatus.optional(),
+    priority: z.number().int().min(0).max(3).optional(),
+    listId: z.string().optional(),
+  })
+  .refine((d) => d.action !== "setStatus" || d.status != null, {
+    message: "status is required for setStatus",
+    path: ["status"],
+  })
+  .refine((d) => d.action !== "setPriority" || d.priority != null, {
+    message: "priority is required for setPriority",
+    path: ["priority"],
+  })
+  .refine((d) => d.action !== "addToList" || !!d.listId, {
+    message: "listId is required for addToList",
+    path: ["listId"],
+  });
+
 // ── Lists / watchlist / saved searches ───────────────────────────────────────
 export const listCreateSchema = z.object({
   name: z.string().min(1),
@@ -184,7 +214,7 @@ export function parseFilters(searchParams: URLSearchParams): OpportunityFilter {
     scoreMax: num("scoreMax"),
     applicationRoute: keep("applicationRoute", ROUTE_VALUES) as OpportunityFilter["applicationRoute"],
     ingestMethod: keep("ingestMethod", INGEST_VALUES) as OpportunityFilter["ingestMethod"],
-    sort: (searchParams.get("sort") as "score" | "deadline" | "created" | "budget") || "score",
+    sort: (searchParams.get("sort") as OpportunityFilter["sort"]) || "score",
     order: (searchParams.get("order") as "asc" | "desc") || "desc",
     page: num("page") || 1,
     pageSize: num("pageSize") || 25,

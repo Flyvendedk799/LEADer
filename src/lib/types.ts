@@ -116,7 +116,7 @@ export interface OpportunityFilter {
   scoreMax?: number;
   applicationRoute?: ApplicationRoute[];
   ingestMethod?: IngestMethod[];
-  sort?: "score" | "deadline" | "created" | "budget";
+  sort?: "score" | "deadline" | "created" | "budget" | "title";
   order?: "asc" | "desc";
   page?: number;
   pageSize?: number;

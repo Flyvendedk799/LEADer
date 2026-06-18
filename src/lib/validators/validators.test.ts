@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseFilters, opportunityCreateSchema } from "./index";
+import { parseFilters, opportunityCreateSchema, bulkOpportunitySchema } from "./index";
 
 describe("parseFilters", () => {
   it("drops invalid enum values from a crafted querystring", () => {
@@ -30,5 +30,29 @@ describe("opportunityCreateSchema", () => {
   it("accepts a sane budget range", () => {
     const r = opportunityCreateSchema.safeParse({ title: "Test lead", budgetMin: 10000, budgetMax: 90000 });
     expect(r.success).toBe(true);
+  });
+});
+
+describe("bulkOpportunitySchema", () => {
+  it("requires at least one id", () => {
+    expect(bulkOpportunitySchema.safeParse({ ids: [], action: "delete" }).success).toBe(false);
+  });
+  it("requires status for setStatus", () => {
+    expect(bulkOpportunitySchema.safeParse({ ids: ["a"], action: "setStatus" }).success).toBe(false);
+    expect(
+      bulkOpportunitySchema.safeParse({ ids: ["a"], action: "setStatus", status: "WON" }).success,
+    ).toBe(true);
+  });
+  it("requires listId for addToList", () => {
+    expect(bulkOpportunitySchema.safeParse({ ids: ["a"], action: "addToList" }).success).toBe(false);
+    expect(
+      bulkOpportunitySchema.safeParse({ ids: ["a"], action: "addToList", listId: "l1" }).success,
+    ).toBe(true);
+  });
+  it("accepts a bare watchlist action", () => {
+    expect(bulkOpportunitySchema.safeParse({ ids: ["a", "b"], action: "addToWatchlist" }).success).toBe(true);
+  });
+  it("rejects an unknown action", () => {
+    expect(bulkOpportunitySchema.safeParse({ ids: ["a"], action: "nuke" }).success).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import {
   ClipboardPaste,
+  Columns3,
   Globe2,
   LayoutDashboard,
   ListChecks,
@@ -20,6 +21,7 @@ export interface NavItem {
 export const PRIMARY_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/opportunities", label: "Opportunities", icon: Target },
+  { href: "/board", label: "Pipeline board", icon: Columns3 },
   { href: "/watchlist", label: "Watchlist", icon: Star },
   { href: "/lists", label: "Lists", icon: ListChecks },
   { href: "/sources", label: "Sources", icon: Radar },

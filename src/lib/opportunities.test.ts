@@ -58,4 +58,10 @@ describe("buildOrderBy", () => {
   it("honours deadline asc", () => {
     expect(buildOrderBy({ sort: "deadline", order: "asc" })).toEqual({ deadline: "asc" });
   });
+  it("sorts by title", () => {
+    expect(buildOrderBy({ sort: "title", order: "asc" })).toEqual({ title: "asc" });
+  });
+  it("sorts by budget desc", () => {
+    expect(buildOrderBy({ sort: "budget", order: "desc" })).toEqual({ budgetMax: "desc" });
+  });
 });

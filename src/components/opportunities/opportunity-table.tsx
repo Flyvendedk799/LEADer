@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Target, X } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ArrowDown, ArrowUp, ChevronsUpDown, Target } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,21 +13,81 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { DeadlinePill } from "@/components/shared/deadline-pill";
 import { ScoreBadge } from "@/components/shared/score-badge";
-import { ExportDialog } from "./export-dialog";
-import { formatBudget } from "@/lib/utils";
+import { BulkActionBar } from "./bulk-action-bar";
+import { cn, formatBudget } from "@/lib/utils";
+import type { OpportunityFilter } from "@/lib/types";
 import type { OpportunityListItem } from "@/lib/opportunities";
+
+type SortKey = NonNullable<OpportunityFilter["sort"]>;
+
+/** A clickable column header that drives `sort`/`order` via the URL. */
+function SortHeader({
+  label,
+  sortKey,
+  defaultOrder,
+  align = "left",
+}: {
+  label: string;
+  sortKey: SortKey;
+  defaultOrder: "asc" | "desc";
+  align?: "left" | "right";
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const currentSort = (searchParams.get("sort") as SortKey) || "score";
+  const currentOrder = (searchParams.get("order") as "asc" | "desc") || "desc";
+  const active = currentSort === sortKey;
+
+  function onClick() {
+    const nextOrder = active ? (currentOrder === "asc" ? "desc" : "asc") : defaultOrder;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("sort", sortKey);
+    params.set("order", nextOrder);
+    params.delete("page");
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group inline-flex items-center gap-1 text-xs font-medium transition-colors hover:text-foreground",
+        align === "right" && "flex-row-reverse",
+        active ? "text-foreground" : "text-muted-foreground",
+      )}
+      aria-label={`Sort by ${label}`}
+    >
+      {label}
+      {active ? (
+        currentOrder === "asc" ? (
+          <ArrowUp className="h-3.5 w-3.5" />
+        ) : (
+          <ArrowDown className="h-3.5 w-3.5" />
+        )
+      ) : (
+        <ChevronsUpDown className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-60" />
+      )}
+    </button>
+  );
+}
 
 export function OpportunityTable({
   items,
   selectable = false,
+  sortable = false,
+  lists = [],
 }: {
   items: OpportunityListItem[];
   selectable?: boolean;
+  sortable?: boolean;
+  lists?: { id: string; name: string }[];
 }) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
 
@@ -74,11 +135,27 @@ export function OpportunityTable({
                 />
               </TableHead>
             )}
-            <TableHead>Title</TableHead>
-            <TableHead>Budget</TableHead>
-            <TableHead>Deadline</TableHead>
+            <TableHead>
+              {sortable ? <SortHeader label="Title" sortKey="title" defaultOrder="asc" /> : "Title"}
+            </TableHead>
+            <TableHead>
+              {sortable ? <SortHeader label="Budget" sortKey="budget" defaultOrder="desc" /> : "Budget"}
+            </TableHead>
+            <TableHead>
+              {sortable ? (
+                <SortHeader label="Deadline" sortKey="deadline" defaultOrder="asc" />
+              ) : (
+                "Deadline"
+              )}
+            </TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="text-right">Score</TableHead>
+            <TableHead className="text-right">
+              {sortable ? (
+                <SortHeader label="Score" sortKey="score" defaultOrder="desc" align="right" />
+              ) : (
+                "Score"
+              )}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -125,18 +202,7 @@ export function OpportunityTable({
       </Table>
 
       {selectable && selected.size > 0 && (
-        <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-border bg-surface-2/95 px-4 py-3 backdrop-blur">
-          <span className="text-sm font-medium">
-            {selected.size} selected
-          </span>
-          <div className="flex items-center gap-2">
-            <ExportDialog ids={selectedIds} />
-            <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-              <X className="h-4 w-4" />
-              Clear
-            </Button>
-          </div>
-        </div>
+        <BulkActionBar ids={selectedIds} lists={lists} onClear={() => setSelected(new Set())} />
       )}
     </div>
   );

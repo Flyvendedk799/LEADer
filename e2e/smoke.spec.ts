@@ -54,3 +54,58 @@ test("mobile users can navigate via the hamburger drawer", async ({ page }) => {
   // Drawer auto-closes on navigation, so its links are no longer in the DOM.
   await expect(page.getByRole("link", { name: "Community import" })).toHaveCount(0);
 });
+
+test("command palette opens with ⌘K and jumps to an opportunity", async ({ page }) => {
+  await page.goto("/");
+  await page.keyboard.press("Control+k");
+
+  const dialog = page.getByRole("dialog");
+  const input = dialog.getByPlaceholder(/jump to/i);
+  await expect(input).toBeVisible();
+
+  // "SaaS" matches a seeded opportunity title. Click the result inside the palette.
+  await input.fill("SaaS");
+  const hit = dialog.getByRole("button", { name: /SaaS/i }).first();
+  await expect(hit).toBeVisible();
+  await hit.click();
+  await expect(page).toHaveURL(/\/opportunities\/.+/);
+});
+
+test("clicking a column header sorts via the URL", async ({ page }) => {
+  await page.goto("/opportunities");
+  await page.getByRole("button", { name: /sort by title/i }).click();
+  await expect(page).toHaveURL(/sort=title/);
+  await expect(page).toHaveURL(/order=asc/);
+  // Clicking again flips the direction.
+  await page.getByRole("button", { name: /sort by title/i }).click();
+  await expect(page).toHaveURL(/order=desc/);
+});
+
+test("bulk-selecting opportunities exposes batch actions", async ({ page }) => {
+  await page.goto("/opportunities");
+  const checks = page.locator("tbody [role=checkbox]");
+  await checks.nth(0).click();
+  await checks.nth(1).click();
+
+  await expect(page.getByText(/2 selected/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /set status/i })).toBeVisible();
+
+  // Apply a status to the selection; the action bar clears afterwards.
+  await page.getByRole("button", { name: /set status/i }).click();
+  await page.getByRole("menuitem", { name: /contacted/i }).click();
+  await expect(page.getByText(/2 selected/)).toHaveCount(0);
+});
+
+test("pipeline board renders columns and drag updates status", async ({ page }) => {
+  await page.goto("/board");
+  await expect(page.getByRole("heading", { name: /pipeline board/i })).toBeVisible();
+  // Status columns are present.
+  await expect(page.getByText("New", { exact: true })).toBeVisible();
+  await expect(page.getByText("Contacted", { exact: true })).toBeVisible();
+
+  const card = page.locator('article[draggable="true"]').first();
+  await expect(card).toBeVisible();
+  // HTML5 drag onto an adjacent, on-screen column → optimistic move + PATCH + toast.
+  await card.dragTo(page.getByText("Interesting", { exact: true }));
+  await expect(page.getByText(/Status updated/i)).toBeVisible({ timeout: 5000 });
+});

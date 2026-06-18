@@ -31,9 +31,14 @@ export default async function OpportunitiesPage({
   if (!sp.get("workspace")) sp.set("workspace", "DK");
   const filters = parseFilters(sp);
 
-  const [{ items, total, page, pageSize }, sources] = await Promise.all([
+  const [{ items, total, page, pageSize }, sources, lists] = await Promise.all([
     listOpportunities(ownerId, filters),
     db.source.findMany({
+      where: { ownerId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    db.list.findMany({
       where: { ownerId },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
@@ -74,7 +79,7 @@ export default async function OpportunitiesPage({
             </span>
           </div>
 
-          <OpportunityTable items={items} selectable />
+          <OpportunityTable items={items} selectable sortable lists={lists} />
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between">
