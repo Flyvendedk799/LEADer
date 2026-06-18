@@ -71,6 +71,8 @@ export function buildOrderBy(f: OpportunityFilter): Prisma.OpportunityOrderByWit
       return { createdAt: order };
     case "budget":
       return { budgetMax: order };
+    case "title":
+      return { title: order };
     case "score":
     default:
       return { matchScore: order };

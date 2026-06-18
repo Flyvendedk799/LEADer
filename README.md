@@ -24,8 +24,10 @@ scoring, compliant ingestion, AI assistance, and one-click exports.
 | **Community import** | Compliant, **manual-only** Facebook/community import (paste text+URL → AI extract → confirm). Never scrapes closed groups. |
 | **Lead scoring** | Explainable **0–100** match score with a per-criterion breakdown, fully **customisable weights** in Settings. |
 | **Watchlists & lists** | Watchlist, custom lists, tags, saved searches, status pipeline, priorities, reminders. |
+| **Bulk actions** | Multi-select opportunities, then set status/priority, add to watchlist, add to a list, export, or delete — all in one batch (owner-scoped server-side). |
+| **Command palette** | `⌘K` / `Ctrl+K` opens a global palette: live opportunity search, jump to any page, create a new opportunity, toggle theme — keyboard-first. |
 | **Opportunity detail** | Summary, requirements, contacts, attachments, notes, activity timeline, saved AI drafts, related opportunities. |
-| **Search & filtering** | Keyword, budget min/max, deadline range, active-only, source, category, score, status, tags, region, has-budget, application route. |
+| **Search & filtering** | Keyword, budget min/max, deadline range, active-only, source, category, score, status, tags, region, has-budget, application route — plus sortable table columns (title/budget/deadline/score). |
 | **AI suite** | Summarise · extract · classify · explain match · draft application/pitch/email/checklist · compare · **find similar (embeddings)** · next action. Provider-agnostic, **runs offline with mock output + local embeddings**. |
 | **Dashboard** | New/active leads, upcoming deadlines, best matches, watchlist, applied, won/lost, pipeline value, leads by source/category/status. |
 | **Exporting** | CSV · XLSX · PDF report · Markdown · Notion-ready — fixed field contract. |

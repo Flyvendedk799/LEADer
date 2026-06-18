@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +28,21 @@ import type { ApplicationRoute, Workspace } from "@/lib/types";
 
 export function NewOpportunityDialog() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [open, setOpen] = React.useState(false);
+
+  // Open automatically when arriving with ?new=1 (e.g. from the command palette),
+  // then strip the param so a refresh doesn't reopen the dialog.
+  React.useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setOpen(true);
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("new");
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }
+  }, [searchParams, pathname, router]);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 

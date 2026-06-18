@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertsBell } from "@/components/layout/alerts-bell";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { openCommandPalette } from "@/components/layout/command-palette";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,8 +59,17 @@ export function Topbar({ user }: TopbarProps) {
           name="q"
           defaultValue={params.get("q") ?? ""}
           placeholder="Search opportunities, organizations, summaries…"
-          className="pl-9"
+          className="pl-9 pr-14"
         />
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          aria-label="Open command palette"
+          title="Command palette (⌘K)"
+          className="absolute right-2 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground sm:flex"
+        >
+          <span className="text-xs">⌘</span>K
+        </button>
       </form>
 
       <div className="ml-auto flex items-center gap-2">
