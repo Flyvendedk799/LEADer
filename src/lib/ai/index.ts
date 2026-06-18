@@ -14,13 +14,14 @@ export interface RunAiArgs {
   context?: string; // opportunity text / pasted content
   profile?: string;
   extra?: string; // extra instruction context (e.g. comparison set)
+  aiKeys?: unknown;
 }
 
 export async function runAi(args: RunAiArgs): Promise<AiResult> {
-  const { action, context, profile, extra } = args;
-  const cfg = aiConfig();
+  const { action, context, profile, extra, aiKeys } = args;
+  const cfg = aiConfig(aiKeys);
 
-  if (!hasLlm()) {
+  if (!hasLlm(aiKeys)) {
     return mockResult(action, context);
   }
 
@@ -31,6 +32,7 @@ export async function runAi(args: RunAiArgs): Promise<AiResult> {
       { role: "user", content: user },
     ],
     { json },
+    cfg,
   );
 
   if (json) {
@@ -46,8 +48,12 @@ export async function runAi(args: RunAiArgs): Promise<AiResult> {
 }
 
 /** Typed helper for the extract action. */
-export async function aiExtract(context: string, profile?: string): Promise<AiExtractResult> {
-  const res = await runAi({ action: "extract", context, profile });
+export async function aiExtract(
+  context: string,
+  profile?: string,
+  aiKeys?: unknown,
+): Promise<AiExtractResult> {
+  const res = await runAi({ action: "extract", context, profile, aiKeys });
   return (res.data as AiExtractResult) || {};
 }
 
@@ -61,7 +67,7 @@ function snippet(s = "", n = 220): string {
 }
 
 function mockResult(action: AiAction, context = ""): AiResult {
-  const note = " (mock output — set LLM_API_KEY for real results)";
+  const note = " (mock output — add an AI API key in Settings for real results)";
   const base = { action, model: MOCK_MODEL, mocked: true } as const;
 
   switch (action) {

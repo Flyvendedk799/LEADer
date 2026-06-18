@@ -48,7 +48,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         setLoading(false);
         return;
       }
-      router.push(next);
+      router.push(isRegister ? "/onboarding" : next);
       router.refresh();
     } catch {
       setError("Network error — please try again");

@@ -113,6 +113,7 @@ model User {
   name         String?
   passwordHash String? // scrypt hash; null = no password set yet (legacy/dev seed)
   role         UserRole @default(OWNER)
+  onboardedAt  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -127,7 +128,7 @@ model User {
   // JSON blobs (typed in lib/types.ts)
   scoringWeights Json? // ScoreWeights
   exportPrefs    Json? // ExportPreferences
-  aiKeys         Json? // { provider, baseUrl } — secrets live in env, this stores non-secret config
+  aiKeys         Json? // encrypted per-user AI provider config + masked key metadata
 
   sources        Source[]
   opportunities  Opportunity[]

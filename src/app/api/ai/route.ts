@@ -110,7 +110,7 @@ export async function POST(req: Request) {
       context = opportunityContext(opportunity);
     }
 
-    const result = await runAi({ action, context, profile, extra });
+    const result = await runAi({ action, context, profile, extra, aiKeys: user.aiKeys });
 
     // Persist a Draft + convenience fields when there's text and save is set.
     if (save && result.text && opportunityId && opportunity) {

@@ -12,6 +12,7 @@ const schema = z.object({
   LLM_BASE_URL: z.string().default("https://api.openai.com/v1"),
   LLM_MODEL: z.string().default("gpt-4o-mini"),
   LLM_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
+  AI_KEYS_ENCRYPTION_SECRET: z.string().default(""),
   // Crawler
   CRAWLER_USER_AGENT: z.string().default("LEADerBot/0.1 (+respects robots.txt)"),
   CRAWLER_RATE_LIMIT_MS: z.coerce.number().default(2000),

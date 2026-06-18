@@ -10,6 +10,7 @@ import { getCurrentUser } from "@/lib/auth";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  if (!user.onboardedAt) redirect("/onboarding");
 
   return (
     <div className="flex h-screen overflow-hidden">
