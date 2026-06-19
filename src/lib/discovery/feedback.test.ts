@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { __discoveryTesting } from ".";
 
-const { buildFeedbackSignalModel, evaluateFeedbackSignal, feedbackFeaturesFromCandidate } =
+const {
+  buildFeedbackSignalModel,
+  buildSearchPlan,
+  deterministicSearchPlan,
+  evaluateFeedbackSignal,
+  feedbackFeaturesFromCandidate,
+  savedCandidateMatch,
+} =
   __discoveryTesting;
 
 describe("discovery feedback learning", () => {
@@ -74,5 +81,95 @@ describe("discovery feedback learning", () => {
 
     expect(insight.delta).toBeGreaterThan(0);
     expect(insight.signals).toContain("learned good");
+  });
+
+  it("builds richer deterministic search plans with avoid terms", () => {
+    const plan = deterministicSearchPlan(
+      "software udbud",
+      "DK",
+      "opportunities",
+      {
+        goodExamples: ["Teknisk roadmap · Beyond Beta"],
+        savedSources: ["EHSYS aktuelle indkøb"],
+        nonLeadExamples: ["Guide til IT-udbud"],
+        goodTerms: ["roadmap", "prototype"],
+        nonLeadTerms: ["guide", "artikel"],
+      },
+    );
+
+    expect(plan.queries.length).toBeGreaterThan(3);
+    expect(plan.queries.some((query) => query.includes("tilbudsfrist"))).toBe(true);
+    expect(plan.avoidTerms).toContain("guide");
+    expect(plan.usedAi).toBe(false);
+  });
+
+  it("ignores mock AI search plans when no real model is configured", async () => {
+    const originalKey = process.env.LLM_API_KEY;
+    process.env.LLM_API_KEY = "";
+
+    try {
+      const plan = await buildSearchPlan(
+        "custom crm portal udbud",
+        "DK",
+        "opportunities",
+        {
+          id: "user-1",
+          headline: "Solo fullstack engineer",
+          bio: "Builds software and AI tools",
+          preferredProjectTypes: ["fullstack", "AI"],
+          excludedCategories: [],
+          budgetMaxDkk: 100000,
+          scoringWeights: {},
+          aiKeys: null,
+        },
+        {
+          goodExamples: [],
+          savedSources: [],
+          nonLeadExamples: [],
+          goodTerms: [],
+          nonLeadTerms: [],
+        },
+      );
+
+      expect(plan.usedAi).toBe(false);
+      expect(plan.queries[0]).toContain("custom crm portal udbud");
+      expect(plan.queries[0]).not.toContain("software udbud Danmark teknisk sparring");
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.LLM_API_KEY;
+      } else {
+        process.env.LLM_API_KEY = originalKey;
+      }
+    }
+  });
+
+  it("matches manually saved opportunities by exact title key", () => {
+    const match = savedCandidateMatch(
+      {
+        id: "candidate-1",
+        candidateKind: "opportunity",
+        title: "Teknisk sparring om produktroadmap",
+        freshness: "active",
+        applicationRoute: "APPLICATION",
+        contacts: [],
+        attachments: [],
+        sourceName: "Discover",
+        sourceKind: "web-search",
+        provider: "test",
+        query: "software udbud",
+        matchScore: 75,
+        scoreBreakdown: { total: 75, components: [], computedAt: new Date().toISOString() },
+        reasons: [],
+        signals: [],
+      },
+      {
+        opportunityHashes: new Set(),
+        opportunityUrls: new Set(),
+        opportunityTitleKeys: new Set(["teknisk sparring om produktroadmap"]),
+        sourceUrls: new Set(),
+      },
+    );
+
+    expect(match).toBe("opportunity");
   });
 });

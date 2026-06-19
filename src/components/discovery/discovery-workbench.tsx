@@ -14,7 +14,9 @@ import {
   Loader2,
   Radar,
   Search,
+  Sparkles,
   SlidersHorizontal,
+  Target,
   ThumbsDown,
 } from "lucide-react";
 
@@ -55,6 +57,7 @@ export function DiscoveryWorkbench({
   const [saving, setSaving] = React.useState<Record<string, boolean>>({});
   const [savingSource, setSavingSource] = React.useState<Record<string, boolean>>({});
   const [markingNonLead, setMarkingNonLead] = React.useState<Record<string, boolean>>({});
+  const activePreset = DISCOVERY_PRESETS.find((preset) => preset.query === query);
 
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault();
@@ -218,17 +221,32 @@ export function DiscoveryWorkbench({
               className="min-h-28 resize-y"
               placeholder="Describe the kind of funded software work you want to find..."
             />
-            <div className="flex flex-wrap gap-2">
+            <div className="grid gap-2 md:grid-cols-2">
               {DISCOVERY_PRESETS.map((preset) => (
-                <Button
+                <button
                   key={preset.id}
                   type="button"
-                  size="sm"
-                  variant={preset.query === query ? "default" : "outline"}
+                  className={cn(
+                    "rounded-md border border-border bg-surface/35 p-3 text-left transition hover:border-primary/50 hover:bg-surface/65",
+                    preset.id === activePreset?.id && "border-primary bg-primary/10",
+                  )}
                   onClick={() => setQuery(preset.query)}
                 >
-                  {preset.label}
-                </Button>
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Target className="h-4 w-4 text-primary" />
+                    {preset.label}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {preset.description}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {preset.focus.slice(0, 4).map((term) => (
+                      <span key={term} className="rounded bg-background/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        {term}
+                      </span>
+                    ))}
+                  </div>
+                </button>
               ))}
             </div>
           </div>
@@ -363,19 +381,57 @@ export function DiscoveryWorkbench({
                 </ul>
               </div>
             )}
-            <div className="rounded-lg border border-border bg-card p-3">
-              <p className="text-sm font-medium">Queries</p>
-              <ul className="mt-2 space-y-2 text-xs text-muted-foreground">
-                {result.queries.map((q) => (
-                  <li key={q} className="rounded bg-surface/60 p-2">
-                    {q}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <SearchPlanPanel result={result} />
           </aside>
         </div>
       )}
+    </div>
+  );
+}
+
+function SearchPlanPanel({ result }: { result: DiscoverySearchResult }) {
+  const plan = result.searchPlan;
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Sparkles className="h-4 w-4 text-primary" />
+        Search plan
+      </div>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">
+        {plan.rationale}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-1">
+        <Badge variant={plan.usedAi ? "default" : "secondary"}>
+          {plan.usedAi ? "AI planned" : "Smart fallback"}
+        </Badge>
+        {plan.focusTerms.slice(0, 6).map((term) => (
+          <Badge key={term} variant="secondary">
+            {term}
+          </Badge>
+        ))}
+      </div>
+      {plan.avoidTerms.length > 0 && (
+        <div className="mt-3">
+          <p className="text-[10px] font-semibold uppercase text-muted-foreground">Avoiding</p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {plan.avoidTerms.slice(0, 6).map((term) => (
+              <span key={term} className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                {term}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="mt-3">
+        <p className="text-[10px] font-semibold uppercase text-muted-foreground">Queries</p>
+        <ul className="mt-2 space-y-2 text-xs text-muted-foreground">
+          {result.queries.map((q) => (
+            <li key={q} className="rounded bg-surface/60 p-2 leading-5">
+              {q}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

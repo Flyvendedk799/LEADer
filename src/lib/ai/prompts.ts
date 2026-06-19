@@ -60,6 +60,21 @@ fitForSoloTechnicalSupplier: boolean }.`,
       return base("Recommend the single best next action for this opportunity in one short sentence (e.g. 'Email the contact to confirm scope before the deadline').");
     case "similar":
       return base("Identify the 2–4 most similar opportunities and explain the common thread in one sentence.");
+    case "searchQueries":
+      return base(
+        `Create a focused web-discovery search plan for finding real supplier opportunities.
+Return strict JSON with keys:
+{
+  "queries": string[] (4-7 concrete search queries),
+  "focusTerms": string[] (5-10 terms to prioritize),
+  "avoidTerms": string[] (3-8 terms likely to produce non-leads/info pages),
+  "rationale": string (one concise sentence)
+}
+Prefer Danish terminology for Danish searches. Include source-specific searches when useful.
+Queries should find concrete assignments, tenders, procurement pages, funded startup/SME software tasks,
+and reusable source/list pages only when the context asks for sources. Do not include stale/expired intent.`,
+        true,
+      );
     default:
       return base("Summarize this opportunity.");
   }

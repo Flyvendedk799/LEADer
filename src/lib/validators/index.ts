@@ -20,6 +20,7 @@ export const zExportFormat = z.enum(["csv", "xlsx", "pdf", "markdown", "notion"]
 export const zAiAction = z.enum([
   "summarize", "extract", "classify", "explainScore", "draftApplication",
   "draftPitch", "draftEmail", "checklist", "compare", "similar", "nextAction",
+  "searchQueries",
 ]);
 export const zAiProvider = z.enum(["openai", "anthropic"]);
 

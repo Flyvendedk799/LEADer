@@ -135,7 +135,8 @@ export type AiAction =
   | "checklist"
   | "compare"
   | "similar"
-  | "nextAction";
+  | "nextAction"
+  | "searchQueries";
 
 export interface AiRequest {
   action: AiAction;
