@@ -77,10 +77,19 @@ export interface DiscoveryCandidateDto {
 export interface DiscoverySearchResult {
   candidates: DiscoveryCandidateDto[];
   queries: string[];
+  searchPlan: DiscoverySearchPlan;
   provider: string;
   providerConfigured: boolean;
   sourceScanCount: number;
   warnings: string[];
+}
+
+export interface DiscoverySearchPlan {
+  queries: string[];
+  focusTerms: string[];
+  avoidTerms: string[];
+  rationale: string;
+  usedAi: boolean;
 }
 
 interface SearchResult {
@@ -187,6 +196,21 @@ interface FeedbackInsight {
   features: string[];
 }
 
+interface SearchMemory {
+  goodExamples: string[];
+  savedSources: string[];
+  nonLeadExamples: string[];
+  goodTerms: string[];
+  nonLeadTerms: string[];
+}
+
+interface SavedDiscoveryIndex {
+  opportunityHashes: Set<string>;
+  opportunityUrls: Set<string>;
+  opportunityTitleKeys: Set<string>;
+  sourceUrls: Set<string>;
+}
+
 const CURATED_DK_DISCOVERY_SOURCES = [
   {
     name: "EHSYS — aktuelle indkøb",
@@ -216,6 +240,31 @@ function canonicalUrl(value?: string | null): string | undefined {
   } catch {
     return value.toLowerCase().trim();
   }
+}
+
+function titleKey(value?: string | null): string | undefined {
+  const key = value
+    ?.toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9æøå]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return key && key.length >= 16 ? key : undefined;
+}
+
+function uniqueStrings(values: (string | undefined | null)[], max = 12): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const clean = cleanText(value || "", 160);
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 function addFeature(features: Set<string>, value?: string | null) {
@@ -344,6 +393,77 @@ async function loadFeedbackSignalModel(ownerId: string): Promise<FeedbackSignalM
   return buildFeedbackSignalModel(rows);
 }
 
+function readableFeature(feature: string): string | undefined {
+  const [, value] = feature.split(/:(.+)/);
+  if (!value) return undefined;
+  if (feature.startsWith("token:") || feature.startsWith("path-token:")) return value;
+  if (feature.startsWith("category:") || feature.startsWith("signal:")) return value;
+  return undefined;
+}
+
+function topFeedbackTerms(model: FeedbackSignalModel, type: DiscoveryFeedbackValue, max = 8): string[] {
+  return [...model.featureCounts.entries()]
+    .map(([feature, counts]) => ({
+      term: readableFeature(feature),
+      score: type === "GOOD_RESULT" ? counts.good - counts.nonLead : counts.nonLead - counts.good,
+    }))
+    .filter((item): item is { term: string; score: number } => Boolean(item.term) && item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((item) => item.term)
+    .filter((term, index, arr) => arr.indexOf(term) === index)
+    .slice(0, max);
+}
+
+async function loadSearchMemory(ownerId: string, feedbackModel: FeedbackSignalModel): Promise<SearchMemory> {
+  const [opportunities, sources, feedbackRows] = await Promise.all([
+    db.opportunity.findMany({
+      where: { ownerId, status: { notIn: ["LOST", "ARCHIVED"] } },
+      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+      take: 10,
+      select: { title: true, category: true, organization: true, url: true },
+    }),
+    db.source.findMany({
+      where: { ownerId, enabled: true },
+      orderBy: { updatedAt: "desc" },
+      take: 8,
+      select: { name: true, category: true, keywords: true, url: true },
+    }),
+    db.discoveryFeedback.findMany({
+      where: { ownerId },
+      orderBy: { updatedAt: "desc" },
+      take: 20,
+      select: { title: true, sourceName: true, feedback: true },
+    }),
+  ]);
+
+  const goodExamples = uniqueStrings(
+    opportunities.map((opp) =>
+      [opp.title, opp.organization, opp.category].filter(Boolean).join(" · "),
+    ),
+    8,
+  );
+  const savedSources = uniqueStrings(
+    sources.map((source) =>
+      [source.name, source.category, source.keywords.slice(0, 4).join(" ")].filter(Boolean).join(" · "),
+    ),
+    6,
+  );
+  const nonLeadExamples = uniqueStrings(
+    feedbackRows
+      .filter((row) => row.feedback === "NON_LEAD")
+      .map((row) => [row.title, row.sourceName].filter(Boolean).join(" · ")),
+    6,
+  );
+
+  return {
+    goodExamples,
+    savedSources,
+    nonLeadExamples,
+    goodTerms: topFeedbackTerms(feedbackModel, "GOOD_RESULT"),
+    nonLeadTerms: topFeedbackTerms(feedbackModel, "NON_LEAD"),
+  };
+}
+
 function evaluateFeedbackSignal(
   model: FeedbackSignalModel | undefined,
   candidate: FeedbackFeatureInput & { id: string },
@@ -468,24 +588,159 @@ function profileText(user: UserProfile): string {
   );
 }
 
-function buildQueries(query: string, workspace: Workspace): string[] {
+function normalizeSearchQuery(value: string): string | undefined {
+  const clean = cleanText(value, 220)
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean.length >= 3 ? clean : undefined;
+}
+
+function buildAvoidClause(avoidTerms: string[]): string {
+  return avoidTerms
+    .filter((term) => /^[a-z0-9æøå-]{4,}$/i.test(term))
+    .slice(0, 4)
+    .map((term) => `-${term}`)
+    .join(" ");
+}
+
+function deterministicSearchPlan(
+  query: string,
+  workspace: Workspace,
+  resultKind: DiscoverySearchInput["resultKind"],
+  memory: SearchMemory,
+): DiscoverySearchPlan {
   const q = cleanText(query, 280);
   const country = workspace === "DK" ? "Danmark" : "Europe remote";
-  const terms =
+  const avoidTerms = uniqueStrings(
+    [
+      ...memory.nonLeadTerms,
+      "guide",
+      "kursus",
+      "nyhed",
+      "artikel",
+      "blog",
+      "definition",
+    ],
+    8,
+  );
+  const avoidClause = buildAvoidClause(avoidTerms);
+  const goodTerms = uniqueStrings(
+    [
+      ...memory.goodTerms,
+      "software",
+      "teknisk sparring",
+      "produktroadmap",
+      "MVP",
+      "prototype",
+      "AI",
+      "integration",
+      "tilbudsfrist",
+    ],
+    10,
+  );
+  const savedSourceTerms = memory.savedSources.slice(0, 3).join(" ");
+  const concreteOpportunityQueries =
     workspace === "DK"
       ? [
-          q,
-          `${q} site:ehsys.dk/indkoeb/alle OR site:beyondbeta.ehsys.dk/indkoeb/tilbud/indsend OR site:ivaerksaetter.ehsys.dk/indkoeb/tilbud/indsend`,
-          `${q} ${country} udbud software udvikling IT konsulent`,
-          `${q} ${country} EHSYS indkøb tilbud Beyond Beta teknisk sparring produkt roadmap`,
-          `${q} ${country} SMV Digital digitalisering rådgivning software`,
+          `${q} ${country} tilbudsfrist software udvikling teknisk sparring ${avoidClause}`,
+          `${q} site:beyondbeta.ehsys.dk/indkoeb/tilbud/indsend OR site:ivaerksaetter.ehsys.dk/indkoeb/tilbud/indsend teknisk produkt roadmap software`,
+          `${q} ${country} "indsend tilbud" "tilbudsfrist" software MVP prototype`,
+          `${q} ${country} SMV Digital digitalisering software integration leverandør voucher ${avoidClause}`,
+          `${q} ${country} AI automatisering proof of concept fullstack udvikler tilskud ${avoidClause}`,
         ]
       : [
-          q,
-          `${q} funded startup MVP fullstack software project remote`,
-          `${q} grant voucher innovation software supplier`,
+          `${q} funded startup MVP fullstack software project remote ${avoidClause}`,
+          `${q} grant voucher innovation software supplier ${avoidClause}`,
+          `${q} technical roadmap prototype AI automation supplier tender`,
         ];
-  return [...new Set(terms.map((term) => term.trim()).filter(Boolean))].slice(0, 4);
+  const sourceQueries =
+    workspace === "DK"
+      ? [
+          `${q} ${country} udbudsliste software IT indkøb portal`,
+          `${q} ${country} aktuelle udbud software udvikling leverandør oversigt`,
+          `${q} ${country} tender portal startup digitalisering voucher`,
+          savedSourceTerms ? `${q} ${savedSourceTerms}` : "",
+        ]
+      : [
+          `${q} software tenders startup grants source list`,
+          `${q} procurement portal innovation voucher software`,
+        ];
+  const terms =
+    resultKind === "sources"
+      ? [q, ...sourceQueries]
+      : resultKind === "opportunities"
+        ? [q, ...concreteOpportunityQueries]
+        : [q, ...concreteOpportunityQueries.slice(0, 4), ...sourceQueries.slice(0, 2)];
+
+  return {
+    queries: uniqueStrings(terms.map((term) => normalizeSearchQuery(term)), 7),
+    focusTerms: goodTerms,
+    avoidTerms,
+    rationale:
+      workspace === "DK"
+        ? "Søger bredt efter aktive danske softwareopgaver, EHSYS-lignende indkøb og relevante udbudskilder."
+        : "Searches for funded software, prototype, AI, and grant-backed supplier opportunities.",
+    usedAi: false,
+  };
+}
+
+function parseAiSearchPlan(data: unknown): Partial<DiscoverySearchPlan> | null {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+  const queries = Array.isArray(obj.queries)
+    ? obj.queries.map((q) => (typeof q === "string" ? normalizeSearchQuery(q) : undefined)).filter(Boolean) as string[]
+    : [];
+  if (!queries.length) return null;
+  const strings = (value: unknown, max: number) =>
+    Array.isArray(value)
+      ? uniqueStrings(value.map((item) => (typeof item === "string" ? item : undefined)), max)
+      : [];
+  return {
+    queries,
+    focusTerms: strings(obj.focusTerms, 10),
+    avoidTerms: strings(obj.avoidTerms, 8),
+    rationale: typeof obj.rationale === "string" ? cleanText(obj.rationale, 220) : "",
+  };
+}
+
+async function buildSearchPlan(
+  query: string,
+  workspace: Workspace,
+  resultKind: DiscoverySearchInput["resultKind"],
+  user: UserProfile,
+  memory: SearchMemory,
+): Promise<DiscoverySearchPlan> {
+  const fallback = deterministicSearchPlan(query, workspace, resultKind, memory);
+  try {
+    const result = await runAi({
+      action: "searchQueries",
+      context: cleanText(query, 500),
+      profile: profileText(user),
+      extra: JSON.stringify({
+        workspace,
+        resultKind: resultKind ?? "all",
+        goodExamples: memory.goodExamples,
+        savedSources: memory.savedSources,
+        nonLeadExamples: memory.nonLeadExamples,
+        goodTerms: memory.goodTerms,
+        nonLeadTerms: memory.nonLeadTerms,
+      }),
+      aiKeys: user.aiKeys,
+    });
+    if (result.mocked) return fallback;
+    const aiPlan = parseAiSearchPlan(result.data);
+    if (!aiPlan) return fallback;
+    return {
+      queries: uniqueStrings([...aiPlan.queries!, ...fallback.queries], 7),
+      focusTerms: uniqueStrings([...(aiPlan.focusTerms ?? []), ...fallback.focusTerms], 10),
+      avoidTerms: uniqueStrings([...(aiPlan.avoidTerms ?? []), ...fallback.avoidTerms], 8),
+      rationale: aiPlan.rationale || fallback.rationale,
+      usedAi: !result.mocked,
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 function sourceLabel(url?: string): string {
@@ -1293,10 +1548,48 @@ async function markAlreadySaved(ownerId: string, candidates: DiscoveryCandidateD
   });
 }
 
+async function loadSavedDiscoveryIndex(ownerId: string): Promise<SavedDiscoveryIndex> {
+  const [opportunities, sources] = await Promise.all([
+    db.opportunity.findMany({
+      where: { ownerId },
+      take: 2500,
+      select: { dedupeHash: true, url: true, title: true },
+    }),
+    db.source.findMany({
+      where: { ownerId },
+      take: 1000,
+      select: { url: true },
+    }),
+  ]);
+
+  return {
+    opportunityHashes: new Set(opportunities.map((opp) => opp.dedupeHash).filter(Boolean) as string[]),
+    opportunityUrls: new Set(opportunities.map((opp) => canonicalUrl(opp.url)).filter(Boolean) as string[]),
+    opportunityTitleKeys: new Set(opportunities.map((opp) => titleKey(opp.title)).filter(Boolean) as string[]),
+    sourceUrls: new Set(sources.map((source) => canonicalUrl(source.url)).filter(Boolean) as string[]),
+  };
+}
+
+function savedCandidateMatch(
+  candidate: DiscoveryCandidateDto,
+  savedIndex: SavedDiscoveryIndex,
+): "opportunity" | "source" | null {
+  const url = canonicalUrl(candidate.url);
+  if (candidate.candidateKind === "source" && url && savedIndex.sourceUrls.has(url)) return "source";
+  if (candidate.id && savedIndex.opportunityHashes.has(candidate.id)) return "opportunity";
+  if (url && savedIndex.opportunityUrls.has(url)) return "opportunity";
+  const key = titleKey(candidate.title);
+  if (key && savedIndex.opportunityTitleKeys.has(key)) return "opportunity";
+  return null;
+}
+
 export const __discoveryTesting = {
   buildFeedbackSignalModel,
+  buildSearchPlan,
+  deterministicSearchPlan,
   evaluateFeedbackSignal,
   feedbackFeaturesFromCandidate,
+  savedCandidateMatch,
 };
 
 export async function runDiscoverySearch(
@@ -1320,9 +1613,21 @@ export async function runDiscoverySearch(
 
   const workspace = input.workspace ?? "DK";
   const maxResults = Math.min(Math.max(input.maxResults ?? 12, 4), 30);
-  const queries = buildQueries(input.query, workspace);
+  const collectionLimit = Math.min(maxResults * 2, 60);
   const providerState = searchProviderFromEnv(input.provider, user.aiKeys);
   const feedbackModel = await loadFeedbackSignalModel(ownerId);
+  const [memory, savedIndex] = await Promise.all([
+    loadSearchMemory(ownerId, feedbackModel),
+    loadSavedDiscoveryIndex(ownerId),
+  ]);
+  const searchPlan = await buildSearchPlan(
+    input.query,
+    workspace,
+    input.resultKind ?? "all",
+    user,
+    memory,
+  );
+  const queries = searchPlan.queries;
   const warnings: string[] = [];
   let candidates: DiscoveryCandidateDto[] = [];
   let sourceScanCount = 0;
@@ -1333,9 +1638,9 @@ export async function runDiscoverySearch(
         providerState.provider,
         providerState.apiKey,
         queries,
-        maxResults,
+        collectionLimit,
       );
-      const webCandidates = await searchResultsToCandidates(webResults, user, workspace, maxResults, feedbackModel);
+      const webCandidates = await searchResultsToCandidates(webResults, user, workspace, collectionLimit, feedbackModel);
       candidates.push(...webCandidates);
     } catch (e) {
       warnings.push(e instanceof Error ? e.message : "Web search failed");
@@ -1347,7 +1652,8 @@ export async function runDiscoverySearch(
   }
 
   if (input.includeSources !== false) {
-    const scanned = await scanSources(ownerId, input.query, user, workspace, maxResults, feedbackModel);
+    const sourceQuery = [input.query, ...searchPlan.focusTerms.slice(0, 8)].join(" ");
+    const scanned = await scanSources(ownerId, sourceQuery, user, workspace, collectionLimit, feedbackModel);
     sourceScanCount = scanned.scanned;
     candidates.push(...scanned.candidates);
     warnings.push(...scanned.warnings.slice(0, 4));
@@ -1379,7 +1685,14 @@ export async function runDiscoverySearch(
     warnings.push(`${hiddenCount} expired or stale candidates were hidden from the review list.`);
   }
 
-  const marked = await markAlreadySaved(ownerId, dedupeCandidates(freshCandidates, maxResults));
+  const beforeSavedFilter = freshCandidates.length;
+  const unsavedCandidates = freshCandidates.filter((candidate) => !savedCandidateMatch(candidate, savedIndex));
+  const savedHiddenCount = beforeSavedFilter - unsavedCandidates.length;
+  if (savedHiddenCount > 0) {
+    warnings.push(`${savedHiddenCount} already saved results were hidden.`);
+  }
+
+  const marked = await markAlreadySaved(ownerId, dedupeCandidates(unsavedCandidates, maxResults));
   const beforeFeedbackFilter = marked.length;
   const unique = marked.filter(
     (candidate) => candidate.feedback !== "NON_LEAD" && !candidate.feedbackSuppressed,
@@ -1391,6 +1704,7 @@ export async function runDiscoverySearch(
   return {
     candidates: unique,
     queries,
+    searchPlan,
     provider: providerState.provider,
     providerConfigured: providerState.configured,
     sourceScanCount,
