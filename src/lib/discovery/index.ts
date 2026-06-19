@@ -33,13 +33,17 @@ export interface DiscoverySearchInput {
   includeWeb?: boolean;
   includeSources?: boolean;
   provider?: "auto" | "tavily" | "brave" | "serper" | "none";
+  resultKind?: "all" | "opportunities" | "sources";
 }
 
 export interface DiscoveryCandidateDto {
   id: string;
+  candidateKind: "opportunity" | "source";
   title: string;
   description?: string;
+  summaryDa?: string;
   rawContent?: string;
+  detailText?: string;
   url?: string;
   organization?: string;
   location?: string;
@@ -49,10 +53,13 @@ export interface DiscoveryCandidateDto {
   budgetMin?: number;
   budgetMax?: number;
   currency?: string;
+  priceText?: string;
   deadline?: string;
   postedAt?: string;
+  freshness: "active" | "expired" | "stale" | "unknown";
   applicationRoute: ApplicationRoute;
   contacts: { name?: string; email?: string; role?: string }[];
+  attachments: { label?: string; url: string; kind?: string }[];
   sourceName: string;
   sourceKind: "web-search" | "source-scan";
   provider: string;
@@ -62,6 +69,7 @@ export interface DiscoveryCandidateDto {
   reasons: string[];
   signals: string[];
   alreadySaved?: { id: string; title: string };
+  alreadySavedSource?: { id: string; name: string };
 }
 
 export interface DiscoverySearchResult {
@@ -85,9 +93,12 @@ interface SearchResult {
 
 export type DiscoveryCandidateSaveInput = {
   id?: string;
+  candidateKind?: "opportunity" | "source";
   title: string;
   description?: string;
+  summaryDa?: string;
   rawContent?: string;
+  detailText?: string;
   url?: string;
   organization?: string;
   location?: string;
@@ -97,14 +108,18 @@ export type DiscoveryCandidateSaveInput = {
   budgetMin?: number;
   budgetMax?: number;
   currency?: string;
+  priceText?: string;
   deadline?: string;
   postedAt?: string;
+  freshness?: "active" | "expired" | "stale" | "unknown";
   applicationRoute?: ApplicationRoute;
   contacts?: { name?: string; email?: string; role?: string }[];
+  attachments?: { label?: string; url: string; kind?: string }[];
   sourceName?: string;
   sourceKind?: "web-search" | "source-scan";
   provider?: string;
   query?: string;
+  signals?: string[];
 };
 
 interface UserProfile {
@@ -120,6 +135,8 @@ interface UserProfile {
 
 const MAX_PAGE_FETCHES = 10;
 const MAX_SCAN_SOURCES = 8;
+const MAX_ATTACHMENTS = 8;
+const STALE_WITHOUT_DEADLINE_DAYS = 180;
 
 const CURATED_DK_DISCOVERY_SOURCES = [
   {
@@ -232,6 +249,209 @@ function parseMaybeDate(value?: string | Date | null): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function daysSince(date: Date): number {
+  return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function formatDaDate(value?: string | Date | null): string | undefined {
+  const date = parseMaybeDate(value);
+  if (!date) return undefined;
+  return new Intl.DateTimeFormat("da-DK", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function absoluteUrl(href: string | undefined, pageUrl: string): string | undefined {
+  if (!href) return undefined;
+  try {
+    const url = new URL(href, pageUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function attachmentKind(url: string, label = ""): string | undefined {
+  const hay = `${url} ${label}`.toLowerCase();
+  if (/\.pdf(?:[?#]|$)|\bpdf\b/.test(hay)) return "pdf";
+  if (/\.(?:docx?|odt)(?:[?#]|$)|\bdokument\b|\bdocument\b/.test(hay)) return "doc";
+  if (/\.(?:xlsx?|csv)(?:[?#]|$)|\bexcel\b|\bark\b|\bsheet\b/.test(hay)) return "sheet";
+  if (/\.(?:png|jpe?g|webp)(?:[?#]|$)/.test(hay)) return "image";
+  if (/\bdownload\b|\bhent\b|\bbilag\b|\battachment\b|\bmateriale\b/.test(hay)) return "link";
+  return undefined;
+}
+
+function isAttachmentLink(url: string, label = ""): boolean {
+  return Boolean(attachmentKind(url, label));
+}
+
+function attachmentLabel(url: string, label?: string): string {
+  const cleaned = cleanText(label || "", 90);
+  if (cleaned) return cleaned;
+  try {
+    const name = decodeURIComponent(new URL(url).pathname.split("/").filter(Boolean).pop() || "");
+    return cleanText(name || url, 90);
+  } catch {
+    return cleanText(url, 90);
+  }
+}
+
+function dedupeAttachments(
+  attachments: { label?: string; url: string; kind?: string }[] = [],
+): { label?: string; url: string; kind?: string }[] {
+  const seen = new Set<string>();
+  const out: { label?: string; url: string; kind?: string }[] = [];
+  for (const attachment of attachments) {
+    if (!attachment.url || seen.has(attachment.url)) continue;
+    seen.add(attachment.url);
+    out.push({
+      label: attachmentLabel(attachment.url, attachment.label),
+      url: attachment.url,
+      kind: attachment.kind || attachmentKind(attachment.url, attachment.label),
+    });
+    if (out.length >= MAX_ATTACHMENTS) break;
+  }
+  return out;
+}
+
+function extractAttachments(
+  $: cheerio.CheerioAPI,
+  pageUrl: string,
+): { label?: string; url: string; kind?: string }[] {
+  const attachments: { label?: string; url: string; kind?: string }[] = [];
+  const selfKind = attachmentKind(pageUrl);
+  if (selfKind) {
+    attachments.push({
+      label: attachmentLabel(pageUrl),
+      url: pageUrl,
+      kind: selfKind,
+    });
+  }
+
+  $("a[href]").each((_, el) => {
+    if (attachments.length >= MAX_ATTACHMENTS * 2) return;
+    const $el = $(el);
+    const url = absoluteUrl($el.attr("href"), pageUrl);
+    if (!url) return;
+    const label = cleanText($el.text() || $el.attr("title") || $el.attr("aria-label") || "", 120);
+    if (!isAttachmentLink(url, label)) return;
+    attachments.push({
+      label: attachmentLabel(url, label),
+      url,
+      kind: attachmentKind(url, label),
+    });
+  });
+
+  return dedupeAttachments(attachments);
+}
+
+function extractPriceText(text: string): string | undefined {
+  if (!text) return undefined;
+  const lines = text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((line) => cleanText(line, 260))
+    .filter(Boolean);
+  const matches = lines.filter((line) =>
+    /(?:\bpris\b|\bbudget\b|\bhonorar\b|\btilskud\b|\bbevilling\b|\bramme\b|\bbeløb\b|\bvaerdi\b|\bværdi\b|\bdkk\b|\bkr\.?\b|€|eur|\d[\d., ]{2,}\s*(?:kr|dkk|kroner))/i.test(line),
+  );
+  return matches.length ? cleanText([...new Set(matches)].slice(0, 3).join(" "), 520) : undefined;
+}
+
+function freshnessFor(
+  candidate: OpportunityCandidate,
+  kind: DiscoveryCandidateDto["candidateKind"],
+): DiscoveryCandidateDto["freshness"] {
+  if (kind === "source") return "active";
+  const deadline = parseMaybeDate(candidate.deadline);
+  if (deadline) return deadline.getTime() >= Date.now() ? "active" : "expired";
+  const postedAt = parseMaybeDate(candidate.postedAt);
+  if (postedAt && daysSince(postedAt) > STALE_WITHOUT_DEADLINE_DAYS) return "stale";
+  return "unknown";
+}
+
+function isConcreteOpportunityUrl(url?: string): boolean {
+  if (!url) return false;
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return /\/indkoeb\/tilbud\/indsend\/|\/indkøb\/tilbud\/indsend\/|\/opportunit(?:y|ies)\/|\/tender\/|\/udbud\/[^/]{8,}/.test(
+      pathname,
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isSourceLikeCandidate(candidate: OpportunityCandidate, detailText: string): boolean {
+  if (isConcreteOpportunityUrl(candidate.url)) return false;
+  const text = `${candidate.title} ${candidate.description ?? ""} ${detailText}`.toLowerCase();
+  const hasConcreteDeadline =
+    Boolean(candidate.deadline) ||
+    /tilbudsfrist|ansøgningsfrist|ansøgningsfrist|deadline|frist for tilbud|submission deadline/.test(text);
+  const hasApplyCue =
+    candidate.applicationRoute === "APPLICATION" ||
+    /indsend tilbud|send tilbud|ansøg nu|ansoeg nu|apply now|submit proposal|giv tilbud/.test(text);
+  const sourceCue =
+    /find tenders?|match your company|udbudsportal|udbudsportalen|udbudsliste|tender portal|procurement platform|alle udbud|aktuelle indkøb|aktuelle indkoeb|liste over|oversigt over|samlet oversigt|database|markedsplads|hvor finder|it-udbud|herkules|offentlige udbud|søg efter udbud|soeg efter udbud/.test(
+      text,
+    );
+  const pathCue = (() => {
+    if (!candidate.url) return false;
+    try {
+      const pathname = new URL(candidate.url).pathname.toLowerCase();
+      return /\/alle\/?$|\/sources?\/?$|\/kilder?\/?$|\/udbud\/?$|\/indkoeb\/alle\/?$|\/indkøb\/alle\/?$/.test(pathname);
+    } catch {
+      return false;
+    }
+  })();
+
+  if (pathCue) return true;
+  if (!sourceCue) return false;
+  return !hasConcreteDeadline || !hasApplyCue || /herkules|it-udbud|portal|database|liste|oversigt/.test(text);
+}
+
+function buildDanishSummary(
+  candidate: OpportunityCandidate,
+  kind: DiscoveryCandidateDto["candidateKind"],
+  priceText?: string,
+): string {
+  const deadline = formatDaDate(candidate.deadline);
+  const postedAt = formatDaDate(candidate.postedAt);
+  const budget =
+    candidate.budgetMin != null && candidate.budgetMax != null
+      ? `${candidate.budgetMin.toLocaleString("da-DK")}-${candidate.budgetMax.toLocaleString("da-DK")} ${candidate.currency ?? "DKK"}`
+      : candidate.budgetMax != null
+        ? `op til ${candidate.budgetMax.toLocaleString("da-DK")} ${candidate.currency ?? "DKK"}`
+        : candidate.budgetMin != null
+          ? `fra ${candidate.budgetMin.toLocaleString("da-DK")} ${candidate.currency ?? "DKK"}`
+          : undefined;
+  const org = candidate.organization ? ` hos ${candidate.organization}` : "";
+  const body = cleanText(candidate.description || candidate.rawContent || "", 360);
+
+  if (kind === "source") {
+    return cleanText(
+      [
+        `Kildeside med relevante udbud eller opgavelister${org}.`,
+        body ? `Den ser ud til at være nyttig som løbende søgekilde: ${body}` : "",
+      ].join(" "),
+      760,
+    );
+  }
+
+  return cleanText(
+    [
+      `Mulig opgave${org}: ${body || candidate.title}.`,
+      deadline ? `Tilbudsfrist: ${deadline}.` : "",
+      budget ? `Budget/pris: ${budget}.` : priceText ? `Prisinfo: ${priceText}.` : "",
+      postedAt ? `Fundet/annonceret: ${postedAt}.` : "",
+    ].join(" "),
+    760,
+  );
+}
+
 function categoryFromText(text: string): string | undefined {
   const t = text.toLowerCase();
   if (/\bai\b|llm|kunstig intelligens|automation|automatisering|chatbot/.test(t)) return "AI / automation";
@@ -286,23 +506,23 @@ function discoveryFitAdjustment(c: OpportunityCandidate): { delta: number; notes
 
   if (positiveHits.length >= 2) {
     delta += 14;
-    notes.push("Strong technical/product signal");
+    notes.push("Stærkt teknisk/product signal");
     signals.push("technical fit");
   } else if (positiveHits.length === 1) {
     delta += 6;
-    notes.push("Some technical/product signal");
+    notes.push("Noget teknisk/product signal");
   } else {
     delta -= 18;
-    notes.push("Weak technical/software signal");
+    notes.push("Svagt teknisk/software signal");
   }
 
   if (negativeHits.length >= 2) {
     delta -= 35;
-    notes.push("Likely non-coding advisory/admin work");
+    notes.push("Ser ud til at være rådgivning/admin frem for kode");
     signals.push("low fit");
   } else if (negativeHits.length === 1) {
     delta -= 22;
-    notes.push("Possible non-coding lead");
+    notes.push("Muligvis ikke en kodningsopgave");
   }
 
   if (/beyond beta|ehsys|indkøb|indkoeb|tilbudsfrist/.test(text) && positiveHits.length > 0) {
@@ -347,7 +567,14 @@ function enrichCandidate(input: OpportunityCandidate, fallback: Partial<Opportun
   } satisfies OpportunityCandidate;
 }
 
-async function fetchReadablePage(url?: string): Promise<{ title?: string; description?: string; text?: string }> {
+async function fetchReadablePage(
+  url?: string,
+): Promise<{
+  title?: string;
+  description?: string;
+  text?: string;
+  attachments?: { label?: string; url: string; kind?: string }[];
+}> {
   if (!url) return {};
   const { userAgent, timeoutMs } = crawlerSettings();
   try {
@@ -359,6 +586,13 @@ async function fetchReadablePage(url?: string): Promise<{ title?: string; descri
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (res.status < 200 || res.status >= 300) return {};
+    const finalUrl = res.url || url;
+    if (attachmentKind(finalUrl) === "pdf") {
+      return {
+        title: attachmentLabel(finalUrl),
+        attachments: dedupeAttachments([{ label: attachmentLabel(finalUrl), url: finalUrl, kind: "pdf" }]),
+      };
+    }
     const $ = cheerio.load(res.text);
     $("script,style,noscript,svg").remove();
     const title = cleanText($("h1").first().text() || $("title").text(), 220);
@@ -367,10 +601,33 @@ async function fetchReadablePage(url?: string): Promise<{ title?: string; descri
       700,
     );
     const text = cleanText($("body").text(), 5000);
-    return { title, description, text };
+    const attachments = extractAttachments($, finalUrl);
+    return { title, description, text, attachments };
   } catch {
-    return {};
+    const kind = url ? attachmentKind(url) : undefined;
+    return kind && url
+      ? { attachments: [{ label: attachmentLabel(url), url, kind }] }
+      : { attachments: [] };
   }
+}
+
+async function enrichWithDetailPage(input: OpportunityCandidate): Promise<OpportunityCandidate> {
+  if (!input.url) return input;
+  const page = await fetchReadablePage(input.url);
+  if (!page.title && !page.description && !page.text && !page.attachments?.length) return input;
+
+  const rawContent = cleanText(
+    [input.rawContent, page.description, page.text].filter(Boolean).join("\n"),
+    9000,
+  );
+  const attachments = dedupeAttachments([...(input.attachments ?? []), ...(page.attachments ?? [])]);
+
+  return enrichCandidate({
+    ...input,
+    description: cleanText([input.description, page.description].filter(Boolean).join("\n"), 1200) || input.description,
+    rawContent: rawContent || input.rawContent,
+    attachments,
+  });
 }
 
 async function tavilySearch(query: string, maxResults: number, apiKey: string): Promise<SearchResult[]> {
@@ -493,8 +750,8 @@ async function searchResultsToCandidates(
 
   for (const result of results) {
     if (candidates.length >= maxResults) break;
-    const page = pageFetches < MAX_PAGE_FETCHES ? await fetchReadablePage(result.url) : {};
-    pageFetches++;
+    const page = result.url && pageFetches < MAX_PAGE_FETCHES ? await fetchReadablePage(result.url) : {};
+    if (result.url) pageFetches++;
 
     const title = cleanText(page.title || result.title, 220);
     if (!title || seen.has(result.url || title.toLowerCase())) continue;
@@ -513,6 +770,7 @@ async function searchResultsToCandidates(
       country: workspace === "DK" ? "DK" : undefined,
       workspace,
       postedAt: parseMaybeDate(result.publishedAt),
+      attachments: page.attachments,
     } as OpportunityCandidate & { workspace?: Workspace });
 
     candidates.push(await toDiscoveryDto(enriched, user, {
@@ -579,11 +837,13 @@ async function scanSources(
             });
       for (const item of raw) {
         if (candidates.length >= maxResults) break;
-        const enriched = enrichCandidate(item, {
-          country: source.country ?? (workspace === "DK" ? "DK" : undefined),
-          region: source.region ?? undefined,
-          category: source.category ?? undefined,
-        });
+        const enriched = await enrichWithDetailPage(
+          enrichCandidate(item, {
+            country: source.country ?? (workspace === "DK" ? "DK" : undefined),
+            region: source.region ?? undefined,
+            category: source.category ?? undefined,
+          }),
+        );
         candidates.push(await toDiscoveryDto(enriched, user, {
           sourceName: source.name,
           sourceKind: "source-scan",
@@ -601,13 +861,26 @@ async function scanSources(
   return { candidates, scanned: scanTargets.length, warnings };
 }
 
-async function maybeAiSummary(c: OpportunityCandidate, user: UserProfile): Promise<string | undefined> {
+async function maybeAiSummary(
+  c: OpportunityCandidate,
+  user: UserProfile,
+  kind: DiscoveryCandidateDto["candidateKind"],
+  priceText?: string,
+): Promise<string | undefined> {
   if (!process.env.LLM_API_KEY && !user.aiKeys) return undefined;
   try {
     const res = await runAi({
       action: "summarize",
-      context: [c.title, c.description, c.rawContent].filter(Boolean).join("\n"),
+      context: cleanText([c.title, c.description, c.rawContent].filter(Boolean).join("\n"), 6000),
       profile: profileText(user),
+      extra: [
+        "Skriv på dansk.",
+        "Giv 2 korte, konkrete sætninger til en solo full-stack/software leverandør.",
+        kind === "source"
+          ? "Dette er en kildeside eller liste, ikke en enkelt opgave. Forklar værdien som kilde."
+          : "Dette er en konkret mulig opgave/udbud. Nævn gerne frist, pris/budget og hvorfor den passer.",
+        priceText ? `Pris/budget fundet: ${priceText}` : "",
+      ].filter(Boolean).join(" "),
       aiKeys: user.aiKeys,
     });
     return res.mocked ? undefined : res.text;
@@ -632,14 +905,21 @@ async function toDiscoveryDto(
   const adjustedTotal = Math.max(0, Math.min(100, breakdown.total + fit.delta));
   const adjustedBreakdown = { ...breakdown, total: adjustedTotal };
   const hash = dedupeHash(c);
-  const aiSummary = await maybeAiSummary(c, user);
+  const detailText = cleanText(c.rawContent || c.description || "", 7000);
+  const candidateKind = isSourceLikeCandidate(c, detailText) ? "source" : "opportunity";
+  const priceText = extractPriceText(detailText);
+  const aiSummary = await maybeAiSummary(c, user, candidateKind, priceText);
+  const summaryDa = cleanText(aiSummary || buildDanishSummary(c, candidateKind, priceText), 900);
   const deadline = parseMaybeDate(c.deadline);
   const postedAt = parseMaybeDate(c.postedAt);
   return {
     id: hash,
+    candidateKind,
     title: c.title,
-    description: aiSummary || c.description,
+    description: summaryDa || c.description,
+    summaryDa,
     rawContent: c.rawContent,
+    detailText,
     url: c.url,
     organization: c.organization,
     location: c.location,
@@ -649,10 +929,13 @@ async function toDiscoveryDto(
     budgetMin: c.budgetMin,
     budgetMax: c.budgetMax,
     currency: c.currency ?? "DKK",
+    priceText,
     deadline: deadline ? deadline.toISOString() : undefined,
     postedAt: postedAt ? postedAt.toISOString() : undefined,
+    freshness: freshnessFor(c, candidateKind),
     applicationRoute: c.applicationRoute ?? "UNKNOWN",
     contacts: c.contacts ?? [],
+    attachments: dedupeAttachments(c.attachments),
     matchScore: adjustedTotal,
     scoreBreakdown: adjustedBreakdown,
     reasons: [...fit.notes, ...reasonsFromScore(adjustedBreakdown)].slice(0, 5),
@@ -679,19 +962,32 @@ async function markAlreadySaved(ownerId: string, candidates: DiscoveryCandidateD
   const urls = candidates.map((c) => c.url).filter(Boolean) as string[];
   if (!hashes.length && !urls.length) return candidates;
 
-  const saved = await db.opportunity.findMany({
-    where: {
-      ownerId,
-      OR: [
-        hashes.length ? { dedupeHash: { in: hashes } } : undefined,
-        urls.length ? { url: { in: urls } } : undefined,
-      ].filter(Boolean) as Prisma.OpportunityWhereInput[],
-    },
-    select: { id: true, title: true, dedupeHash: true, url: true },
-  });
+  const [saved, savedSources] = await Promise.all([
+    db.opportunity.findMany({
+      where: {
+        ownerId,
+        OR: [
+          hashes.length ? { dedupeHash: { in: hashes } } : undefined,
+          urls.length ? { url: { in: urls } } : undefined,
+        ].filter(Boolean) as Prisma.OpportunityWhereInput[],
+      },
+      select: { id: true, title: true, dedupeHash: true, url: true },
+    }),
+    urls.length
+      ? db.source.findMany({
+          where: { ownerId, url: { in: urls } },
+          select: { id: true, name: true, url: true },
+        })
+      : Promise.resolve([]),
+  ]);
   return candidates.map((c) => {
     const match = saved.find((s) => s.dedupeHash === c.id || (c.url && s.url === c.url));
-    return match ? { ...c, alreadySaved: { id: match.id, title: match.title } } : c;
+    const sourceMatch = savedSources.find((s) => c.url && s.url === c.url);
+    return {
+      ...c,
+      ...(match ? { alreadySaved: { id: match.id, title: match.title } } : {}),
+      ...(sourceMatch ? { alreadySavedSource: { id: sourceMatch.id, name: sourceMatch.name } } : {}),
+    };
   });
 }
 
@@ -748,7 +1044,33 @@ export async function runDiscoverySearch(
     warnings.push(...scanned.warnings.slice(0, 4));
   }
 
-  const unique = await markAlreadySaved(ownerId, dedupeCandidates(candidates, maxResults));
+  const resultKind = input.resultKind ?? "all";
+  const beforeKindFilter = candidates.length;
+  const kindCandidates = candidates.filter((candidate) => {
+    if (resultKind === "opportunities") return candidate.candidateKind === "opportunity";
+    if (resultKind === "sources") return candidate.candidateKind === "source";
+    return true;
+  });
+  const kindHiddenCount = beforeKindFilter - kindCandidates.length;
+  if (kindHiddenCount > 0 && resultKind !== "all") {
+    warnings.push(
+      `${kindHiddenCount} ${resultKind === "opportunities" ? "source" : "opportunity"} candidates were hidden by the result filter.`,
+    );
+  }
+
+  const beforeFreshnessFilter = kindCandidates.length;
+  const freshCandidates = kindCandidates.filter(
+    (candidate) =>
+      candidate.candidateKind === "source" ||
+      candidate.freshness === "active" ||
+      candidate.freshness === "unknown",
+  );
+  const hiddenCount = beforeFreshnessFilter - freshCandidates.length;
+  if (hiddenCount > 0) {
+    warnings.push(`${hiddenCount} expired or stale candidates were hidden from the review list.`);
+  }
+
+  const unique = await markAlreadySaved(ownerId, dedupeCandidates(freshCandidates, maxResults));
   return {
     candidates: unique,
     queries,
@@ -759,6 +1081,89 @@ export async function runDiscoverySearch(
   };
 }
 
+function sourceTypeForCandidate(candidate: DiscoveryCandidateSaveInput): SourceType {
+  const text = `${candidate.title} ${candidate.url ?? ""} ${candidate.description ?? ""} ${candidate.rawContent ?? ""}`.toLowerCase();
+  return /udbud|tender|procurement|indkøb|indkoeb|tilbud|herkules|ehsys/.test(text)
+    ? "PROCUREMENT"
+    : "PUBLIC_WEB";
+}
+
+function parserKeyForSource(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+    if (host.endsWith("ehsys.dk") && /\/indkoeb\/alle\/?$|\/indkøb\/alle\/?$/.test(path)) {
+      return "ehsys-procurement";
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function sourceKeywordsFromCandidate(candidate: DiscoveryCandidateSaveInput, workspace: Workspace): string[] {
+  const seed = [
+    ...(candidate.signals ?? []),
+    candidate.category,
+    candidate.query,
+    workspace === "DK" ? "software udbud digitalisering teknisk mvp ai" : "software tender mvp ai",
+  ].filter(Boolean).join(" ");
+  const blocked = new Set(["site", "https", "http", "www", "com", "dk", "the", "and", "eller", "med"]);
+  const words = seed
+    .toLowerCase()
+    .split(/[^a-z0-9æøå]+/i)
+    .map((word) => word.trim())
+    .filter((word) => word && (word.length >= 3 || word === "ai") && !blocked.has(word));
+  return [...new Set(words)].slice(0, 14);
+}
+
+export async function saveDiscoverySource(
+  ownerId: string,
+  candidate: DiscoveryCandidateSaveInput,
+  workspace: Workspace,
+) {
+  if (!candidate.url) throw new Error("A source URL is required");
+  const url = candidate.url;
+  await assertPublicUrl(url);
+
+  const existing = await db.source.findFirst({
+    where: { ownerId, url },
+    include: { _count: { select: { opportunities: true } } },
+  });
+  if (existing) return { source: existing, created: false };
+
+  const type = sourceTypeForCandidate(candidate);
+  const source = await db.source.create({
+    data: {
+      ownerId,
+      name: cleanText(candidate.title || candidate.sourceName || sourceLabel(url), 160),
+      url,
+      type,
+      workspace,
+      frequency: type === "PROCUREMENT" ? "DAILY" : "WEEKLY",
+      keywords: sourceKeywordsFromCandidate(candidate, workspace),
+      country: candidate.country || (workspace === "DK" ? "DK" : undefined),
+      region: candidate.region,
+      category: candidate.category || (type === "PROCUREMENT" ? "Tender" : undefined),
+      enabled: true,
+      parserKey: parserKeyForSource(url),
+      notes: cleanText(
+        [
+          candidate.summaryDa || candidate.description,
+          candidate.priceText ? `Prisinfo fundet: ${candidate.priceText}` : "",
+          candidate.sourceName ? `Fundet via ${candidate.sourceName}.` : "",
+          candidate.query ? `Discovery query: ${candidate.query}` : "",
+        ].filter(Boolean).join("\n"),
+        1600,
+      ),
+    },
+    include: { _count: { select: { opportunities: true } } },
+  });
+
+  return { source, created: true };
+}
+
 export async function saveDiscoveryCandidate(
   ownerId: string,
   candidate: DiscoveryCandidateSaveInput,
@@ -766,8 +1171,8 @@ export async function saveDiscoveryCandidate(
 ) {
   const base: OpportunityCandidate = enrichCandidate({
     title: candidate.title,
-    description: candidate.description,
-    rawContent: candidate.rawContent,
+    description: candidate.summaryDa || candidate.description,
+    rawContent: candidate.detailText || candidate.rawContent,
     url: candidate.url,
     organization: candidate.organization || candidate.sourceName,
     location: candidate.location,
@@ -781,6 +1186,7 @@ export async function saveDiscoveryCandidate(
     postedAt: parseMaybeDate(candidate.postedAt),
     applicationRoute: candidate.applicationRoute,
     contacts: candidate.contacts,
+    attachments: candidate.attachments,
   });
   const hash = dedupeHash(base);
 
@@ -830,6 +1236,8 @@ export async function saveDiscoveryCandidate(
       ingestMethod: "AUTOMATED",
       matchScore: breakdown.total,
       scoreBreakdown: breakdown as object,
+      aiSummary: candidate.summaryDa || candidate.description,
+      whyRelevant: candidate.priceText,
       dedupeHash: hash,
       status: "NEW",
       contacts: base.contacts?.length
@@ -838,6 +1246,15 @@ export async function saveDiscoveryCandidate(
               name: contact.name,
               email: contact.email,
               role: contact.role,
+            })),
+          }
+        : undefined,
+      attachments: base.attachments?.length
+        ? {
+            create: dedupeAttachments(base.attachments).map((attachment) => ({
+              label: attachment.label,
+              url: attachment.url,
+              kind: attachment.kind,
             })),
           }
         : undefined,
@@ -850,6 +1267,9 @@ export async function saveDiscoveryCandidate(
             sourceKind: candidate.sourceKind ?? "web-search",
             provider: candidate.provider ?? "discover",
             query: candidate.query ?? "",
+            candidateKind: candidate.candidateKind ?? "opportunity",
+            freshness: candidate.freshness ?? "unknown",
+            attachments: candidate.attachments?.length ?? 0,
           },
         },
       },

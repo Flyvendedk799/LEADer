@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseFilters, opportunityCreateSchema, bulkOpportunitySchema } from "./index";
+import {
+  bulkOpportunitySchema,
+  discoverySaveSourceSchema,
+  discoverySearchSchema,
+  opportunityCreateSchema,
+  parseFilters,
+} from "./index";
 
 describe("parseFilters", () => {
   it("drops invalid enum values from a crafted querystring", () => {
@@ -54,5 +60,34 @@ describe("bulkOpportunitySchema", () => {
   });
   it("rejects an unknown action", () => {
     expect(bulkOpportunitySchema.safeParse({ ids: ["a"], action: "nuke" }).success).toBe(false);
+  });
+});
+
+describe("discovery schemas", () => {
+  it("accepts a source-only result filter", () => {
+    const r = discoverySearchSchema.safeParse({
+      query: "software udbud",
+      resultKind: "sources",
+    });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.resultKind).toBe("sources");
+  });
+
+  it("requires source candidates when saving a discovery source", () => {
+    const base = {
+      workspace: "DK",
+      candidate: {
+        candidateKind: "source",
+        title: "Herkules IT-udbud",
+        url: "https://herkules.dk/en",
+      },
+    } as const;
+    expect(discoverySaveSourceSchema.safeParse(base).success).toBe(true);
+    expect(
+      discoverySaveSourceSchema.safeParse({
+        ...base,
+        candidate: { ...base.candidate, candidateKind: "opportunity" },
+      }).success,
+    ).toBe(false);
   });
 });
