@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser, requireOwnerId } from "@/lib/auth";
+import { getCurrentUser, requireUser } from "@/lib/auth";
+import { buildStoredAiKeys, publicAiKeys } from "@/lib/ai/keys";
 import { settingsSchema } from "@/lib/validators";
 import { apiError } from "@/lib/api";
 import type { Prisma } from "@prisma/client";
@@ -8,23 +9,14 @@ import type { Prisma } from "@prisma/client";
 // ─────────────────────────────────────────────────────────────────────────
 // Settings API — reads/updates the current owner's profile + preferences.
 //
-// SECURITY NOTE: secret API keys (e.g. LLM_API_KEY) belong in .env, NOT here.
-// The `aiKeys` JSON only stores NON-SECRET config (provider / baseUrl / model)
-// so the UI can show which endpoint is wired up without ever holding a secret.
+// User-supplied AI keys are encrypted before being stored in the `aiKeys` JSON
+// blob. The API only returns masked key metadata to the browser.
 // ─────────────────────────────────────────────────────────────────────────
 
-// Never echo arbitrary secret config back to the client. Replace aiKeys with
-// only the safe, non-secret subset (provider / baseUrl / model).
 function safeUser<T extends { aiKeys?: unknown }>(user: T) {
   return {
     ...user,
-    aiKeys: user.aiKeys
-      ? {
-          provider: (user.aiKeys as { provider?: unknown }).provider ?? null,
-          baseUrl: (user.aiKeys as { baseUrl?: unknown }).baseUrl ?? null,
-          model: (user.aiKeys as { model?: unknown }).model ?? null,
-        }
-      : null,
+    aiKeys: publicAiKeys(user.aiKeys),
   };
 }
 
@@ -42,7 +34,7 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
-    const ownerId = await requireOwnerId();
+    const user = await requireUser();
     const json = await req.json();
     const parsed = settingsSchema.safeParse(json);
     if (!parsed.success) {
@@ -65,10 +57,13 @@ export async function PATCH(req: Request) {
     if (d.preferredCurrency !== undefined) data.preferredCurrency = d.preferredCurrency;
     if (d.scoringWeights !== undefined) data.scoringWeights = d.scoringWeights as Prisma.InputJsonValue;
     if (d.exportPrefs !== undefined) data.exportPrefs = d.exportPrefs as Prisma.InputJsonValue;
-    if (d.aiKeys !== undefined) data.aiKeys = d.aiKeys as Prisma.InputJsonValue;
+    if (d.aiKeys !== undefined) {
+      data.aiKeys = buildStoredAiKeys(d.aiKeys, user.aiKeys) as unknown as Prisma.InputJsonValue;
+    }
+    if (d.completeOnboarding) data.onboardedAt = new Date();
 
-    const user = await db.user.update({ where: { id: ownerId }, data });
-    return NextResponse.json(safeUser(user));
+    const updated = await db.user.update({ where: { id: user.id }, data });
+    return NextResponse.json(safeUser(updated));
   } catch (err) {
     return apiError(err);
   }

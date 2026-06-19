@@ -98,7 +98,7 @@ export function AiActionPanel({ opportunityId }: { opportunityId: string }) {
         )}
 
         <p className="text-xs text-muted-foreground">
-          Falls back to mock output if no LLM key is set. Results are saved as drafts.
+          Falls back to mock output if no AI key is set. Results are saved as drafts.
         </p>
       </CardContent>
     </Card>

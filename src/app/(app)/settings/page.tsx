@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Building2, Compass, Settings as SettingsIcon } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
+import { publicAiKeys } from "@/lib/ai/keys";
 import { DEFAULT_WEIGHTS } from "@/lib/scoring";
 import type { ExportPreferences, ScoreWeights } from "@/lib/types";
 import { formatBudget } from "@/lib/utils";
@@ -13,11 +14,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { ScoringWeightsForm } from "@/components/settings/scoring-weights-form";
 import { PreferencesForm } from "@/components/settings/preferences-form";
+import { AiProviderForm } from "@/components/settings/ai-provider-form";
 import { SecurityForm } from "@/components/settings/security-form";
+import type { PublicAiKeys } from "@/components/settings/ai-provider-fields";
 
-type AiKeys = { provider?: string; baseUrl?: string; model?: string } | null;
+const SETTINGS_TABS = ["profile", "scoring", "preferences", "ai", "security"] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number];
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: { tab?: string };
+}) {
   const user = await getCurrentUser();
 
   if (!user) {
@@ -36,7 +44,10 @@ export default async function SettingsPage() {
   // Prisma JSON blobs → typed shapes (see lib/types.ts).
   const weights = (user.scoringWeights as ScoreWeights | null) ?? DEFAULT_WEIGHTS;
   const exportPrefs = (user.exportPrefs as ExportPreferences | null) ?? null;
-  const aiKeys = (user.aiKeys as AiKeys) ?? null;
+  const aiKeys: PublicAiKeys = publicAiKeys(user.aiKeys);
+  const defaultTab: SettingsTab = SETTINGS_TABS.includes(searchParams?.tab as SettingsTab)
+    ? (searchParams?.tab as SettingsTab)
+    : "profile";
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -45,11 +56,12 @@ export default async function SettingsPage() {
         description="Tune your profile, scoring weights, and export defaults."
       />
 
-      <Tabs defaultValue="profile">
-        <TabsList>
+      <Tabs defaultValue={defaultTab}>
+        <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
+          <TabsTrigger value="ai">AI</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
         </TabsList>
 
@@ -103,7 +115,11 @@ export default async function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="preferences">
-          <PreferencesForm user={{ exportPrefs, aiKeys }} />
+          <PreferencesForm user={{ exportPrefs }} />
+        </TabsContent>
+
+        <TabsContent value="ai">
+          <AiProviderForm aiKeys={aiKeys} />
         </TabsContent>
 
         <TabsContent value="security" className="space-y-6">

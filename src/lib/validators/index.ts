@@ -21,6 +21,7 @@ export const zAiAction = z.enum([
   "summarize", "extract", "classify", "explainScore", "draftApplication",
   "draftPitch", "draftEmail", "checklist", "compare", "similar", "nextAction",
 ]);
+export const zAiProvider = z.enum(["openai", "anthropic"]);
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export const registerSchema = z.object({
@@ -172,7 +173,17 @@ export const settingsSchema = z.object({
   preferredCurrency: z.string().optional(),
   scoringWeights: z.record(z.number()).optional(),
   exportPrefs: z.record(z.unknown()).optional(),
-  aiKeys: z.record(z.unknown()).optional(),
+  aiKeys: z
+    .object({
+      provider: z.union([zAiProvider, z.literal("claude"), z.literal("openai-compatible")]).optional(),
+      baseUrl: z.string().optional(),
+      model: z.string().optional(),
+      embeddingModel: z.string().optional(),
+      apiKey: z.string().optional(),
+      clearApiKey: z.boolean().optional(),
+    })
+    .optional(),
+  completeOnboarding: z.boolean().optional(),
 });
 
 // ── Filter parsing (querystring → OpportunityFilter) ─────────────────────────

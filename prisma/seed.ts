@@ -27,12 +27,13 @@ async function main() {
   const passwordHash = await hashPassword(OWNER_PASSWORD);
   const user = await db.user.upsert({
     where: { email: OWNER_EMAIL },
-    update: { passwordHash },
+    update: { passwordHash, onboardedAt: new Date() },
     create: {
       email: OWNER_EMAIL,
       name: "Tobias",
       passwordHash,
       role: "OWNER",
+      onboardedAt: new Date(),
       headline: "Fullstack developer · AI builder · MVP & product advisor",
       bio: "Solo technical partner for startups, founders and SMEs. I turn funded ideas into shipped MVPs — fullstack build, AI features and a pragmatic product roadmap. Prefer active, directly-applicable assignments under 100,000 DKK.",
       preferredProjectTypes: [
@@ -47,7 +48,7 @@ async function main() {
       preferredCurrency: "DKK",
       scoringWeights: DEFAULT_WEIGHTS as object,
       exportPrefs: { defaultFormat: "xlsx", includeNotes: true, includeSummary: true },
-      aiKeys: { provider: "openai-compatible", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+      aiKeys: { provider: "openai", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
     },
   });
 

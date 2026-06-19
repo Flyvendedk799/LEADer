@@ -75,6 +75,9 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 
 async function providerEmbed(text: string): Promise<Embedding> {
   const cfg = aiConfig();
+  if (cfg.provider !== "openai" || !cfg.embeddingModel) {
+    return { vector: localEmbed(text), model: LOCAL_EMBED_MODEL };
+  }
   const res = await fetch(`${cfg.baseUrl}/embeddings`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
@@ -94,7 +97,8 @@ async function providerEmbed(text: string): Promise<Embedding> {
  * Never throws for the offline path; provider failures bubble up to the caller.
  */
 export async function embed(text: string): Promise<Embedding> {
-  if (hasLlm()) {
+  const cfg = aiConfig();
+  if (hasLlm() && cfg.provider === "openai" && cfg.embeddingModel) {
     return providerEmbed(text);
   }
   return { vector: localEmbed(text), model: LOCAL_EMBED_MODEL };

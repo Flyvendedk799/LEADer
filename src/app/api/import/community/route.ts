@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireOwnerId } from "@/lib/auth";
+import { requireOwnerId, requireUser } from "@/lib/auth";
 import { communityImportSchema } from "@/lib/validators";
 import { dedupeHash } from "@/lib/ingestion/dedupe";
 import { aiExtract } from "@/lib/ai";
@@ -39,7 +39,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const ownerId = await requireOwnerId();
+    const user = await requireUser();
+    const ownerId = user.id;
     const json = await req.json();
     const parsed = communityImportSchema.safeParse(json);
     if (!parsed.success) {
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
     const stash = (e: AiExtractResult | null) => ({ ...(e ?? {}), __workspace: data.workspace });
 
     if (data.autoExtract !== false) {
-      extracted = await aiExtract(data.content);
+      extracted = await aiExtract(data.content, undefined, user.aiKeys);
     }
     await db.communityImport.update({
       where: { id: row.id },

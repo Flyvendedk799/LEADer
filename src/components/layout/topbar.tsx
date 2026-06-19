@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { LogOut, Moon, Search, Settings, Sun, User as UserIcon } from "lucide-react";
+import { KeyRound, LogOut, Moon, Search, Settings, Sun, User as UserIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,6 +121,11 @@ export function Topbar({ user }: TopbarProps) {
               <DropdownMenuItem asChild>
                 <Link href="/settings" className="cursor-pointer">
                   <Settings className="mr-2 h-4 w-4" /> Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings?tab=ai" className="cursor-pointer">
+                  <KeyRound className="mr-2 h-4 w-4" /> AI provider
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive focus:text-destructive">
