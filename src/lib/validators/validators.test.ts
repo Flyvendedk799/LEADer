@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bulkOpportunitySchema,
+  discoveryFeedbackSchema,
   discoverySaveSourceSchema,
   discoverySearchSchema,
   opportunityCreateSchema,
@@ -89,5 +90,19 @@ describe("discovery schemas", () => {
         candidate: { ...base.candidate, candidateKind: "opportunity" },
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts non-lead discovery feedback", () => {
+    expect(
+      discoveryFeedbackSchema.safeParse({
+        feedback: "NON_LEAD",
+        reason: "Info page",
+        candidate: {
+          id: "hash-1",
+          title: "General guide to IT tenders",
+          candidateKind: "opportunity",
+        },
+      }).success,
+    ).toBe(true);
   });
 });
