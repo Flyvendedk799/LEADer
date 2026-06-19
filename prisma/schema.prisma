@@ -430,6 +430,7 @@ model DiscoveryFeedback {
   title         String
   candidateKind String?
   feedback      DiscoveryFeedbackType
+  features      String[]              @default([])
   reason        String?
   sourceName    String?
   provider      String?

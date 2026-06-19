@@ -214,6 +214,7 @@ export const discoveryCandidateSchema = z.object({
   reasons: z.array(z.string()).default([]),
   signals: z.array(z.string()).default([]),
   feedback: z.enum(["GOOD_RESULT", "NON_LEAD"]).optional(),
+  feedbackSuppressed: z.boolean().optional(),
   alreadySaved: z.object({ id: z.string(), title: z.string() }).optional(),
   alreadySavedSource: z.object({ id: z.string(), name: z.string() }).optional(),
 });

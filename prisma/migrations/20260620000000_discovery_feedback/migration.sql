@@ -10,6 +10,7 @@ CREATE TABLE "DiscoveryFeedback" (
     "title" TEXT NOT NULL,
     "candidateKind" TEXT,
     "feedback" "DiscoveryFeedbackType" NOT NULL,
+    "features" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     "reason" TEXT,
     "sourceName" TEXT,
     "provider" TEXT,
