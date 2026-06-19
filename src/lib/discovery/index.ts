@@ -3,6 +3,11 @@ import type { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
+import {
+  getStoredSearchApiKey,
+  normalizeStoredAiKeys,
+  type SearchProvider,
+} from "@/lib/ai/keys";
 import { ensureEmbedding } from "@/lib/opportunities/similar";
 import { scoreOpportunity } from "@/lib/scoring";
 import type {
@@ -122,18 +127,45 @@ function cleanText(value = "", max = 1600): string {
 
 function searchProviderFromEnv(
   requested: DiscoverySearchInput["provider"] = "auto",
-): { provider: "tavily" | "brave" | "serper" | "none"; configured: boolean } {
-  if (requested === "none") return { provider: "none", configured: false };
-  if ((requested === "auto" || requested === "tavily") && process.env.TAVILY_API_KEY) {
-    return { provider: "tavily", configured: true };
+  aiKeys?: unknown,
+): { provider: SearchProvider | "none"; apiKey: string; configured: boolean; source: "user" | "env" | "none" } {
+  if (requested === "none") {
+    return { provider: "none", apiKey: "", configured: false, source: "none" };
   }
-  if ((requested === "auto" || requested === "brave") && process.env.BRAVE_SEARCH_API_KEY) {
-    return { provider: "brave", configured: true };
+
+  const stored = normalizeStoredAiKeys(aiKeys);
+  const providers =
+    requested === "auto"
+      ? ([
+          stored?.searchProvider,
+          "tavily",
+          "brave",
+          "serper",
+        ].filter(Boolean) as SearchProvider[])
+      : [requested as SearchProvider];
+  const ordered = [...new Set(providers)];
+
+  for (const provider of ordered) {
+    const apiKey = getStoredSearchApiKey(aiKeys, provider);
+    if (apiKey) return { provider, apiKey, configured: true, source: "user" };
   }
-  if ((requested === "auto" || requested === "serper") && process.env.SERPER_API_KEY) {
-    return { provider: "serper", configured: true };
+
+  const envKeys: Record<SearchProvider, string | undefined> = {
+    tavily: process.env.TAVILY_API_KEY,
+    brave: process.env.BRAVE_SEARCH_API_KEY,
+    serper: process.env.SERPER_API_KEY,
+  };
+  for (const provider of ordered) {
+    const apiKey = envKeys[provider]?.trim();
+    if (apiKey) return { provider, apiKey, configured: true, source: "env" };
   }
-  return { provider: requested === "auto" ? "none" : requested ?? "none", configured: false };
+
+  return {
+    provider: requested === "auto" ? "none" : requested ?? "none",
+    apiKey: "",
+    configured: false,
+    source: "none",
+  };
 }
 
 function profileText(user: UserProfile): string {
@@ -274,11 +306,11 @@ async function fetchReadablePage(url?: string): Promise<{ title?: string; descri
   }
 }
 
-async function tavilySearch(query: string, maxResults: number): Promise<SearchResult[]> {
+async function tavilySearch(query: string, maxResults: number, apiKey: string): Promise<SearchResult[]> {
   const res = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.TAVILY_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -305,7 +337,7 @@ async function tavilySearch(query: string, maxResults: number): Promise<SearchRe
     }));
 }
 
-async function braveSearch(query: string, maxResults: number): Promise<SearchResult[]> {
+async function braveSearch(query: string, maxResults: number, apiKey: string): Promise<SearchResult[]> {
   const params = new URLSearchParams({
     q: query,
     country: "DK",
@@ -316,7 +348,7 @@ async function braveSearch(query: string, maxResults: number): Promise<SearchRes
   const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
     headers: {
       Accept: "application/json",
-      "X-Subscription-Token": process.env.BRAVE_SEARCH_API_KEY || "",
+      "X-Subscription-Token": apiKey,
     },
   });
   if (!res.ok) throw new Error(`Brave search failed (${res.status})`);
@@ -335,11 +367,11 @@ async function braveSearch(query: string, maxResults: number): Promise<SearchRes
     }));
 }
 
-async function serperSearch(query: string, maxResults: number): Promise<SearchResult[]> {
+async function serperSearch(query: string, maxResults: number, apiKey: string): Promise<SearchResult[]> {
   const res = await fetch("https://google.serper.dev/search", {
     method: "POST",
     headers: {
-      "X-API-KEY": process.env.SERPER_API_KEY || "",
+      "X-API-KEY": apiKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ q: query, gl: "dk", hl: "da", num: Math.min(maxResults, 20) }),
@@ -362,7 +394,8 @@ async function serperSearch(query: string, maxResults: number): Promise<SearchRe
 }
 
 async function runProviderSearch(
-  provider: "tavily" | "brave" | "serper",
+  provider: SearchProvider,
+  apiKey: string,
   queries: string[],
   maxResults: number,
 ): Promise<SearchResult[]> {
@@ -371,10 +404,10 @@ async function runProviderSearch(
   for (const query of queries) {
     const results =
       provider === "tavily"
-        ? await tavilySearch(query, perQuery)
+        ? await tavilySearch(query, perQuery, apiKey)
         : provider === "brave"
-          ? await braveSearch(query, perQuery)
-          : await serperSearch(query, perQuery);
+          ? await braveSearch(query, perQuery, apiKey)
+          : await serperSearch(query, perQuery, apiKey);
     out.push(...results);
     if (out.length >= maxResults * 2) break;
   }
@@ -597,14 +630,19 @@ export async function runDiscoverySearch(
   const workspace = input.workspace ?? "DK";
   const maxResults = Math.min(Math.max(input.maxResults ?? 12, 4), 30);
   const queries = buildQueries(input.query, workspace);
-  const providerState = searchProviderFromEnv(input.provider);
+  const providerState = searchProviderFromEnv(input.provider, user.aiKeys);
   const warnings: string[] = [];
   let candidates: DiscoveryCandidateDto[] = [];
   let sourceScanCount = 0;
 
   if (input.includeWeb !== false && providerState.configured && providerState.provider !== "none") {
     try {
-      const webResults = await runProviderSearch(providerState.provider, queries, maxResults);
+      const webResults = await runProviderSearch(
+        providerState.provider,
+        providerState.apiKey,
+        queries,
+        maxResults,
+      );
       const webCandidates = await searchResultsToCandidates(webResults, user, workspace, maxResults);
       candidates.push(...webCandidates);
     } catch (e) {
@@ -612,7 +650,7 @@ export async function runDiscoverySearch(
     }
   } else if (input.includeWeb !== false) {
     warnings.push(
-      "No web search API key configured. Add TAVILY_API_KEY, BRAVE_SEARCH_API_KEY, or SERPER_API_KEY to enable broad web discovery.",
+      "No web search API key configured. Add Tavily, Brave Search, or Serper in Settings -> AI to enable broad web discovery.",
     );
   }
 

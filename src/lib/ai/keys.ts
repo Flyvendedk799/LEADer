@@ -1,6 +1,13 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 export type AiProvider = "openai" | "anthropic";
+export type SearchProvider = "tavily" | "brave" | "serper";
+
+export interface StoredSearchKey {
+  encryptedApiKey?: string;
+  keyPreview?: string;
+  updatedAt?: string;
+}
 
 export interface StoredAiKeys {
   provider: AiProvider;
@@ -10,6 +17,8 @@ export interface StoredAiKeys {
   encryptedApiKey?: string;
   keyPreview?: string;
   updatedAt?: string;
+  searchProvider?: SearchProvider;
+  searchKeys?: Partial<Record<SearchProvider, StoredSearchKey>>;
 }
 
 export interface PublicAiKeys {
@@ -20,6 +29,8 @@ export interface PublicAiKeys {
   hasApiKey: boolean;
   keyPreview?: string;
   updatedAt?: string;
+  searchProvider?: SearchProvider;
+  searchKeys?: Record<SearchProvider, { hasApiKey: boolean; keyPreview?: string; updatedAt?: string }>;
 }
 
 export interface AiKeysUpdate {
@@ -29,6 +40,11 @@ export interface AiKeysUpdate {
   embeddingModel?: string;
   apiKey?: string;
   clearApiKey?: boolean;
+  search?: {
+    provider?: SearchProvider;
+    apiKey?: string;
+    clearApiKey?: boolean;
+  };
 }
 
 export const AI_PROVIDER_DEFAULTS: Record<
@@ -59,6 +75,27 @@ export function normalizeProvider(value: unknown): AiProvider {
 
 function cleanOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeSearchProvider(value: unknown): SearchProvider {
+  if (value === "brave" || value === "serper") return value;
+  return "tavily";
+}
+
+function normalizeSearchKeys(raw: unknown): Partial<Record<SearchProvider, StoredSearchKey>> {
+  if (!isRecord(raw)) return {};
+  const out: Partial<Record<SearchProvider, StoredSearchKey>> = {};
+  for (const provider of ["tavily", "brave", "serper"] as SearchProvider[]) {
+    const value = raw[provider];
+    if (!isRecord(value)) continue;
+    const encryptedApiKey = cleanOptionalString(value.encryptedApiKey);
+    const keyPreview = cleanOptionalString(value.keyPreview);
+    const updatedAt = cleanOptionalString(value.updatedAt);
+    if (encryptedApiKey || keyPreview || updatedAt) {
+      out[provider] = { encryptedApiKey, keyPreview, updatedAt };
+    }
+  }
+  return out;
 }
 
 function encryptionKey(): Buffer {
@@ -120,6 +157,10 @@ export function normalizeStoredAiKeys(raw: unknown): StoredAiKeys | null {
     encryptedApiKey: cleanOptionalString(raw.encryptedApiKey),
     keyPreview: cleanOptionalString(raw.keyPreview),
     updatedAt: cleanOptionalString(raw.updatedAt),
+    searchProvider: cleanOptionalString(raw.searchProvider)
+      ? normalizeSearchProvider(raw.searchProvider)
+      : undefined,
+    searchKeys: normalizeSearchKeys(raw.searchKeys),
   };
 }
 
@@ -135,6 +176,24 @@ export function publicAiKeys(raw: unknown): PublicAiKeys | null {
     hasApiKey: Boolean(stored.encryptedApiKey),
     keyPreview: stored.keyPreview,
     updatedAt: stored.updatedAt,
+    searchProvider: stored.searchProvider,
+    searchKeys: {
+      tavily: {
+        hasApiKey: Boolean(stored.searchKeys?.tavily?.encryptedApiKey),
+        keyPreview: stored.searchKeys?.tavily?.keyPreview,
+        updatedAt: stored.searchKeys?.tavily?.updatedAt,
+      },
+      brave: {
+        hasApiKey: Boolean(stored.searchKeys?.brave?.encryptedApiKey),
+        keyPreview: stored.searchKeys?.brave?.keyPreview,
+        updatedAt: stored.searchKeys?.brave?.updatedAt,
+      },
+      serper: {
+        hasApiKey: Boolean(stored.searchKeys?.serper?.encryptedApiKey),
+        keyPreview: stored.searchKeys?.serper?.keyPreview,
+        updatedAt: stored.searchKeys?.serper?.updatedAt,
+      },
+    },
   };
 }
 
@@ -173,6 +232,25 @@ export function buildStoredAiKeys(input: AiKeysUpdate, existingRaw?: unknown): S
   }
   if (encryptedApiKey) stored.encryptedApiKey = encryptedApiKey;
   if (keyPreview) stored.keyPreview = keyPreview;
+
+  const searchProvider = normalizeSearchProvider(input.search?.provider ?? existing?.searchProvider);
+  const searchKeys: Partial<Record<SearchProvider, StoredSearchKey>> = {
+    ...(existing?.searchKeys ?? {}),
+  };
+  if (input.search) {
+    const apiKey = input.search.apiKey?.trim();
+    if (input.search.clearApiKey) {
+      delete searchKeys[searchProvider];
+    } else if (apiKey) {
+      searchKeys[searchProvider] = {
+        encryptedApiKey: encryptApiKey(apiKey),
+        keyPreview: apiKeyPreview(apiKey),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  }
+  stored.searchProvider = searchProvider;
+  if (Object.keys(searchKeys).length) stored.searchKeys = searchKeys;
   return stored;
 }
 
@@ -180,4 +258,10 @@ export function getStoredApiKey(raw: unknown): string {
   const stored = normalizeStoredAiKeys(raw);
   if (!stored?.encryptedApiKey) return "";
   return decryptApiKey(stored.encryptedApiKey);
+}
+
+export function getStoredSearchApiKey(raw: unknown, provider: SearchProvider): string {
+  const stored = normalizeStoredAiKeys(raw);
+  const encrypted = stored?.searchKeys?.[provider]?.encryptedApiKey;
+  return encrypted ? decryptApiKey(encrypted) : "";
 }

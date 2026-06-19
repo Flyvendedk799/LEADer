@@ -229,6 +229,13 @@ export const settingsSchema = z.object({
       embeddingModel: z.string().optional(),
       apiKey: z.string().optional(),
       clearApiKey: z.boolean().optional(),
+      search: z
+        .object({
+          provider: z.enum(["tavily", "brave", "serper"]).optional(),
+          apiKey: z.string().optional(),
+          clearApiKey: z.boolean().optional(),
+        })
+        .optional(),
     })
     .optional(),
   completeOnboarding: z.boolean().optional(),

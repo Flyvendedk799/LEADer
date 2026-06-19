@@ -1,13 +1,21 @@
 "use client";
 
 import * as React from "react";
-import { BrainCircuit, Eye, EyeOff, MessageSquareText, Trash2 } from "lucide-react";
+import { BrainCircuit, Eye, EyeOff, MessageSquareText, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 export type AiProvider = "openai" | "anthropic";
+export type SearchProvider = "tavily" | "brave" | "serper";
 
 export type PublicAiKeys = {
   provider?: AiProvider;
@@ -17,6 +25,8 @@ export type PublicAiKeys = {
   hasApiKey?: boolean;
   keyPreview?: string;
   updatedAt?: string;
+  searchProvider?: SearchProvider;
+  searchKeys?: Record<SearchProvider, { hasApiKey: boolean; keyPreview?: string; updatedAt?: string }>;
 } | null;
 
 export type AiProviderState = {
@@ -24,6 +34,12 @@ export type AiProviderState = {
   baseUrl: string;
   model: string;
   embeddingModel: string;
+  apiKey: string;
+  clearApiKey: boolean;
+};
+
+export type SearchProviderState = {
+  provider: SearchProvider;
   apiKey: string;
   clearApiKey: boolean;
 };
@@ -53,6 +69,12 @@ const PROVIDERS: { value: AiProvider; icon: typeof BrainCircuit }[] = [
   { value: "anthropic", icon: MessageSquareText },
 ];
 
+const SEARCH_PROVIDER_LABELS: Record<SearchProvider, string> = {
+  tavily: "Tavily",
+  brave: "Brave Search",
+  serper: "Serper",
+};
+
 export function initialAiProviderState(aiKeys: PublicAiKeys): AiProviderState {
   const provider = aiKeys?.provider ?? "openai";
   const defaults = PROVIDER_DEFAULTS[provider];
@@ -73,6 +95,22 @@ export function aiProviderPayload(state: AiProviderState) {
     model: state.model.trim(),
     embeddingModel:
       state.provider === "openai" ? state.embeddingModel.trim() || undefined : undefined,
+    apiKey: state.apiKey.trim() || undefined,
+    clearApiKey: state.clearApiKey,
+  };
+}
+
+export function initialSearchProviderState(aiKeys: PublicAiKeys): SearchProviderState {
+  return {
+    provider: aiKeys?.searchProvider ?? "tavily",
+    apiKey: "",
+    clearApiKey: false,
+  };
+}
+
+export function searchProviderPayload(state: SearchProviderState) {
+  return {
+    provider: state.provider,
     apiKey: state.apiKey.trim() || undefined,
     clearApiKey: state.clearApiKey,
   };
@@ -243,6 +281,123 @@ export function AiProviderFields({
             </Button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+export function SearchProviderFields({
+  state,
+  onChange,
+  aiKeys,
+  disabled,
+}: {
+  state: SearchProviderState;
+  onChange: (state: SearchProviderState) => void;
+  aiKeys?: PublicAiKeys;
+  disabled?: boolean;
+}) {
+  const [showKey, setShowKey] = React.useState(false);
+  const currentKey = aiKeys?.searchKeys?.[state.provider];
+  const hasSavedKey = Boolean(currentKey?.hasApiKey && !state.clearApiKey);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-2">
+        <Label>Search provider</Label>
+        <Select
+          value={state.provider}
+          disabled={disabled}
+          onValueChange={(provider) =>
+            onChange({ provider: provider as SearchProvider, apiKey: "", clearApiKey: false })
+          }
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="tavily">Tavily</SelectItem>
+            <SelectItem value="brave">Brave Search</SelectItem>
+            <SelectItem value="serper">Serper</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Used by Discover for broad web search. Saved sources still work without a search key.
+        </p>
+      </div>
+
+      <div className="grid gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="search-api-key">{SEARCH_PROVIDER_LABELS[state.provider]} API key</Label>
+          {hasSavedKey && (
+            <span className="text-xs text-muted-foreground">
+              Saved key {currentKey?.keyPreview || "configured"}
+            </span>
+          )}
+        </div>
+        <div className="relative">
+          <Input
+            id="search-api-key"
+            type={showKey ? "text" : "password"}
+            value={state.apiKey}
+            disabled={disabled || state.clearApiKey}
+            onChange={(e) => onChange({ ...state, apiKey: e.target.value, clearApiKey: false })}
+            className="pr-10"
+            placeholder={hasSavedKey ? "Leave blank to keep saved key" : "Paste your search API key"}
+            autoComplete="off"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={disabled || state.clearApiKey}
+            className="absolute right-0 top-0 h-9 w-9"
+            aria-label={showKey ? "Hide search API key" : "Show search API key"}
+            onClick={() => setShowKey((v) => !v)}
+          >
+            {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </Button>
+        </div>
+
+        {currentKey?.hasApiKey && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              {state.clearApiKey
+                ? `${SEARCH_PROVIDER_LABELS[state.provider]} will be removed on save.`
+                : "Saved search keys are encrypted and masked in the browser."}
+            </p>
+            <Button
+              type="button"
+              variant={state.clearApiKey ? "secondary" : "outline"}
+              size="sm"
+              disabled={disabled}
+              onClick={() => onChange({ ...state, apiKey: "", clearApiKey: !state.clearApiKey })}
+            >
+              <Trash2 className="h-4 w-4" />
+              {state.clearApiKey ? "Keep key" : "Remove key"}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-2 rounded-md border border-border bg-surface/50 p-3">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          Configured search keys
+        </div>
+        <div className="grid gap-2 text-sm sm:grid-cols-3">
+          {(Object.keys(SEARCH_PROVIDER_LABELS) as SearchProvider[]).map((provider) => {
+            const key = aiKeys?.searchKeys?.[provider];
+            return (
+              <div key={provider} className="rounded border border-border bg-card px-3 py-2">
+                <div className="font-medium">{SEARCH_PROVIDER_LABELS[provider]}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {key?.hasApiKey ? key.keyPreview || "configured" : "Not set"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
