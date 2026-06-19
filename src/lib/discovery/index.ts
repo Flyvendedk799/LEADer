@@ -69,6 +69,7 @@ export interface DiscoveryCandidateDto {
   reasons: string[];
   signals: string[];
   feedback?: "GOOD_RESULT" | "NON_LEAD";
+  feedbackSuppressed?: boolean;
   alreadySaved?: { id: string; title: string };
   alreadySavedSource?: { id: string; name: string };
 }
@@ -122,6 +123,7 @@ export type DiscoveryCandidateSaveInput = {
   query?: string;
   signals?: string[];
   feedback?: "GOOD_RESULT" | "NON_LEAD";
+  feedbackSuppressed?: boolean;
 };
 
 interface UserProfile {
@@ -139,6 +141,51 @@ const MAX_PAGE_FETCHES = 10;
 const MAX_SCAN_SOURCES = 8;
 const MAX_ATTACHMENTS = 8;
 const STALE_WITHOUT_DEADLINE_DAYS = 180;
+const MAX_FEEDBACK_ROWS = 500;
+
+type DiscoveryFeedbackValue = "GOOD_RESULT" | "NON_LEAD";
+
+interface FeedbackFeatureInput {
+  id?: string;
+  title?: string;
+  description?: string;
+  rawContent?: string;
+  url?: string | null;
+  candidateKind?: "opportunity" | "source" | string | null;
+  category?: string | null;
+  applicationRoute?: ApplicationRoute | string | null;
+  sourceName?: string | null;
+  provider?: string | null;
+  query?: string | null;
+  signals?: string[];
+}
+
+interface FeedbackModelRow extends FeedbackFeatureInput {
+  candidateId: string;
+  feedback: DiscoveryFeedbackValue;
+  features?: string[] | null;
+}
+
+interface FeedbackFeatureCount {
+  good: number;
+  nonLead: number;
+}
+
+interface FeedbackSignalModel {
+  byCandidateId: Map<string, DiscoveryFeedbackValue>;
+  byUrl: Map<string, DiscoveryFeedbackValue>;
+  featureCounts: Map<string, FeedbackFeatureCount>;
+  rowCount: number;
+}
+
+interface FeedbackInsight {
+  feedback?: DiscoveryFeedbackValue;
+  delta: number;
+  suppress: boolean;
+  notes: string[];
+  signals: string[];
+  features: string[];
+}
 
 const CURATED_DK_DISCOVERY_SOURCES = [
   {
@@ -155,6 +202,211 @@ const CURATED_DK_DISCOVERY_SOURCES = [
 
 function cleanText(value = "", max = 1600): string {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function canonicalUrl(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"].forEach(
+      (param) => url.searchParams.delete(param),
+    );
+    return `${url.origin}${url.pathname}${url.search}`.toLowerCase().replace(/\/$/, "");
+  } catch {
+    return value.toLowerCase().trim();
+  }
+}
+
+function addFeature(features: Set<string>, value?: string | null) {
+  const clean = value?.toLowerCase().replace(/\s+/g, " ").trim();
+  if (clean) features.add(clean);
+}
+
+const FEEDBACK_STOPWORDS = new Set([
+  "and", "eller", "for", "fra", "med", "the", "this", "that", "til", "som", "der",
+  "det", "den", "din", "dit", "kan", "har", "med", "you", "your", "vores", "about",
+  "home", "page", "site", "https", "http", "www", "com", "dk",
+]);
+
+function feedbackTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^a-z0-9æøå]+/i)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 4 && !FEEDBACK_STOPWORDS.has(token))
+    .slice(0, 24);
+}
+
+function feedbackFeaturesFromCandidate(input: FeedbackFeatureInput): string[] {
+  const features = new Set<string>();
+  const url = canonicalUrl(input.url);
+  if (url) {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.replace(/^www\./, "");
+      const segments = parsed.pathname
+        .split("/")
+        .map((segment) => segment.trim().toLowerCase())
+        .filter(Boolean);
+      addFeature(features, `host:${host}`);
+      if (segments[0]) addFeature(features, `path1:${host}/${segments[0]}`);
+      if (segments[0] && segments[1]) addFeature(features, `path2:${host}/${segments[0]}/${segments[1]}`);
+      for (const segment of segments.slice(0, 4)) {
+        for (const token of feedbackTokens(segment)) addFeature(features, `path-token:${token}`);
+      }
+    } catch {
+      addFeature(features, `url:${url}`);
+    }
+  }
+
+  if (input.candidateKind) addFeature(features, `kind:${input.candidateKind}`);
+  if (input.applicationRoute) addFeature(features, `route:${input.applicationRoute}`);
+  if (input.category) addFeature(features, `category:${input.category}`);
+  if (input.sourceName) addFeature(features, `source:${input.sourceName}`);
+  if (input.provider) addFeature(features, `provider:${input.provider}`);
+  for (const signal of input.signals ?? []) addFeature(features, `signal:${signal}`);
+
+  const text = cleanText(
+    [input.title, input.description, input.rawContent, input.query].filter(Boolean).join(" "),
+    1200,
+  );
+  for (const token of feedbackTokens(text)) addFeature(features, `token:${token}`);
+
+  return [...features].slice(0, 64);
+}
+
+function feedbackFeatureWeight(feature: string): number {
+  if (feature.startsWith("path2:")) return 4.5;
+  if (feature.startsWith("path1:")) return 2.5;
+  if (feature.startsWith("source:")) return 2;
+  if (feature.startsWith("path-token:")) return 1.5;
+  if (feature.startsWith("host:")) return 1;
+  if (feature.startsWith("signal:")) return 0.9;
+  if (feature.startsWith("category:")) return 0.8;
+  if (feature.startsWith("route:")) return 0.7;
+  if (feature.startsWith("kind:")) return 0.4;
+  if (feature.startsWith("token:")) return 0.8;
+  return 0.5;
+}
+
+function emptyFeedbackModel(): FeedbackSignalModel {
+  return {
+    byCandidateId: new Map(),
+    byUrl: new Map(),
+    featureCounts: new Map(),
+    rowCount: 0,
+  };
+}
+
+function buildFeedbackSignalModel(rows: FeedbackModelRow[]): FeedbackSignalModel {
+  const model = emptyFeedbackModel();
+  model.rowCount = rows.length;
+
+  for (const row of rows) {
+    if (!model.byCandidateId.has(row.candidateId)) {
+      model.byCandidateId.set(row.candidateId, row.feedback);
+    }
+    const url = canonicalUrl(row.url);
+    if (url && !model.byUrl.has(url)) model.byUrl.set(url, row.feedback);
+
+    const features = row.features?.length ? row.features : feedbackFeaturesFromCandidate(row);
+    for (const feature of new Set(features)) {
+      const current = model.featureCounts.get(feature) ?? { good: 0, nonLead: 0 };
+      if (row.feedback === "GOOD_RESULT") current.good += 1;
+      if (row.feedback === "NON_LEAD") current.nonLead += 1;
+      model.featureCounts.set(feature, current);
+    }
+  }
+
+  return model;
+}
+
+async function loadFeedbackSignalModel(ownerId: string): Promise<FeedbackSignalModel> {
+  const rows = await db.discoveryFeedback.findMany({
+    where: { ownerId },
+    orderBy: { updatedAt: "desc" },
+    take: MAX_FEEDBACK_ROWS,
+    select: {
+      candidateId: true,
+      url: true,
+      title: true,
+      candidateKind: true,
+      feedback: true,
+      features: true,
+      sourceName: true,
+      provider: true,
+      query: true,
+    },
+  });
+  return buildFeedbackSignalModel(rows);
+}
+
+function evaluateFeedbackSignal(
+  model: FeedbackSignalModel | undefined,
+  candidate: FeedbackFeatureInput & { id: string },
+): FeedbackInsight {
+  const features = feedbackFeaturesFromCandidate(candidate);
+  if (!model || model.rowCount === 0) {
+    return { delta: 0, suppress: false, notes: [], signals: [], features };
+  }
+
+  const exact =
+    model.byCandidateId.get(candidate.id) ??
+    (canonicalUrl(candidate.url) ? model.byUrl.get(canonicalUrl(candidate.url)!) : undefined);
+  if (exact === "NON_LEAD") {
+    return {
+      feedback: exact,
+      delta: -100,
+      suppress: true,
+      notes: ["Tidligere markeret som non-lead"],
+      signals: ["learned non-lead"],
+      features,
+    };
+  }
+
+  let goodScore = exact === "GOOD_RESULT" ? 8 : 0;
+  let nonLeadScore = 0;
+  for (const feature of features) {
+    const count = model.featureCounts.get(feature);
+    if (!count) continue;
+    const weight = feedbackFeatureWeight(feature);
+    goodScore += count.good * weight;
+    nonLeadScore += count.nonLead * weight;
+  }
+
+  const goodConfidence = goodScore - nonLeadScore;
+  const nonLeadConfidence = nonLeadScore - goodScore;
+  if (nonLeadConfidence >= 4) {
+    return {
+      delta: -Math.min(42, Math.round(12 + nonLeadConfidence * 3)),
+      suppress: nonLeadConfidence >= 9,
+      notes: ["Feedback: ligner tidligere non-leads"],
+      signals: ["learned non-lead"],
+      features,
+    };
+  }
+  if (goodConfidence >= 3) {
+    return {
+      feedback: exact,
+      delta: Math.min(22, Math.round(8 + goodConfidence * 2)),
+      suppress: false,
+      notes: ["Feedback: ligner tidligere gemte leads"],
+      signals: ["learned good"],
+      features,
+    };
+  }
+
+  return {
+    feedback: exact,
+    delta: exact === "GOOD_RESULT" ? 10 : 0,
+    suppress: false,
+    notes: exact === "GOOD_RESULT" ? ["Tidligere gemt som godt lead"] : [],
+    signals: exact === "GOOD_RESULT" ? ["learned good"] : [],
+    features,
+  };
 }
 
 function searchProviderFromEnv(
@@ -745,6 +997,7 @@ async function searchResultsToCandidates(
   user: UserProfile,
   workspace: Workspace,
   maxResults: number,
+  feedbackModel?: FeedbackSignalModel,
 ): Promise<DiscoveryCandidateDto[]> {
   const candidates: DiscoveryCandidateDto[] = [];
   const seen = new Set<string>();
@@ -775,12 +1028,19 @@ async function searchResultsToCandidates(
       attachments: page.attachments,
     } as OpportunityCandidate & { workspace?: Workspace });
 
-    candidates.push(await toDiscoveryDto(enriched, user, {
-      sourceName: result.sourceName || sourceLabel(result.url),
-      sourceKind: "web-search",
-      provider: result.provider,
-      query: result.query,
-    }));
+    candidates.push(
+      await toDiscoveryDto(
+        enriched,
+        user,
+        {
+          sourceName: result.sourceName || sourceLabel(result.url),
+          sourceKind: "web-search",
+          provider: result.provider,
+          query: result.query,
+        },
+        feedbackModel,
+      ),
+    );
   }
   return candidates;
 }
@@ -791,6 +1051,7 @@ async function scanSources(
   user: UserProfile,
   workspace: Workspace,
   maxResults: number,
+  feedbackModel?: FeedbackSignalModel,
 ): Promise<{ candidates: DiscoveryCandidateDto[]; scanned: number; warnings: string[] }> {
   const warnings: string[] = [];
   const sources = await db.source.findMany({
@@ -846,12 +1107,19 @@ async function scanSources(
             category: source.category ?? undefined,
           }),
         );
-        candidates.push(await toDiscoveryDto(enriched, user, {
-          sourceName: source.name,
-          sourceKind: "source-scan",
-          provider: "saved-sources",
-          query,
-        }));
+        candidates.push(
+          await toDiscoveryDto(
+            enriched,
+            user,
+            {
+              sourceName: source.name,
+              sourceKind: "source-scan",
+              provider: "saved-sources",
+              query,
+            },
+            feedbackModel,
+          ),
+        );
       }
       if ("id" in source) {
         await db.source.update({ where: { id: source.id }, data: { lastCheckedAt: new Date() } });
@@ -895,6 +1163,7 @@ async function toDiscoveryDto(
   c: OpportunityCandidate,
   user: UserProfile,
   meta: Pick<DiscoveryCandidateDto, "sourceName" | "sourceKind" | "provider" | "query">,
+  feedbackModel?: FeedbackSignalModel,
 ): Promise<DiscoveryCandidateDto> {
   const breakdown = scoreOpportunity(
     { ...c, contacts: c.contacts ?? [] },
@@ -904,16 +1173,36 @@ async function toDiscoveryDto(
     },
   );
   const fit = discoveryFitAdjustment(c);
-  const adjustedTotal = Math.max(0, Math.min(100, breakdown.total + fit.delta));
-  const adjustedBreakdown = { ...breakdown, total: adjustedTotal };
   const hash = dedupeHash(c);
   const detailText = cleanText(c.rawContent || c.description || "", 7000);
   const candidateKind = isSourceLikeCandidate(c, detailText) ? "source" : "opportunity";
   const priceText = extractPriceText(detailText);
-  const aiSummary = await maybeAiSummary(c, user, candidateKind, priceText);
-  const summaryDa = cleanText(aiSummary || buildDanishSummary(c, candidateKind, priceText), 900);
   const deadline = parseMaybeDate(c.deadline);
   const postedAt = parseMaybeDate(c.postedAt);
+  const baseSignals = [...new Set([...signalLabels(c), ...fit.signals])].slice(0, 7);
+  const feedbackInsight = evaluateFeedbackSignal(feedbackModel, {
+    id: hash,
+    title: c.title,
+    description: c.description,
+    rawContent: c.rawContent,
+    url: c.url,
+    candidateKind,
+    category: c.category,
+    applicationRoute: c.applicationRoute,
+    sourceName: meta.sourceName,
+    provider: meta.provider,
+    query: meta.query,
+    signals: baseSignals,
+  });
+  const aiSummary = feedbackInsight.suppress
+    ? undefined
+    : await maybeAiSummary(c, user, candidateKind, priceText);
+  const summaryDa = cleanText(aiSummary || buildDanishSummary(c, candidateKind, priceText), 900);
+  const adjustedTotal = Math.max(
+    0,
+    Math.min(100, breakdown.total + fit.delta + feedbackInsight.delta),
+  );
+  const adjustedBreakdown = { ...breakdown, total: adjustedTotal };
   return {
     id: hash,
     candidateKind,
@@ -940,8 +1229,10 @@ async function toDiscoveryDto(
     attachments: dedupeAttachments(c.attachments),
     matchScore: adjustedTotal,
     scoreBreakdown: adjustedBreakdown,
-    reasons: [...fit.notes, ...reasonsFromScore(adjustedBreakdown)].slice(0, 5),
-    signals: [...new Set([...signalLabels(c), ...fit.signals])].slice(0, 7),
+    reasons: [...feedbackInsight.notes, ...fit.notes, ...reasonsFromScore(adjustedBreakdown)].slice(0, 5),
+    signals: [...new Set([...baseSignals, ...feedbackInsight.signals])].slice(0, 8),
+    feedback: feedbackInsight.feedback,
+    feedbackSuppressed: feedbackInsight.suppress,
     ...meta,
   };
 }
@@ -950,6 +1241,7 @@ function dedupeCandidates(candidates: DiscoveryCandidateDto[], maxResults: numbe
   const seen = new Set<string>();
   const unique: DiscoveryCandidateDto[] = [];
   for (const c of candidates.sort((a, b) => b.matchScore - a.matchScore)) {
+    if (c.feedback === "NON_LEAD" || c.feedbackSuppressed) continue;
     const key = c.url || c.id || c.title.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1001,6 +1293,12 @@ async function markAlreadySaved(ownerId: string, candidates: DiscoveryCandidateD
   });
 }
 
+export const __discoveryTesting = {
+  buildFeedbackSignalModel,
+  evaluateFeedbackSignal,
+  feedbackFeaturesFromCandidate,
+};
+
 export async function runDiscoverySearch(
   ownerId: string,
   input: DiscoverySearchInput,
@@ -1024,6 +1322,7 @@ export async function runDiscoverySearch(
   const maxResults = Math.min(Math.max(input.maxResults ?? 12, 4), 30);
   const queries = buildQueries(input.query, workspace);
   const providerState = searchProviderFromEnv(input.provider, user.aiKeys);
+  const feedbackModel = await loadFeedbackSignalModel(ownerId);
   const warnings: string[] = [];
   let candidates: DiscoveryCandidateDto[] = [];
   let sourceScanCount = 0;
@@ -1036,7 +1335,7 @@ export async function runDiscoverySearch(
         queries,
         maxResults,
       );
-      const webCandidates = await searchResultsToCandidates(webResults, user, workspace, maxResults);
+      const webCandidates = await searchResultsToCandidates(webResults, user, workspace, maxResults, feedbackModel);
       candidates.push(...webCandidates);
     } catch (e) {
       warnings.push(e instanceof Error ? e.message : "Web search failed");
@@ -1048,7 +1347,7 @@ export async function runDiscoverySearch(
   }
 
   if (input.includeSources !== false) {
-    const scanned = await scanSources(ownerId, input.query, user, workspace, maxResults);
+    const scanned = await scanSources(ownerId, input.query, user, workspace, maxResults, feedbackModel);
     sourceScanCount = scanned.scanned;
     candidates.push(...scanned.candidates);
     warnings.push(...scanned.warnings.slice(0, 4));
@@ -1081,7 +1380,14 @@ export async function runDiscoverySearch(
   }
 
   const marked = await markAlreadySaved(ownerId, dedupeCandidates(freshCandidates, maxResults));
-  const unique = marked.filter((candidate) => candidate.feedback !== "NON_LEAD");
+  const beforeFeedbackFilter = marked.length;
+  const unique = marked.filter(
+    (candidate) => candidate.feedback !== "NON_LEAD" && !candidate.feedbackSuppressed,
+  );
+  const feedbackHiddenCount = beforeFeedbackFilter - unique.length;
+  if (feedbackHiddenCount > 0) {
+    warnings.push(`${feedbackHiddenCount} candidates were hidden by your discovery feedback.`);
+  }
   return {
     candidates: unique,
     queries,
@@ -1148,10 +1454,12 @@ export async function saveDiscoveryFeedback(
   reason?: string,
 ) {
   const candidateId = feedbackCandidateId(candidate);
+  const features = feedbackFeaturesFromCandidate(candidate);
   const saved = await db.discoveryFeedback.upsert({
     where: { ownerId_candidateId: { ownerId, candidateId } },
     update: {
       feedback,
+      features,
       reason,
       title: cleanText(candidate.title, 220) || "Untitled result",
       url: candidate.url || null,
@@ -1164,6 +1472,7 @@ export async function saveDiscoveryFeedback(
       ownerId,
       candidateId,
       feedback,
+      features,
       reason,
       title: cleanText(candidate.title, 220) || "Untitled result",
       url: candidate.url || null,
