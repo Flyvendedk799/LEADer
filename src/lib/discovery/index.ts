@@ -68,6 +68,7 @@ export interface DiscoveryCandidateDto {
   scoreBreakdown: ScoreBreakdown;
   reasons: string[];
   signals: string[];
+  feedback?: "GOOD_RESULT" | "NON_LEAD";
   alreadySaved?: { id: string; title: string };
   alreadySavedSource?: { id: string; name: string };
 }
@@ -120,6 +121,7 @@ export type DiscoveryCandidateSaveInput = {
   provider?: string;
   query?: string;
   signals?: string[];
+  feedback?: "GOOD_RESULT" | "NON_LEAD";
 };
 
 interface UserProfile {
@@ -962,7 +964,7 @@ async function markAlreadySaved(ownerId: string, candidates: DiscoveryCandidateD
   const urls = candidates.map((c) => c.url).filter(Boolean) as string[];
   if (!hashes.length && !urls.length) return candidates;
 
-  const [saved, savedSources] = await Promise.all([
+  const [saved, savedSources, feedbackRows] = await Promise.all([
     db.opportunity.findMany({
       where: {
         ownerId,
@@ -979,12 +981,20 @@ async function markAlreadySaved(ownerId: string, candidates: DiscoveryCandidateD
           select: { id: true, name: true, url: true },
         })
       : Promise.resolve([]),
+    hashes.length
+      ? db.discoveryFeedback.findMany({
+          where: { ownerId, candidateId: { in: hashes } },
+          select: { candidateId: true, feedback: true },
+        })
+      : Promise.resolve([]),
   ]);
   return candidates.map((c) => {
     const match = saved.find((s) => s.dedupeHash === c.id || (c.url && s.url === c.url));
     const sourceMatch = savedSources.find((s) => c.url && s.url === c.url);
+    const feedbackMatch = feedbackRows.find((f) => f.candidateId === c.id);
     return {
       ...c,
+      ...(feedbackMatch ? { feedback: feedbackMatch.feedback } : {}),
       ...(match ? { alreadySaved: { id: match.id, title: match.title } } : {}),
       ...(sourceMatch ? { alreadySavedSource: { id: sourceMatch.id, name: sourceMatch.name } } : {}),
     };
@@ -1070,7 +1080,8 @@ export async function runDiscoverySearch(
     warnings.push(`${hiddenCount} expired or stale candidates were hidden from the review list.`);
   }
 
-  const unique = await markAlreadySaved(ownerId, dedupeCandidates(freshCandidates, maxResults));
+  const marked = await markAlreadySaved(ownerId, dedupeCandidates(freshCandidates, maxResults));
+  const unique = marked.filter((candidate) => candidate.feedback !== "NON_LEAD");
   return {
     candidates: unique,
     queries,
@@ -1116,6 +1127,54 @@ function sourceKeywordsFromCandidate(candidate: DiscoveryCandidateSaveInput, wor
     .map((word) => word.trim())
     .filter((word) => word && (word.length >= 3 || word === "ai") && !blocked.has(word));
   return [...new Set(words)].slice(0, 14);
+}
+
+function feedbackCandidateId(candidate: DiscoveryCandidateSaveInput): string {
+  if (candidate.id) return candidate.id;
+  const base = enrichCandidate({
+    title: candidate.title,
+    description: candidate.summaryDa || candidate.description,
+    rawContent: candidate.detailText || candidate.rawContent,
+    url: candidate.url,
+    organization: candidate.organization || candidate.sourceName,
+  });
+  return dedupeHash(base);
+}
+
+export async function saveDiscoveryFeedback(
+  ownerId: string,
+  candidate: DiscoveryCandidateSaveInput,
+  feedback: "GOOD_RESULT" | "NON_LEAD",
+  reason?: string,
+) {
+  const candidateId = feedbackCandidateId(candidate);
+  const saved = await db.discoveryFeedback.upsert({
+    where: { ownerId_candidateId: { ownerId, candidateId } },
+    update: {
+      feedback,
+      reason,
+      title: cleanText(candidate.title, 220) || "Untitled result",
+      url: candidate.url || null,
+      candidateKind: candidate.candidateKind,
+      sourceName: candidate.sourceName,
+      provider: candidate.provider,
+      query: candidate.query,
+    },
+    create: {
+      ownerId,
+      candidateId,
+      feedback,
+      reason,
+      title: cleanText(candidate.title, 220) || "Untitled result",
+      url: candidate.url || null,
+      candidateKind: candidate.candidateKind,
+      sourceName: candidate.sourceName,
+      provider: candidate.provider,
+      query: candidate.query,
+    },
+    select: { id: true, candidateId: true, feedback: true },
+  });
+  return { feedback: saved };
 }
 
 export async function saveDiscoverySource(
@@ -1197,7 +1256,10 @@ export async function saveDiscoveryCandidate(
     },
     select: { id: true, title: true },
   });
-  if (existing) return { opportunity: existing, created: false };
+  if (existing) {
+    await saveDiscoveryFeedback(ownerId, candidate, "GOOD_RESULT");
+    return { opportunity: existing, created: false };
+  }
 
   const user = await db.user.findUnique({
     where: { id: ownerId },
@@ -1278,6 +1340,7 @@ export async function saveDiscoveryCandidate(
   });
 
   await ensureEmbedding(opportunity.id);
+  await saveDiscoveryFeedback(ownerId, candidate, "GOOD_RESULT");
 
   if (breakdown.total >= 80) {
     await db.alert.create({

@@ -15,6 +15,7 @@ import {
   Radar,
   Search,
   SlidersHorizontal,
+  ThumbsDown,
 } from "lucide-react";
 
 import type { DiscoveryCandidateDto, DiscoverySearchResult } from "@/lib/discovery";
@@ -53,6 +54,7 @@ export function DiscoveryWorkbench({
   const [result, setResult] = React.useState<DiscoverySearchResult | null>(null);
   const [saving, setSaving] = React.useState<Record<string, boolean>>({});
   const [savingSource, setSavingSource] = React.useState<Record<string, boolean>>({});
+  const [markingNonLead, setMarkingNonLead] = React.useState<Record<string, boolean>>({});
 
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault();
@@ -162,6 +164,37 @@ export function DiscoveryWorkbench({
       toast.error("Could not save source", message);
     } finally {
       setSavingSource((s) => ({ ...s, [candidate.id]: false }));
+    }
+  }
+
+  async function markNonLead(candidate: DiscoveryCandidateDto) {
+    setMarkingNonLead((s) => ({ ...s, [candidate.id]: true }));
+    try {
+      const res = await fetch("/api/discover/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidate,
+          feedback: "NON_LEAD",
+          reason: "Marked as non-lead from Discover review",
+        }),
+      });
+      const data = (await res.json()) as { feedback?: { id: string }; error?: string };
+      if (!res.ok || !data.feedback) throw new Error(data.error || "Feedback failed");
+      setResult((current) =>
+        current
+          ? {
+              ...current,
+              candidates: current.candidates.filter((c) => c.id !== candidate.id),
+            }
+          : current,
+      );
+      toast.success("Marked as non-lead", candidate.title);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Feedback failed";
+      toast.error("Could not mark non-lead", message);
+    } finally {
+      setMarkingNonLead((s) => ({ ...s, [candidate.id]: false }));
     }
   }
 
@@ -306,8 +339,10 @@ export function DiscoveryWorkbench({
                     candidate={candidate}
                     saving={saving[candidate.id] === true}
                     savingSource={savingSource[candidate.id] === true}
+                    markingNonLead={markingNonLead[candidate.id] === true}
                     onSave={() => saveCandidate(candidate)}
                     onSaveSource={() => saveSource(candidate)}
+                    onMarkNonLead={() => markNonLead(candidate)}
                   />
                 ))}
               </div>
@@ -349,14 +384,18 @@ function CandidateCard({
   candidate,
   saving,
   savingSource,
+  markingNonLead,
   onSave,
   onSaveSource,
+  onMarkNonLead,
 }: {
   candidate: DiscoveryCandidateDto;
   saving: boolean;
   savingSource: boolean;
+  markingNonLead: boolean;
   onSave: () => void;
   onSaveSource: () => void;
+  onMarkNonLead: () => void;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   const saved = candidate.alreadySaved;
@@ -515,6 +554,17 @@ function CandidateCard({
               {expanded ? "Skjul" : "Læs mere"}
             </Button>
           )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-destructive"
+            onClick={onMarkNonLead}
+            disabled={markingNonLead || saving || savingSource}
+          >
+            {markingNonLead ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsDown className="h-4 w-4" />}
+            Non-lead
+          </Button>
           {isSource ? (
             savedSource ? (
               <Button asChild variant="outline" size="sm">

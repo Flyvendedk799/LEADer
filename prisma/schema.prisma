@@ -100,6 +100,11 @@ enum CommunityImportStatus {
   DISCARDED
 }
 
+enum DiscoveryFeedbackType {
+  GOOD_RESULT
+  NON_LEAD
+}
+
 // ─────────────────────────────── Models ──────────────────────────────
 
 enum UserRole {
@@ -135,6 +140,7 @@ model User {
   lists          List[]
   watchlistItems WatchlistItem[]
   savedSearches  SavedSearch[]
+  discoveryFeedback DiscoveryFeedback[]
   alerts         Alert[]
   drafts         Draft[]
   notes          Note[]
@@ -413,6 +419,27 @@ model DiscoveryRun {
   log         String?  @db.Text
 
   @@index([sourceId, startedAt])
+}
+
+model DiscoveryFeedback {
+  id            String                @id @default(cuid())
+  ownerId       String
+  owner         User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  candidateId   String
+  url           String?
+  title         String
+  candidateKind String?
+  feedback      DiscoveryFeedbackType
+  reason        String?
+  sourceName    String?
+  provider      String?
+  query         String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@unique([ownerId, candidateId])
+  @@index([ownerId, feedback])
+  @@index([ownerId, url])
 }
 
 model Alert {
