@@ -19,6 +19,7 @@ scoring, compliant ingestion, AI assistance, and one-click exports.
 
 | Module | What you get |
 |---|---|
+| **Discover workbench** | Describe the lead you want (e.g. funded MVP / software udbud / SMV:Digital / AI automation) → Lida searches via Tavily, Brave, or Serper, scans saved sources, extracts candidates, scores them, and lets you save good leads into the pipeline. |
 | **Source Management** | Add public websites, RSS, procurement portals, accelerator pages, newsletters, APIs, or community/manual sources. Keywords, region, category, frequency, enable/disable, last-checked. |
 | **Discovery engine** | Compliant fetch of **public** pages/RSS → parse → extract budget/deadline/contact → dedupe → score → store. Site-specific parser stubs for EHSYS / Beyond Beta / Erhvervshuse. |
 | **Community import** | Compliant, **manual-only** Facebook/community import (paste text+URL → AI extract → confirm). Never scrapes closed groups. |
@@ -121,20 +122,31 @@ docker compose --profile full up --build   # app + Postgres
    instructions included for EHSYS, Beyond Beta, Erhvervshuse, accelerators, procurement)
    and set the source's `parserKey`.
 
-3. **Scheduled discovery** — `POST /api/cron/discover` runs due automatable sources for every
+3. **On-demand discovery search** — add one search provider key to make **Discover** search
+   the broader web instead of only scanning saved sources:
+   ```
+   TAVILY_API_KEY="tvly-..."          # preferred for AI-agent style search
+   BRAVE_SEARCH_API_KEY="..."         # Brave's independent web index
+   SERPER_API_KEY="..."               # Google SERP results via Serper
+   ```
+   The Discover page combines provider results with saved-source scans, then dedupes,
+   extracts budget/deadline/contact signals, scores candidates and saves selected leads as
+   automated discoveries.
+
+4. **Scheduled discovery** — `POST /api/cron/discover` runs due automatable sources for every
    owner (frequency-aware). Wire it to Vercel Cron, a system cron, or `npm run discover`.
    Protect it with `CRON_SECRET` (sent as the `x-cron-secret` header).
 
-4. **Email alerts** — set `EMAIL_PROVIDER=resend` + `EMAIL_API_KEY` + `EMAIL_FROM` to deliver
+5. **Email alerts** — set `EMAIL_PROVIDER=resend` + `EMAIL_API_KEY` + `EMAIL_FROM` to deliver
    digests & deadline reminders for real (use `console` to print them in dev). With no provider
    set, alerts stay in-app (`Alert` rows, surfaced by the topbar bell). Schedule
    `POST /api/cron/alerts` (also `CRON_SECRET`-guarded) for daily reminders/digests.
 
-5. **Semantic search** — "find similar" uses embeddings. With `LLM_API_KEY` set it calls the
+6. **Semantic search** — "find similar" uses embeddings. With `LLM_API_KEY` set it calls the
    configured `/embeddings` endpoint; offline it uses a deterministic local vector. Run
    `npm run embeddings:backfill` after importing data, or rely on auto-embedding at create time.
 
-6. **Auth** — accounts are real out of the box (scrypt + server-side sessions). For SSO/OAuth,
+7. **Auth** — accounts are real out of the box (scrypt + server-side sessions). For SSO/OAuth,
    swap the body of `register`/`login` in `src/lib/auth` — every query already scopes by `ownerId`.
 
 ---

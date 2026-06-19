@@ -59,7 +59,7 @@ export default async function OpportunitiesPage({
     <div className="px-6 py-6">
       <PageHeader
         title="Opportunities"
-        description="Your lead pipeline — scored, filtered and ready to action."
+        description="Manage leads you discovered, saved or imported."
       >
         <NewOpportunityDialog />
         <ExportDialog filters={filters as Record<string, unknown>} />

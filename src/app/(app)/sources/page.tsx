@@ -21,7 +21,7 @@ export default async function SourcesPage() {
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
       <PageHeader
         title="Sources"
-        description="Public sources are monitored automatically; community sources are manual-only."
+        description="Known places Lida can scan alongside on-demand Discover searches."
       >
         <SourceForm />
       </PageHeader>

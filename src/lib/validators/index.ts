@@ -162,6 +162,54 @@ export const exportRequestSchema = z.object({
   title: z.string().optional(),
 });
 
+// ── Discovery ────────────────────────────────────────────────────────────────
+export const discoverySearchSchema = z.object({
+  query: z.string().min(3).max(500),
+  workspace: zWorkspace.default("DK"),
+  maxResults: z.number().int().min(4).max(30).default(12),
+  includeWeb: z.boolean().default(true),
+  includeSources: z.boolean().default(true),
+  provider: z.enum(["auto", "tavily", "brave", "serper", "none"]).default("auto"),
+});
+
+export const discoveryCandidateSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(3),
+  description: z.string().optional(),
+  rawContent: z.string().optional(),
+  url: z.string().url().optional().or(z.literal("")),
+  organization: z.string().optional(),
+  location: z.string().optional(),
+  country: z.string().optional(),
+  region: z.string().optional(),
+  category: z.string().optional(),
+  budgetMin: z.number().int().nonnegative().optional(),
+  budgetMax: z.number().int().nonnegative().optional(),
+  currency: z.string().default("DKK"),
+  deadline: z.string().optional(),
+  postedAt: z.string().optional(),
+  applicationRoute: zApplicationRoute.default("UNKNOWN"),
+  contacts: z
+    .array(z.object({ name: z.string().optional(), email: z.string().optional(), role: z.string().optional() }))
+    .default([]),
+  sourceName: z.string().default("Discover"),
+  sourceKind: z.enum(["web-search", "source-scan"]).default("web-search"),
+  provider: z.string().default("discover"),
+  query: z.string().default(""),
+  matchScore: z.number().optional(),
+  scoreBreakdown: z.record(z.unknown()).optional(),
+  reasons: z.array(z.string()).default([]),
+  signals: z.array(z.string()).default([]),
+});
+
+export const discoverySaveSchema = z.object({
+  workspace: zWorkspace.default("DK"),
+  candidate: discoveryCandidateSchema.refine(
+    (d) => d.budgetMin == null || d.budgetMax == null || d.budgetMin <= d.budgetMax,
+    { message: "budgetMin must be less than or equal to budgetMax", path: ["budgetMax"] },
+  ),
+});
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 export const settingsSchema = z.object({
   name: z.string().optional(),

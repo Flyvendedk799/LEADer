@@ -62,31 +62,31 @@ async function main() {
     db.source.create({ data: { ...s, ownerId: user.id } });
 
   const ehsys = await mk({
-    name: "EHSYS — opportunity listings", type: "PUBLIC_WEB", workspace: "DK",
-    url: "https://example-ehsys.dk/opportunities", parserKey: "ehsys",
-    keywords: ["udvikler", "mvp", "ai", "digital"], country: "DK", category: "Innovation",
-    frequency: "DAILY", notes: "TODO: implement real EHSYS parser (selectors) in lib/ingestion/parsers.",
+    name: "Udbud.dk — public procurement", type: "PROCUREMENT", workspace: "DK",
+    url: "https://udbud.dk/", parserKey: "procurement",
+    keywords: ["software", "udvikling", "IT", "webapp", "konsulent"], country: "DK", category: "Tender",
+    frequency: "DAILY", notes: "Official Danish public procurement portal. Use Discover web search for broader query coverage.",
   });
   const beyondBeta = await mk({
-    name: "Beyond Beta — programme calls", type: "ACCELERATOR", workspace: "DK",
-    url: "https://example-beyondbeta.dk/programmes", parserKey: "beyond-beta",
+    name: "Beyond Beta — startup programme calls", type: "ACCELERATOR", workspace: "DK",
+    url: "https://www.beyondbeta.dk/", parserKey: "beyond-beta",
     keywords: ["startup", "scaleup", "tech"], country: "DK", category: "Accelerator", frequency: "WEEKLY",
   });
   const erhvervshus = await mk({
-    name: "Erhvervshus Hovedstaden — voucher programmes", type: "PUBLIC_WEB", workspace: "DK",
-    url: "https://example-erhvervshus.dk/tilskud", parserKey: "erhvervshuse",
+    name: "Virksomhedsguiden — digitalisation grants", type: "PUBLIC_WEB", workspace: "DK",
+    url: "https://virksomhedsguiden.dk/content/ydelser/digitalisering-raadgivertilskud/00f2ddc0-76bb-4cb8-b15c-989ed1228c3d/", parserKey: "erhvervshuse",
     keywords: ["voucher", "tilskud", "digitalisering", "innovationsagent"], country: "DK",
     category: "Voucher / grant", frequency: "DAILY",
   });
   const innofond = await mk({
-    name: "Innovationsfonden — InnoBooster (RSS)", type: "RSS", workspace: "DK",
-    url: "https://example-innovationsfonden.dk/feed.xml",
-    keywords: ["innobooster", "tilskud", "projekt"], country: "DK", category: "Funding", frequency: "DAILY",
+    name: "Innovationsfonden — Innobooster", type: "PUBLIC_WEB", workspace: "DK",
+    url: "https://innovationsfonden.dk/en/p/innobooster",
+    keywords: ["innobooster", "tilskud", "projekt", "startup"], country: "DK", category: "Funding", frequency: "WEEKLY",
   });
   const procurement = await mk({
-    name: "Public procurement (tender-like)", type: "PROCUREMENT", workspace: "DK",
-    url: "https://example-udbud.dk/it", parserKey: "procurement",
-    keywords: ["it", "software", "udvikling", "konsulent"], country: "DK", category: "Tender", frequency: "DAILY",
+    name: "Virksomhedsguiden — SMV:Digital", type: "PUBLIC_WEB", workspace: "DK",
+    url: "https://virksomhedsguiden.dk/content/udbyder/smvdigital/", parserKey: "erhvervshuse",
+    keywords: ["SMV:Digital", "software", "digitalisering", "rådgivning"], country: "DK", category: "Voucher / grant", frequency: "WEEKLY",
   });
   const community = await mk({
     name: "FB: Danish Startup Founders", type: "FACEBOOK_MANUAL", workspace: "DK",
@@ -95,8 +95,8 @@ async function main() {
     notes: "Manual import only — paste posts via Community Import. Never scraped.",
   });
   const ycEU = await mk({
-    name: "Global accelerator calls (RSS)", type: "RSS", workspace: "GLOBAL",
-    url: "https://example-global-accelerators.com/feed.xml",
+    name: "YC companies — global founder signals", type: "PUBLIC_WEB", workspace: "GLOBAL",
+    url: "https://www.ycombinator.com/jobs",
     keywords: ["startup", "mvp", "ai", "fellowship", "grant"], country: "", category: "Accelerator", frequency: "WEEKLY",
   });
 

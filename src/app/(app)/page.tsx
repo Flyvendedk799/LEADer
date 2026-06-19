@@ -5,6 +5,7 @@ import {
   Activity,
   Banknote,
   CheckCircle2,
+  Search,
   Sparkles,
   Star,
   TrendingUp,
@@ -16,6 +17,7 @@ import { STATUS_META } from "@/lib/display";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { DeadlinesPanel } from "@/components/dashboard/deadlines-panel";
@@ -29,8 +31,15 @@ export default async function DashboardPage() {
     <div>
       <PageHeader
         title="Dashboard"
-        description="Your Danish opportunity pipeline at a glance."
-      />
+        description="Your Danish lead engine at a glance."
+      >
+        <Button asChild>
+          <Link href="/discover">
+            <Search className="h-4 w-4" />
+            Find leads
+          </Link>
+        </Button>
+      </PageHeader>
 
       {/* Top row: headline metrics */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
@@ -130,7 +139,7 @@ export default async function DashboardPage() {
           <div className="mt-6">
             <EmptyState
               title="No opportunities yet"
-              description="Add a source to start discovering Danish opportunities, or create one manually."
+              description="Start with Discover to search Danish software, MVP, AI and udbud leads."
             />
           </div>
         )}

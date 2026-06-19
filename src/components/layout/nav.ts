@@ -4,6 +4,7 @@ import {
   Globe2,
   LayoutDashboard,
   ListChecks,
+  Search,
   Radar,
   Settings,
   Star,
@@ -19,6 +20,7 @@ export interface NavItem {
 
 /** Primary (Denmark) navigation — shared by the desktop sidebar and mobile drawer. */
 export const PRIMARY_NAV: NavItem[] = [
+  { href: "/discover", label: "Discover", icon: Search },
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/opportunities", label: "Opportunities", icon: Target },
   { href: "/board", label: "Pipeline board", icon: Columns3 },
