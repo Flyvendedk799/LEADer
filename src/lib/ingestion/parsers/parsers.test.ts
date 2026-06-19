@@ -122,4 +122,29 @@ describe("parser registry", () => {
     expect(out[0].title).toBe("Tilskud til digitalisering");
     expect(out[0].organization).toBe("Erhvervshus");
   });
+
+  it("extracts EHSYS procurement rows from the current-indkoeb table", () => {
+    const html = `<div class="table list">
+      <a href="https://beyondbeta.ehsys.dk/indkoeb/tilbud/indsend/b51a466c?from=https%3A%2F%2Fehsys.dk%2Findkoeb%2Falle" class="table-row">
+        <div class="table-cell text-top content-fit hide-md">29-05-2026</div>
+        <div class="table-cell text-top content-fit hide-md">19-06-2026 23.45</div>
+        <div class="table-cell text-top hide-md">Center for Sikkerhedsindustrien i Danmark (CenSec)</div>
+        <div class="table-cell text-top hide-lg">Beyond Beta</div>
+        <div class="table-cell text-top">
+          <div>Teknisk sparring (Algoritme &amp; produkt)</div>
+        </div>
+        <div class="table-cell actions">-&gt;</div>
+      </a>
+    </div>`;
+    const $ = cheerio.load(html);
+    const parser = getParser("ehsys-procurement")!;
+    const out = parser($, "https://ehsys.dk/indkoeb/alle");
+    expect(out).toHaveLength(1);
+    expect(out[0].title).toBe("Teknisk sparring (Algoritme & produkt)");
+    expect(out[0].organization).toContain("CenSec");
+    expect(out[0].category).toBe("MVP / prototype");
+    expect(out[0].deadline?.getFullYear()).toBe(2026);
+    expect(out[0].applicationRoute).toBe("APPLICATION");
+    expect(out[0].url).toContain("beyondbeta.ehsys.dk/indkoeb/tilbud/indsend");
+  });
 });

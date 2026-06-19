@@ -62,10 +62,10 @@ async function main() {
     db.source.create({ data: { ...s, ownerId: user.id } });
 
   const ehsys = await mk({
-    name: "Udbud.dk — public procurement", type: "PROCUREMENT", workspace: "DK",
-    url: "https://udbud.dk/", parserKey: "procurement",
-    keywords: ["software", "udvikling", "IT", "webapp", "konsulent"], country: "DK", category: "Tender",
-    frequency: "DAILY", notes: "Official Danish public procurement portal. Use Discover web search for broader query coverage.",
+    name: "EHSYS — aktuelle indkøb", type: "PUBLIC_WEB", workspace: "DK",
+    url: "https://ehsys.dk/indkoeb/alle", parserKey: "ehsys-procurement",
+    keywords: ["teknisk", "produkt", "roadmap", "software", "AI", "Beyond Beta"], country: "DK", category: "Tender",
+    frequency: "DAILY", notes: "High-signal supplier opportunities from EHSYS programmes including Beyond Beta and Erhvervshus initiatives.",
   });
   const beyondBeta = await mk({
     name: "Beyond Beta — startup programme calls", type: "ACCELERATOR", workspace: "DK",
@@ -84,6 +84,12 @@ async function main() {
     keywords: ["innobooster", "tilskud", "projekt", "startup"], country: "DK", category: "Funding", frequency: "WEEKLY",
   });
   const procurement = await mk({
+    name: "Udbud.dk — public procurement", type: "PROCUREMENT", workspace: "DK",
+    url: "https://udbud.dk/", parserKey: "procurement",
+    keywords: ["software", "udvikling", "IT", "webapp", "konsulent"], country: "DK", category: "Tender",
+    frequency: "DAILY", notes: "Official Danish public procurement portal. Use Discover web search for broader query coverage.",
+  });
+  await mk({
     name: "Virksomhedsguiden — SMV:Digital", type: "PUBLIC_WEB", workspace: "DK",
     url: "https://virksomhedsguiden.dk/content/udbyder/smvdigital/", parserKey: "erhvervshuse",
     keywords: ["SMV:Digital", "software", "digitalisering", "rådgivning"], country: "DK", category: "Voucher / grant", frequency: "WEEKLY",

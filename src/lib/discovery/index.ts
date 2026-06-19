@@ -121,6 +121,19 @@ interface UserProfile {
 const MAX_PAGE_FETCHES = 10;
 const MAX_SCAN_SOURCES = 8;
 
+const CURATED_DK_DISCOVERY_SOURCES = [
+  {
+    name: "EHSYS — aktuelle indkøb",
+    url: "https://ehsys.dk/indkoeb/alle",
+    type: "PUBLIC_WEB" as SourceType,
+    parserKey: "ehsys-procurement",
+    keywords: [] as string[],
+    country: "DK",
+    region: undefined as string | undefined,
+    category: "Tender",
+  },
+] as const;
+
 function cleanText(value = "", max = 1600): string {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
 }
@@ -191,8 +204,9 @@ function buildQueries(query: string, workspace: Workspace): string[] {
     workspace === "DK"
       ? [
           q,
+          `${q} site:ehsys.dk/indkoeb/alle OR site:beyondbeta.ehsys.dk/indkoeb/tilbud/indsend OR site:ivaerksaetter.ehsys.dk/indkoeb/tilbud/indsend`,
           `${q} ${country} udbud software udvikling IT konsulent`,
-          `${q} ${country} startup søger udvikler MVP prototype tilskud voucher`,
+          `${q} ${country} EHSYS indkøb tilbud Beyond Beta teknisk sparring produkt roadmap`,
           `${q} ${country} SMV Digital digitalisering rådgivning software`,
         ]
       : [
@@ -220,7 +234,7 @@ function parseMaybeDate(value?: string | Date | null): Date | null {
 
 function categoryFromText(text: string): string | undefined {
   const t = text.toLowerCase();
-  if (/ai|llm|kunstig intelligens|automation|automatisering|chatbot/.test(t)) return "AI / automation";
+  if (/\bai\b|llm|kunstig intelligens|automation|automatisering|chatbot/.test(t)) return "AI / automation";
   if (/mvp|prototype|proof.of.concept|poc|startup|founder/.test(t)) return "MVP / prototype";
   if (/smv.?digital|voucher|tilskud|bevilling|innobooster|erhvervshus/.test(t)) return "Voucher / grant";
   if (/udbud|tender|procurement|offentlig/.test(t)) return "Tender";
@@ -239,11 +253,64 @@ function signalLabels(c: OpportunityCandidate): string[] {
   if (c.budgetMin || c.budgetMax) signals.push("budget");
   if (c.deadline) signals.push("deadline");
   if (/mvp|prototype|poc/.test(text)) signals.push("MVP");
-  if (/ai|llm|automation|automatisering/.test(text)) signals.push("AI");
+  if (/\bai\b|llm|automation|automatisering/.test(text)) signals.push("AI");
   if (/voucher|tilskud|bevilling|smv.?digital|innobooster/.test(text)) signals.push("funding");
   if (/udbud|tender|procurement/.test(text)) signals.push("udbud");
   if (/kontakt|contact|email|e-mail|@/.test(text)) signals.push("contactable");
   return [...new Set(signals)].slice(0, 6);
+}
+
+function discoveryFitAdjustment(c: OpportunityCandidate): { delta: number; notes: string[]; signals: string[] } {
+  const text = `${c.title} ${c.description ?? ""} ${c.rawContent ?? ""}`.toLowerCase();
+  const positive = [
+    "teknisk", "technical", "software", "softwareudvikling", "udvikling",
+    "developer", "udvikler", "app", "web", "platform", "produkt", "product",
+    "roadmap", "mvp", "prototype", "poc", "proof of concept", "algoritme",
+    "algorithm", "ai", "automation", "automatisering", "data", "integration",
+    "security", "sikkerhed", "digitalisering", "system", "api", "saas",
+  ];
+  const negative = [
+    "juridisk", "legal", "ip-rettigheder", "ip rights", "branding", "content",
+    "salg", "sales", "fundraising", "soft funding", "investor readiness",
+    "kommunikation", "communication", "regulatory", "classification", "claims",
+    "dossier", "biosafety", "lab training", "masterclass", "masterclasses",
+    "kapitalrejsning",
+  ];
+  const positiveHits = positive.filter((term) =>
+    term === "ai" ? /\bai\b/.test(text) : text.includes(term),
+  );
+  const negativeHits = negative.filter((term) => text.includes(term));
+  let delta = 0;
+  const notes: string[] = [];
+  const signals: string[] = [];
+
+  if (positiveHits.length >= 2) {
+    delta += 14;
+    notes.push("Strong technical/product signal");
+    signals.push("technical fit");
+  } else if (positiveHits.length === 1) {
+    delta += 6;
+    notes.push("Some technical/product signal");
+  } else {
+    delta -= 18;
+    notes.push("Weak technical/software signal");
+  }
+
+  if (negativeHits.length >= 2) {
+    delta -= 35;
+    notes.push("Likely non-coding advisory/admin work");
+    signals.push("low fit");
+  } else if (negativeHits.length === 1) {
+    delta -= 22;
+    notes.push("Possible non-coding lead");
+  }
+
+  if (/beyond beta|ehsys|indkøb|indkoeb|tilbudsfrist/.test(text) && positiveHits.length > 0) {
+    delta += 6;
+    signals.push("supplier lead");
+  }
+
+  return { delta, notes, signals };
 }
 
 function reasonsFromScore(breakdown: ScoreBreakdown): string[] {
@@ -477,6 +544,20 @@ async function scanSources(
     orderBy: [{ lastCheckedAt: "asc" }, { createdAt: "desc" }],
     take: MAX_SCAN_SOURCES,
   });
+  const scanTargets = [
+    ...sources.map((source) => ({
+      id: source.id,
+      name: source.name,
+      url: source.url,
+      type: source.type as SourceType,
+      keywords: source.keywords,
+      parserKey: source.parserKey,
+      country: source.country ?? undefined,
+      region: source.region ?? undefined,
+      category: source.category ?? undefined,
+    })),
+    ...(workspace === "DK" ? CURATED_DK_DISCOVERY_SOURCES : []),
+  ];
   const candidates: DiscoveryCandidateDto[] = [];
   const queryKeywords = query
     .split(/[,\s]+/)
@@ -484,10 +565,11 @@ async function scanSources(
     .filter((k) => k.length >= 3)
     .slice(0, 10);
 
-  for (const source of sources) {
+  for (const source of scanTargets) {
     if (!source.url || candidates.length >= maxResults) break;
     try {
-      const mergedKeywords = [...new Set([...source.keywords, ...queryKeywords])];
+      const isCurated = !("id" in source);
+      const mergedKeywords = isCurated ? [] : [...new Set([...source.keywords, ...queryKeywords])];
       const raw =
         source.type === "RSS" || source.type === "NEWSLETTER"
           ? await fetchRssCandidates(source.url, mergedKeywords)
@@ -509,12 +591,14 @@ async function scanSources(
           query,
         }));
       }
-      await db.source.update({ where: { id: source.id }, data: { lastCheckedAt: new Date() } });
+      if ("id" in source) {
+        await db.source.update({ where: { id: source.id }, data: { lastCheckedAt: new Date() } });
+      }
     } catch (e) {
       warnings.push(`${source.name}: ${e instanceof Error ? e.message : "scan failed"}`);
     }
   }
-  return { candidates, scanned: sources.length, warnings };
+  return { candidates, scanned: scanTargets.length, warnings };
 }
 
 async function maybeAiSummary(c: OpportunityCandidate, user: UserProfile): Promise<string | undefined> {
@@ -544,6 +628,9 @@ async function toDiscoveryDto(
       weights: (user.scoringWeights as Partial<ScoreWeights>) || undefined,
     },
   );
+  const fit = discoveryFitAdjustment(c);
+  const adjustedTotal = Math.max(0, Math.min(100, breakdown.total + fit.delta));
+  const adjustedBreakdown = { ...breakdown, total: adjustedTotal };
   const hash = dedupeHash(c);
   const aiSummary = await maybeAiSummary(c, user);
   const deadline = parseMaybeDate(c.deadline);
@@ -566,10 +653,10 @@ async function toDiscoveryDto(
     postedAt: postedAt ? postedAt.toISOString() : undefined,
     applicationRoute: c.applicationRoute ?? "UNKNOWN",
     contacts: c.contacts ?? [],
-    matchScore: breakdown.total,
-    scoreBreakdown: breakdown,
-    reasons: reasonsFromScore(breakdown),
-    signals: signalLabels(c),
+    matchScore: adjustedTotal,
+    scoreBreakdown: adjustedBreakdown,
+    reasons: [...fit.notes, ...reasonsFromScore(adjustedBreakdown)].slice(0, 5),
+    signals: [...new Set([...signalLabels(c), ...fit.signals])].slice(0, 7),
     ...meta,
   };
 }

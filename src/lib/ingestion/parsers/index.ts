@@ -1,5 +1,6 @@
 import type * as cheerio from "cheerio";
 import type { OpportunityCandidate } from "../dedupe";
+import { extractDeadline } from "../extract";
 import { extractStructured } from "./structured";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -132,6 +133,59 @@ const ehsys = fromConfig({
   minDescription: 24,
 });
 
+function ehsysProcurement($: cheerio.CheerioAPI, pageUrl: string): OpportunityCandidate[] {
+  const out: OpportunityCandidate[] = [];
+  const seen = new Set<string>();
+
+  $(".table.list > a.table-row, a.table-row[href*='/indkoeb/tilbud/indsend/']").each((_, el) => {
+    const $row = $(el);
+    const href = $row.attr("href");
+    const url = abs(href, pageUrl) || pageUrl;
+    const cells = $row.children(".table-cell").not(".actions");
+    const announcedText = clean(cells.eq(0).text());
+    const deadlineText = clean(cells.eq(1).text());
+    const organization = clean(cells.eq(2).text()) || undefined;
+    const program = clean(cells.eq(3).text()) || undefined;
+    const titleCell = cells.eq(4);
+    const title =
+      clean(titleCell.children("div").first().text()) ||
+      clean(titleCell.clone().children(".hide").remove().end().text());
+
+    if (!title || title.length < 6 || seen.has(url)) return;
+    seen.add(url);
+    const technicalTitle = /teknisk|technical|produkt|product|roadmap|mvp|prototype|poc|software|algoritme|algorithm|\bai\b|data|security|platform/i.test(title);
+
+    const description = [
+      title,
+      organization ? `Udbyder: ${organization}` : "",
+      program ? `Program: ${program}` : "",
+      announcedText ? `Annonceret: ${announcedText}` : "",
+      deadlineText ? `Tilbudsfrist: ${deadlineText}` : "",
+      "Leverandørrettet indkøb / udbud via EHSYS.",
+    ]
+      .filter(Boolean)
+      .join(". ");
+
+    out.push({
+      title: title.slice(0, 250),
+      description,
+      rawContent: clean($row.text()).slice(0, 4000),
+      url,
+      organization,
+      category: technicalTitle
+        ? "MVP / prototype"
+        : program?.toLowerCase().includes("beyond beta")
+          ? "Accelerator"
+          : "Tender",
+      postedAt: extractDeadline(announcedText),
+      deadline: extractDeadline(deadlineText),
+      applicationRoute: "APPLICATION",
+    });
+  });
+
+  return out;
+}
+
 const beyondBeta = fromConfig({
   item: ".programme, .program-card, article, .card",
   title: "h2, h3, .card-title, a",
@@ -167,7 +221,11 @@ const procurement = fromConfig({
 });
 
 export const PARSERS: Record<string, SiteParser> = {
-  ehsys,
+  ehsys: ($, pageUrl) => {
+    const procurementRows = ehsysProcurement($, pageUrl);
+    return procurementRows.length ? procurementRows : ehsys($, pageUrl);
+  },
+  "ehsys-procurement": ehsysProcurement,
   "beyond-beta": beyondBeta,
   erhvervshuse,
   accelerator,

@@ -38,12 +38,14 @@ export const LEXICON = {
     "fullstack", "full-stack", "udvikler", "developer", "web", "app",
     "frontend", "backend", "react", "next", "node", "typescript", "api",
     "database", "platform", "software", "kodning", "programmering",
+    "softwareudvikling", "teknisk", "algoritme", "integration", "saas",
   ],
   aiProduct: [
     "ai", "kunstig intelligens", "machine learning", "ml", "llm", "gpt",
     "automation", "automatisering", "mvp", "prototype", "prototyping",
     "produktstrategi", "product strategy", "roadmap", "poc", "proof of concept",
-    "digitalisering", "digital", "data",
+    "digitalisering", "digital", "data", "produkt", "teknisk sparring",
+    "rådgivning", "raadgivning", "advisory", "readiness",
   ],
   startup: [
     "startup", "iværksætter", "founder", "stifter", "sme", "smv", "scaleup",
@@ -56,6 +58,7 @@ export const LEXICON = {
   ],
   direct: [
     "kontakt", "contact", "ansøg", "apply", "tilbud", "offer", "supplier",
-    "leverandør", "konsulent", "consultant", "freelance", "udbud",
+    "leverandør", "leverandørrettet", "konsulent", "consultant", "freelance", "udbud",
+    "indkøb", "indkoeb", "tilbudsfrist",
   ],
 };

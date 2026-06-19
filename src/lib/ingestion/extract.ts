@@ -11,11 +11,11 @@ const MONTHS_DA: Record<string, number> = {
  * Build an end-of-day local Date, returning null for impossible dates
  * (e.g. 31/02) instead of letting JS overflow Feb 31 into March 3.
  */
-function makeDate(year: number, month: number, day: number): Date | null {
+function makeDate(year: number, month: number, day: number, hour = 23, minute = 59): Date | null {
   if (month < 0 || month > 11 || day < 1) return null;
   const maxDay = new Date(year, month + 1, 0).getDate();
   if (day > maxDay) return null;
-  return new Date(year, month, day, 23, 59);
+  return new Date(year, month, day, hour, minute);
 }
 
 /** Pull a budget range (DKK) from free text. Returns {min,max} in whole DKK. */
@@ -42,7 +42,9 @@ export function extractBudget(text: string): { min?: number; max?: number; curre
   if (range) {
     const min = num(range[1]);
     const max = num(range[2]);
-    if (!Number.isNaN(min) && !Number.isNaN(max)) return { min, max, currency };
+    if (!Number.isNaN(min) && !Number.isNaN(max) && min >= 1000 && max >= 1000 && min <= max) {
+      return { min, max, currency };
+    }
   }
 
   // Single amount near a money cue.
@@ -63,9 +65,17 @@ export function extractDeadline(text: string): Date | null {
   const iso = t.match(/(20\d{2})-(\d{2})-(\d{2})/);
   if (iso) return new Date(`${iso[1]}-${iso[2]}-${iso[3]}T23:59:59`);
 
-  // dd/mm/yyyy or dd.mm.yyyy
-  const dmy = t.match(/(\d{1,2})[./](\d{1,2})[./](20\d{2})/);
-  if (dmy) return makeDate(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+  // dd/mm/yyyy, dd.mm.yyyy or dd-mm-yyyy, optionally with HH.mm / HH:mm.
+  const dmy = t.match(/(\d{1,2})[./-](\d{1,2})[./-](20\d{2})(?:\s+(\d{1,2})[.:](\d{2}))?/);
+  if (dmy) {
+    return makeDate(
+      Number(dmy[3]),
+      Number(dmy[2]) - 1,
+      Number(dmy[1]),
+      dmy[4] ? Number(dmy[4]) : 23,
+      dmy[5] ? Number(dmy[5]) : 59,
+    );
+  }
 
   // "15. marts 2026" / "15 marts"
   const da = t.match(/(\d{1,2})\.?\s+([a-zæøå]+)\s*(20\d{2})?/);

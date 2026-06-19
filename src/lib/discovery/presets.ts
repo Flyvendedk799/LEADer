@@ -1,9 +1,9 @@
 export const DISCOVERY_PRESETS = [
   {
     id: "funded-mvp",
-    label: "Funded MVPs",
+    label: "EHSYS/Beyond Beta",
     query:
-      "startup founder søger fullstack udvikler MVP prototype tilskud voucher Danmark budget 50000 100000",
+      "EHSYS indkøb Beyond Beta teknisk sparring produkt roadmap MVP prototype software AI leverandør",
   },
   {
     id: "software-udbud",

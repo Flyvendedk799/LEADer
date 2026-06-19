@@ -38,10 +38,19 @@ function text(o: ScorableOpportunity): string {
 /** Fraction of lexicon terms present (saturating, so a few strong hits ≈ 1). */
 function lexiconSignal(haystack: string, terms: string[]): number {
   let hits = 0;
-  for (const t of terms) if (haystack.includes(t)) hits++;
+  for (const t of terms) if (hasTerm(haystack, t)) hits++;
   if (hits === 0) return 0;
   // 3+ distinct hits saturates to ~1.
   return Math.min(1, 0.4 + 0.3 * hits);
+}
+
+function hasTerm(haystack: string, term: string): boolean {
+  const needle = term.toLowerCase();
+  if (/^[a-z0-9]+$/.test(needle) && needle.length <= 3) {
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^a-z0-9æøå])${escaped}([^a-z0-9æøå]|$)`).test(haystack);
+  }
+  return haystack.includes(needle);
 }
 
 function normaliseWeights(w: ScoreWeights): ScoreWeights {
