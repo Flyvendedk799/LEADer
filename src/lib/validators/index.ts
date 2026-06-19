@@ -213,6 +213,7 @@ export const discoveryCandidateSchema = z.object({
   scoreBreakdown: z.record(z.unknown()).optional(),
   reasons: z.array(z.string()).default([]),
   signals: z.array(z.string()).default([]),
+  feedback: z.enum(["GOOD_RESULT", "NON_LEAD"]).optional(),
   alreadySaved: z.object({ id: z.string(), title: z.string() }).optional(),
   alreadySavedSource: z.object({ id: z.string(), name: z.string() }).optional(),
 });
@@ -233,6 +234,12 @@ export const discoverySaveSourceSchema = z.object({
       message: "candidateKind must be source",
       path: ["candidateKind"],
     }),
+});
+
+export const discoveryFeedbackSchema = z.object({
+  candidate: discoveryCandidateSchema,
+  feedback: z.enum(["GOOD_RESULT", "NON_LEAD"]),
+  reason: z.string().max(240).optional(),
 });
 
 // ── Settings ─────────────────────────────────────────────────────────────────
