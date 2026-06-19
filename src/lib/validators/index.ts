@@ -170,13 +170,23 @@ export const discoverySearchSchema = z.object({
   includeWeb: z.boolean().default(true),
   includeSources: z.boolean().default(true),
   provider: z.enum(["auto", "tavily", "brave", "serper", "none"]).default("auto"),
+  resultKind: z.enum(["all", "opportunities", "sources"]).default("all"),
+});
+
+const discoveryAttachmentSchema = z.object({
+  label: z.string().optional(),
+  url: z.string().url(),
+  kind: z.string().optional(),
 });
 
 export const discoveryCandidateSchema = z.object({
   id: z.string().optional(),
+  candidateKind: z.enum(["opportunity", "source"]).default("opportunity"),
   title: z.string().min(3),
   description: z.string().optional(),
+  summaryDa: z.string().optional(),
   rawContent: z.string().optional(),
+  detailText: z.string().optional(),
   url: z.string().url().optional().or(z.literal("")),
   organization: z.string().optional(),
   location: z.string().optional(),
@@ -186,12 +196,15 @@ export const discoveryCandidateSchema = z.object({
   budgetMin: z.number().int().nonnegative().optional(),
   budgetMax: z.number().int().nonnegative().optional(),
   currency: z.string().default("DKK"),
+  priceText: z.string().optional(),
   deadline: z.string().optional(),
   postedAt: z.string().optional(),
+  freshness: z.enum(["active", "expired", "stale", "unknown"]).default("unknown"),
   applicationRoute: zApplicationRoute.default("UNKNOWN"),
   contacts: z
     .array(z.object({ name: z.string().optional(), email: z.string().optional(), role: z.string().optional() }))
     .default([]),
+  attachments: z.array(discoveryAttachmentSchema).default([]),
   sourceName: z.string().default("Discover"),
   sourceKind: z.enum(["web-search", "source-scan"]).default("web-search"),
   provider: z.string().default("discover"),
@@ -200,6 +213,8 @@ export const discoveryCandidateSchema = z.object({
   scoreBreakdown: z.record(z.unknown()).optional(),
   reasons: z.array(z.string()).default([]),
   signals: z.array(z.string()).default([]),
+  alreadySaved: z.object({ id: z.string(), title: z.string() }).optional(),
+  alreadySavedSource: z.object({ id: z.string(), name: z.string() }).optional(),
 });
 
 export const discoverySaveSchema = z.object({
@@ -208,6 +223,16 @@ export const discoverySaveSchema = z.object({
     (d) => d.budgetMin == null || d.budgetMax == null || d.budgetMin <= d.budgetMax,
     { message: "budgetMin must be less than or equal to budgetMax", path: ["budgetMax"] },
   ),
+});
+
+export const discoverySaveSourceSchema = z.object({
+  workspace: zWorkspace.default("DK"),
+  candidate: discoveryCandidateSchema
+    .extend({ url: z.string().url() })
+    .refine((d) => d.candidateKind === "source", {
+      message: "candidateKind must be source",
+      path: ["candidateKind"],
+    }),
 });
 
 // ── Settings ─────────────────────────────────────────────────────────────────
