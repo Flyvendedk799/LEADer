@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { CommandPalette } from "@/components/layout/command-palette";
+import { PlatformAgent } from "@/components/agent/platform-agent";
 import { getCurrentUser } from "@/lib/auth";
 
 // Authenticated application shell. Server-side auth check (defence in depth on
@@ -15,6 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen overflow-hidden">
       <CommandPalette />
+      <PlatformAgent />
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Suspense fallback={<div className="h-14 border-b border-border" />}>

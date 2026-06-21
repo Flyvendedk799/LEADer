@@ -100,6 +100,77 @@ enum CommunityImportStatus {
   DISCARDED
 }
 
+enum AccountType {
+  COMPANY
+  STARTUP
+  PUBLIC_BUYER
+  COMMUNITY
+  PARTNER
+  PERSONA
+  UNKNOWN
+}
+
+enum DealStatus {
+  DISCOVERED
+  QUALIFYING
+  INTERESTING
+  CONTACTED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+  ARCHIVED
+}
+
+enum DiscoveryCandidateStatus {
+  NEW
+  REVIEWED
+  SAVED
+  DISMISSED
+  DUPLICATE
+}
+
+enum EvidenceKind {
+  SOURCE_SNIPPET
+  WEB_RESULT
+  STRUCTURED_DATA
+  AI_EXTRACT
+  USER_NOTE
+}
+
+enum TouchpointKind {
+  CALL
+  EMAIL
+  MEETING
+  NOTE
+  COMMUNITY
+  MESSAGE
+  OTHER
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+  DISMISSED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ConversionAssetKind {
+  OUTREACH
+  PROPOSAL
+  FOLLOW_UP
+  CHECKLIST
+  CALL_PREP
+  PITCH
+  SUMMARY
+}
+
 // ─────────────────────────────── Models ──────────────────────────────
 
 enum UserRole {
@@ -108,18 +179,18 @@ enum UserRole {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   name         String?
   passwordHash String? // scrypt hash; null = no password set yet (legacy/dev seed)
-  role         UserRole @default(OWNER)
+  role         UserRole  @default(OWNER)
   onboardedAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   // Profile / preferences (drives scoring + AI context)
-  headline             String? // e.g. "Fullstack dev · AI builder · MVP/product advisor"
-  bio                  String?
+  headline              String? // e.g. "Fullstack dev · AI builder · MVP/product advisor"
+  bio                   String?
   preferredProjectTypes String[] @default([])
   excludedCategories    String[] @default([])
   budgetMaxDkk          Int      @default(100000)
@@ -130,15 +201,25 @@ model User {
   exportPrefs    Json? // ExportPreferences
   aiKeys         Json? // encrypted per-user AI provider config + masked key metadata
 
-  sources        Source[]
-  opportunities  Opportunity[]
-  lists          List[]
-  watchlistItems WatchlistItem[]
-  savedSearches  SavedSearch[]
-  alerts         Alert[]
-  drafts         Draft[]
-  notes          Note[]
-  sessions       Session[]
+  sources             Source[]
+  opportunities       Opportunity[]
+  lists               List[]
+  watchlistItems      WatchlistItem[]
+  savedSearches       SavedSearch[]
+  alerts              Alert[]
+  drafts              Draft[]
+  notes               Note[]
+  sessions            Session[]
+  accounts            Account[]
+  people              Person[]
+  deals               Deal[]
+  discoveryLanes      DiscoveryLane[]
+  discoveryMissions   DiscoveryMission[]
+  discoveryCandidates DiscoveryCandidate[]
+  evidence            Evidence[]
+  touchpoints         Touchpoint[]
+  tasks               Task[]
+  conversionAssets    ConversionAsset[]
 }
 
 // Server-side sessions (opaque token hashed at rest). The auth cookie holds the
@@ -159,52 +240,53 @@ model Session {
 }
 
 model Source {
-  id           String           @id @default(cuid())
-  ownerId      String
-  owner        User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  name         String
-  url          String?
-  type         SourceType
-  workspace    Workspace        @default(DK)
-  frequency    MonitorFrequency @default(DAILY)
-  keywords     String[]         @default([])
-  country      String?          @default("DK")
-  region       String?
-  category     String?
-  enabled      Boolean          @default(true)
-  parserKey    String? // maps to a site-specific extractor in lib/ingestion/parsers
-  robotsAllowed Boolean?        // cached result of robots.txt check
+  id            String           @id @default(cuid())
+  ownerId       String
+  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name          String
+  url           String?
+  type          SourceType
+  workspace     Workspace        @default(DK)
+  frequency     MonitorFrequency @default(DAILY)
+  keywords      String[]         @default([])
+  country       String?          @default("DK")
+  region        String?
+  category      String?
+  enabled       Boolean          @default(true)
+  parserKey     String? // maps to a site-specific extractor in lib/ingestion/parsers
+  robotsAllowed Boolean? // cached result of robots.txt check
   lastCheckedAt DateTime?
-  notes        String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  notes         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
-  opportunities  Opportunity[]
-  discoveryRuns  DiscoveryRun[]
+  opportunities Opportunity[]
+  discoveryRuns DiscoveryRun[]
+  deals         Deal[]
 
   @@index([ownerId, enabled])
   @@index([workspace])
 }
 
 model Opportunity {
-  id          String   @id @default(cuid())
-  ownerId     String
-  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  sourceId    String?
-  source      Source?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  id       String  @id @default(cuid())
+  ownerId  String
+  owner    User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  sourceId String?
+  source   Source? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
 
   title       String
-  description String?  @db.Text
-  rawContent  String?  @db.Text
+  description String? @db.Text
+  rawContent  String? @db.Text
 
-  budgetMin   Int?
-  budgetMax   Int?
-  currency    String?  @default("DKK")
+  budgetMin Int?
+  budgetMax Int?
+  currency  String? @default("DKK")
 
-  deadline    DateTime?
-  postedAt    DateTime?
-  expiresAt   DateTime?
-  isActive    Boolean   @default(true)
+  deadline  DateTime?
+  postedAt  DateTime?
+  expiresAt DateTime?
+  isActive  Boolean   @default(true)
 
   url          String?
   organization String?
@@ -219,16 +301,16 @@ model Opportunity {
   priority         Int               @default(0) // 0..3
   ingestMethod     IngestMethod      @default(MANUAL)
 
-  matchScore      Int?  // 0..100
-  scoreBreakdown  Json? // ScoreBreakdown
-  aiSummary       String? @db.Text
-  whyRelevant     String? @db.Text
-  nextAction      String? @db.Text
+  matchScore            Int? // 0..100
+  scoreBreakdown        Json? // ScoreBreakdown
+  aiSummary             String? @db.Text
+  whyRelevant           String? @db.Text
+  nextAction            String? @db.Text
   extractedRequirements Json? // string[]
 
   // Semantic search: embedding vector + the model that produced it (only vectors
   // from the same model/dimension are comparable). Backfilled async; see lib/ai/embeddings.
-  embedding      Float[]  @default([])
+  embedding      Float[]   @default([])
   embeddingModel String?
   embeddedAt     DateTime?
 
@@ -237,15 +319,16 @@ model Opportunity {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  contacts    Contact[]
-  attachments Attachment[]
-  notes       Note[]
-  activities  Activity[]
-  drafts      Draft[]
-  tags        OpportunityTag[]
-  listItems   ListItem[]
-  watchlistItem WatchlistItem?
+  contacts        Contact[]
+  attachments     Attachment[]
+  notes           Note[]
+  activities      Activity[]
+  drafts          Draft[]
+  tags            OpportunityTag[]
+  listItems       ListItem[]
+  watchlistItem   WatchlistItem?
   communityImport CommunityImport?
+  deal            Deal?
 
   @@index([ownerId, status])
   @@index([ownerId, workspace])
@@ -278,10 +361,10 @@ model Attachment {
 }
 
 model Tag {
-  id        String           @id @default(cuid())
-  name      String           @unique
-  color     String?
-  createdAt DateTime         @default(now())
+  id            String           @id @default(cuid())
+  name          String           @unique
+  color         String?
+  createdAt     DateTime         @default(now())
   opportunities OpportunityTag[]
 }
 
@@ -318,17 +401,17 @@ model Activity {
 }
 
 model Draft {
-  id            String      @id @default(cuid())
-  opportunityId String
-  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
-  authorId      String?
-  author        User?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  kind          DraftKind
-  title         String?
-  content       String      @db.Text
-  model         String?
-  promptSnapshot String?    @db.Text
-  createdAt     DateTime    @default(now())
+  id             String      @id @default(cuid())
+  opportunityId  String
+  opportunity    Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  authorId       String?
+  author         User?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  kind           DraftKind
+  title          String?
+  content        String      @db.Text
+  model          String?
+  promptSnapshot String?     @db.Text
+  createdAt      DateTime    @default(now())
 
   @@index([opportunityId, kind])
 }
@@ -400,17 +483,338 @@ model CommunityImport {
   @@index([ownerId, status])
 }
 
+model Account {
+  id          String      @id @default(cuid())
+  ownerId     String
+  owner       User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String
+  type        AccountType @default(UNKNOWN)
+  website     String?
+  domain      String?
+  description String?     @db.Text
+  country     String?
+  region      String?
+  workspace   Workspace   @default(DK)
+  source      String?
+  fitScore    Int?
+  tags        String[]    @default([])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  people              Person[]
+  deals               Deal[]
+  evidence            Evidence[]
+  touchpoints         Touchpoint[]
+  tasks               Task[]
+  conversionAssets    ConversionAsset[]
+  discoveryCandidates DiscoveryCandidate[]
+
+  @@unique([ownerId, name])
+  @@index([ownerId, workspace])
+  @@index([ownerId, type])
+}
+
+model Person {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  name      String?
+  role      String?
+  email     String?
+  phone     String?
+  linkedin  String?
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dealLinks   DealPerson[]
+  touchpoints Touchpoint[]
+  tasks       Task[]
+
+  @@unique([ownerId, email])
+  @@index([ownerId])
+  @@index([accountId])
+}
+
+model Deal {
+  id                  String         @id @default(cuid())
+  ownerId             String
+  owner               User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  accountId           String?
+  account             Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  sourceId            String?
+  source              Source?        @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  laneId              String?
+  lane                DiscoveryLane? @relation(fields: [laneId], references: [id], onDelete: SetNull)
+  legacyOpportunityId String?        @unique
+  legacyOpportunity   Opportunity?   @relation(fields: [legacyOpportunityId], references: [id], onDelete: SetNull)
+
+  title            String
+  summary          String?          @db.Text
+  rawContent       String?          @db.Text
+  valueMin         Int?
+  valueMax         Int?
+  currency         String?          @default("DKK")
+  deadline         DateTime?
+  status           DealStatus       @default(DISCOVERED)
+  priority         Int              @default(0)
+  workspace        Workspace        @default(DK)
+  category         String?
+  applicationRoute ApplicationRoute @default(UNKNOWN)
+  url              String?
+
+  matchScore      Int?
+  confidenceScore Int?
+  pursuitScore    Int?
+  qualification   Json?
+  nextAction      String? @db.Text
+  statusReason    String? @db.Text
+  wonLostReason   String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  people           DealPerson[]
+  candidates       DiscoveryCandidate[]
+  evidence         Evidence[]
+  touchpoints      Touchpoint[]
+  tasks            Task[]
+  conversionAssets ConversionAsset[]
+
+  @@index([ownerId, status])
+  @@index([ownerId, workspace])
+  @@index([accountId])
+  @@index([deadline])
+  @@index([pursuitScore])
+}
+
+model DealPerson {
+  dealId    String
+  deal      Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  personId  String
+  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  role      String?
+  createdAt DateTime @default(now())
+
+  @@id([dealId, personId])
+  @@index([personId])
+}
+
+model DiscoveryLane {
+  id                   String       @id @default(cuid())
+  ownerId              String
+  owner                User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  slug                 String
+  name                 String
+  description          String       @db.Text
+  workspace            Workspace    @default(DK)
+  active               Boolean      @default(true)
+  sourceTypes          SourceType[] @default([])
+  queryTemplates       String[]     @default([])
+  positiveKeywords     String[]     @default([])
+  negativeKeywords     String[]     @default([])
+  scoringConfig        Json?
+  evidenceRequirements String[]     @default([])
+  conversionGuidance   String?      @db.Text
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  missions   DiscoveryMission[]
+  candidates DiscoveryCandidate[]
+  deals      Deal[]
+
+  @@unique([ownerId, slug])
+  @@index([ownerId, active])
+}
+
+model DiscoveryMission {
+  id              String        @id @default(cuid())
+  ownerId         String
+  owner           User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  laneId          String
+  lane            DiscoveryLane @relation(fields: [laneId], references: [id], onDelete: Cascade)
+  query           String        @db.Text
+  workspace       Workspace     @default(DK)
+  provider        String?
+  status          String        @default("RUNNING")
+  warnings        String[]      @default([])
+  sourceScanCount Int           @default(0)
+  startedAt       DateTime      @default(now())
+  finishedAt      DateTime?
+  createdAt       DateTime      @default(now())
+
+  candidates DiscoveryCandidate[]
+
+  @@index([ownerId, startedAt])
+  @@index([laneId, startedAt])
+}
+
+model DiscoveryCandidate {
+  id        String            @id @default(cuid())
+  ownerId   String
+  owner     User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  laneId    String?
+  lane      DiscoveryLane?    @relation(fields: [laneId], references: [id], onDelete: SetNull)
+  missionId String?
+  mission   DiscoveryMission? @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  accountId String?
+  account   Account?          @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  dealId    String?
+  deal      Deal?             @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  title            String
+  description      String?          @db.Text
+  rawContent       String?          @db.Text
+  url              String?
+  organization     String?
+  workspace        Workspace        @default(DK)
+  sourceName       String?
+  sourceKind       String?
+  provider         String?
+  query            String?          @db.Text
+  category         String?
+  budgetMin        Int?
+  budgetMax        Int?
+  currency         String?          @default("DKK")
+  deadline         DateTime?
+  applicationRoute ApplicationRoute @default(UNKNOWN)
+
+  status          DiscoveryCandidateStatus @default(NEW)
+  matchScore      Int?
+  confidenceScore Int?
+  pursuitScore    Int?
+  scoreBreakdown  Json?
+  reasons         String[]                 @default([])
+  signals         String[]                 @default([])
+  feedback        Json?
+  dismissalReason String?
+  dedupeKey       String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  evidence         Evidence[]
+  conversionAssets ConversionAsset[]
+
+  @@index([ownerId, status])
+  @@index([ownerId, workspace])
+  @@index([laneId])
+  @@index([missionId])
+  @@index([pursuitScore])
+}
+
+model Evidence {
+  id          String              @id @default(cuid())
+  ownerId     String
+  owner       User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  candidateId String?
+  candidate   DiscoveryCandidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  dealId      String?
+  deal        Deal?               @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  accountId   String?
+  account     Account?            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  kind        EvidenceKind
+  url         String?
+  title       String?
+  snippet     String              @db.Text
+  sourceName  String?
+  provider    String?
+  confidence  Int?
+  metadata    Json?
+  createdAt   DateTime            @default(now())
+
+  @@index([ownerId])
+  @@index([candidateId])
+  @@index([dealId])
+  @@index([accountId])
+}
+
+model Touchpoint {
+  id         String         @id @default(cuid())
+  ownerId    String
+  owner      User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  accountId  String?
+  account    Account?       @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  dealId     String?
+  deal       Deal?          @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  personId   String?
+  person     Person?        @relation(fields: [personId], references: [id], onDelete: SetNull)
+  kind       TouchpointKind
+  occurredAt DateTime       @default(now())
+  summary    String
+  body       String?        @db.Text
+  outcome    String?
+  metadata   Json?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([ownerId, occurredAt])
+  @@index([accountId])
+  @@index([dealId])
+  @@index([personId])
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  ownerId     String
+  owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  accountId   String?
+  account     Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  dealId      String?
+  deal        Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  personId    String?
+  person      Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
+  title       String
+  description String?      @db.Text
+  dueAt       DateTime?
+  status      TaskStatus   @default(OPEN)
+  priority    TaskPriority @default(MEDIUM)
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([ownerId, status])
+  @@index([dueAt])
+  @@index([dealId])
+  @@index([accountId])
+}
+
+model ConversionAsset {
+  id             String              @id @default(cuid())
+  ownerId        String
+  owner          User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  accountId      String?
+  account        Account?            @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  dealId         String?
+  deal           Deal?               @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  candidateId    String?
+  candidate      DiscoveryCandidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  kind           ConversionAssetKind
+  title          String?
+  content        String              @db.Text
+  model          String?
+  promptSnapshot String?             @db.Text
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([ownerId])
+  @@index([dealId])
+  @@index([accountId])
+  @@index([candidateId])
+}
+
 model DiscoveryRun {
-  id          String   @id @default(cuid())
-  sourceId    String?
-  source      Source?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
-  startedAt   DateTime @default(now())
-  finishedAt  DateTime?
-  status      String   @default("RUNNING") // RUNNING | SUCCESS | ERROR | SKIPPED
-  foundCount  Int      @default(0)
-  newCount    Int      @default(0)
-  updatedCount Int     @default(0)
-  log         String?  @db.Text
+  id           String    @id @default(cuid())
+  sourceId     String?
+  source       Source?   @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  status       String    @default("RUNNING") // RUNNING | SUCCESS | ERROR | SKIPPED
+  foundCount   Int       @default(0)
+  newCount     Int       @default(0)
+  updatedCount Int       @default(0)
+  log          String?   @db.Text
 
   @@index([sourceId, startedAt])
 }

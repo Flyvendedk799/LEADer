@@ -41,10 +41,9 @@ export const SOURCE_TYPE_META: Record<SourceType, { label: string; automatable: 
 };
 
 export const APP_NAV = [
-  { href: "/", label: "Dashboard", icon: "LayoutDashboard" },
-  { href: "/opportunities", label: "Opportunities", icon: "Target" },
-  { href: "/watchlist", label: "Watchlist", icon: "Star" },
-  { href: "/lists", label: "Lists", icon: "ListChecks" },
+  { href: "/", label: "Cockpit", icon: "LayoutDashboard" },
+  { href: "/deals", label: "Deals", icon: "BriefcaseBusiness" },
+  { href: "/accounts", label: "Accounts", icon: "Building2" },
   { href: "/sources", label: "Sources", icon: "Radar" },
   { href: "/import", label: "Community import", icon: "ClipboardPaste" },
   { href: "/settings", label: "Settings", icon: "Settings" },

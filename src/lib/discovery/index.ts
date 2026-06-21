@@ -28,6 +28,9 @@ export { DISCOVERY_PRESETS } from "./presets";
 
 export interface DiscoverySearchInput {
   query: string;
+  queryVariants?: string[];
+  requiredTerms?: string[];
+  excludedTerms?: string[];
   workspace?: Workspace;
   maxResults?: number;
   includeWeb?: boolean;
@@ -197,24 +200,83 @@ function profileText(user: UserProfile): string {
   );
 }
 
-function buildQueries(query: string, workspace: Workspace): string[] {
-  const q = cleanText(query, 280);
+function cleanTerms(values: string[] = [], limit = 12) {
+  return [...new Set(values.map((value) => cleanText(value, 80).toLowerCase()).filter(Boolean))]
+    .slice(0, limit);
+}
+
+function queryTerm(term: string, exclude = false) {
+  const cleaned = cleanText(term, 80);
+  if (!cleaned) return "";
+  const value = /\s/.test(cleaned) ? `"${cleaned}"` : cleaned;
+  return exclude ? `-${value}` : value;
+}
+
+function buildQueries(
+  query: string,
+  workspace: Workspace,
+  variants: string[] = [],
+  options: { requiredTerms?: string[]; excludedTerms?: string[] } = {},
+): string[] {
+  const required = cleanTerms(options.requiredTerms).map((term) => queryTerm(term));
+  const excluded = cleanTerms(options.excludedTerms).map((term) => queryTerm(term, true));
+  const modifiers = [...required, ...excluded].filter(Boolean).join(" ");
+  const seedQueries = [...variants, query]
+    .map((value) => cleanText(value, 280))
+    .map((value) => [value, modifiers].filter(Boolean).join(" "))
+    .filter(Boolean);
+  const q = seedQueries[0] || cleanText(query, 280);
   const country = workspace === "DK" ? "Danmark" : "Europe remote";
-  const terms =
+  const expanded =
     workspace === "DK"
       ? [
-          q,
+          ...seedQueries,
           `${q} site:ehsys.dk/indkoeb/alle OR site:beyondbeta.ehsys.dk/indkoeb/tilbud/indsend OR site:ivaerksaetter.ehsys.dk/indkoeb/tilbud/indsend`,
           `${q} ${country} udbud software udvikling IT konsulent`,
           `${q} ${country} EHSYS indkøb tilbud Beyond Beta teknisk sparring produkt roadmap`,
           `${q} ${country} SMV Digital digitalisering rådgivning software`,
         ]
       : [
-          q,
+          ...seedQueries,
           `${q} funded startup MVP fullstack software project remote`,
           `${q} grant voucher innovation software supplier`,
         ];
-  return [...new Set(terms.map((term) => term.trim()).filter(Boolean))].slice(0, 4);
+  return [...new Set(expanded.map((term) => term.trim()).filter(Boolean))].slice(0, variants.length ? 6 : 4);
+}
+
+function candidateContains(text: string, term: string) {
+  const cleaned = term.toLowerCase().trim();
+  if (!cleaned) return true;
+  return text.includes(cleaned);
+}
+
+function filterBySearchTerms(
+  candidates: DiscoveryCandidateDto[],
+  requiredTerms: string[] = [],
+  excludedTerms: string[] = [],
+) {
+  const required = cleanTerms(requiredTerms);
+  const excluded = cleanTerms(excludedTerms);
+  if (!required.length && !excluded.length) return { candidates, removed: 0 };
+
+  const filtered = candidates.filter((candidate) => {
+    const text = [
+      candidate.title,
+      candidate.description,
+      candidate.rawContent,
+      candidate.organization,
+      candidate.sourceName,
+      candidate.category,
+      candidate.url,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const hasRequired = required.every((term) => candidateContains(text, term));
+    const hasExcluded = excluded.some((term) => candidateContains(text, term));
+    return hasRequired && !hasExcluded;
+  });
+  return { candidates: filtered, removed: candidates.length - filtered.length };
 }
 
 function sourceLabel(url?: string): string {
@@ -716,7 +778,10 @@ export async function runDiscoverySearch(
 
   const workspace = input.workspace ?? "DK";
   const maxResults = Math.min(Math.max(input.maxResults ?? 12, 4), 30);
-  const queries = buildQueries(input.query, workspace);
+  const queries = buildQueries(input.query, workspace, input.queryVariants, {
+    requiredTerms: input.requiredTerms,
+    excludedTerms: input.excludedTerms,
+  });
   const providerState = searchProviderFromEnv(input.provider, user.aiKeys);
   const warnings: string[] = [];
   let candidates: DiscoveryCandidateDto[] = [];
@@ -748,7 +813,12 @@ export async function runDiscoverySearch(
     warnings.push(...scanned.warnings.slice(0, 4));
   }
 
-  const unique = await markAlreadySaved(ownerId, dedupeCandidates(candidates, maxResults));
+  const termFiltered = filterBySearchTerms(candidates, input.requiredTerms, input.excludedTerms);
+  if (termFiltered.removed > 0) {
+    warnings.push(`Filtered ${termFiltered.removed} candidates by required/excluded search terms.`);
+  }
+
+  const unique = await markAlreadySaved(ownerId, dedupeCandidates(termFiltered.candidates, maxResults));
   return {
     candidates: unique,
     queries,

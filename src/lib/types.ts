@@ -61,6 +61,52 @@ export type DraftKind =
 
 export type AlertType = "DEADLINE" | "NEW_HIGH_MATCH" | "DIGEST" | "NEEDS_ACTION";
 
+export type AccountType =
+  | "COMPANY"
+  | "STARTUP"
+  | "PUBLIC_BUYER"
+  | "COMMUNITY"
+  | "PARTNER"
+  | "PERSONA"
+  | "UNKNOWN";
+
+export type DealStatus =
+  | "DISCOVERED"
+  | "QUALIFYING"
+  | "INTERESTING"
+  | "CONTACTED"
+  | "PROPOSAL"
+  | "NEGOTIATION"
+  | "WON"
+  | "LOST"
+  | "ARCHIVED";
+
+export const DEAL_STATUSES: DealStatus[] = [
+  "DISCOVERED",
+  "QUALIFYING",
+  "INTERESTING",
+  "CONTACTED",
+  "PROPOSAL",
+  "NEGOTIATION",
+  "WON",
+  "LOST",
+  "ARCHIVED",
+];
+
+export type DiscoveryCandidateStatus = "NEW" | "REVIEWED" | "SAVED" | "DISMISSED" | "DUPLICATE";
+export type EvidenceKind = "SOURCE_SNIPPET" | "WEB_RESULT" | "STRUCTURED_DATA" | "AI_EXTRACT" | "USER_NOTE";
+export type TouchpointKind = "CALL" | "EMAIL" | "MEETING" | "NOTE" | "COMMUNITY" | "MESSAGE" | "OTHER";
+export type TaskStatus = "OPEN" | "DONE" | "DISMISSED";
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type ConversionAssetKind =
+  | "OUTREACH"
+  | "PROPOSAL"
+  | "FOLLOW_UP"
+  | "CHECKLIST"
+  | "CALL_PREP"
+  | "PITCH"
+  | "SUMMARY";
+
 // ── Scoring ──────────────────────────────────────────────────────────────────
 
 /** Weighted criteria (0..1 each, normalised at scoring time). Customisable in Settings. */
@@ -128,6 +174,7 @@ export type AiAction =
   | "summarize"
   | "extract"
   | "classify"
+  | "planDiscoverySearch"
   | "explainScore"
   | "draftApplication"
   | "draftPitch"
@@ -135,7 +182,13 @@ export type AiAction =
   | "checklist"
   | "compare"
   | "similar"
-  | "nextAction";
+  | "nextAction"
+  | "qualifyLead"
+  | "draftOutreach"
+  | "draftProposal"
+  | "draftFollowUp"
+  | "summarizeAccount"
+  | "nextBestAction";
 
 export interface AiRequest {
   action: AiAction;
@@ -166,6 +219,20 @@ export interface AiResult {
   mocked: boolean;
   text?: string; // summaries / drafts / explanations
   data?: unknown; // structured (extract/classify/compare/similar)
+}
+
+export type DiscoverySearchMode = "focused" | "balanced" | "wide";
+
+export interface DiscoveryAiSearchPlan {
+  summary: string;
+  queries: string[];
+  requiredTerms: string[];
+  excludedTerms: string[];
+  positiveKeywords: string[];
+  evidenceRequirements: string[];
+  suggestedLaneSlug?: string;
+  confidence: number;
+  notes: string[];
 }
 
 // ── Export ───────────────────────────────────────────────────────────────────

@@ -11,6 +11,18 @@ export const zFrequency = z.enum(["MANUAL", "HOURLY", "DAILY", "WEEKLY"]);
 export const zStatus = z.enum([
   "NEW", "INTERESTING", "WATCH", "CONTACTED", "APPLIED", "WON", "LOST", "ARCHIVED",
 ]);
+export const zAccountType = z.enum([
+  "COMPANY", "STARTUP", "PUBLIC_BUYER", "COMMUNITY", "PARTNER", "PERSONA", "UNKNOWN",
+]);
+export const zDealStatus = z.enum([
+  "DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION", "WON", "LOST", "ARCHIVED",
+]);
+export const zDiscoveryCandidateStatus = z.enum(["NEW", "REVIEWED", "SAVED", "DISMISSED", "DUPLICATE"]);
+export const zEvidenceKind = z.enum(["SOURCE_SNIPPET", "WEB_RESULT", "STRUCTURED_DATA", "AI_EXTRACT", "USER_NOTE"]);
+export const zTouchpointKind = z.enum(["CALL", "EMAIL", "MEETING", "NOTE", "COMMUNITY", "MESSAGE", "OTHER"]);
+export const zTaskStatus = z.enum(["OPEN", "DONE", "DISMISSED"]);
+export const zTaskPriority = z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]);
+export const zConversionAssetKind = z.enum(["OUTREACH", "PROPOSAL", "FOLLOW_UP", "CHECKLIST", "CALL_PREP", "PITCH", "SUMMARY"]);
 export const zApplicationRoute = z.enum(["DIRECT", "APPLICATION", "UNKNOWN"]);
 export const zIngestMethod = z.enum(["AUTOMATED", "MANUAL", "COMMUNITY"]);
 export const zDraftKind = z.enum([
@@ -18,8 +30,9 @@ export const zDraftKind = z.enum([
 ]);
 export const zExportFormat = z.enum(["csv", "xlsx", "pdf", "markdown", "notion"]);
 export const zAiAction = z.enum([
-  "summarize", "extract", "classify", "explainScore", "draftApplication",
+  "summarize", "extract", "classify", "planDiscoverySearch", "explainScore", "draftApplication",
   "draftPitch", "draftEmail", "checklist", "compare", "similar", "nextAction",
+  "qualifyLead", "draftOutreach", "draftProposal", "draftFollowUp", "summarizeAccount", "nextBestAction",
 ]);
 export const zAiProvider = z.enum(["openai", "anthropic"]);
 
@@ -151,6 +164,9 @@ export const aiRequestSchema = z.object({
   action: zAiAction,
   opportunityId: z.string().optional(),
   opportunityIds: z.array(z.string()).optional(),
+  dealId: z.string().optional(),
+  accountId: z.string().optional(),
+  candidateId: z.string().optional(),
   payload: z.record(z.unknown()).optional(),
   save: z.boolean().optional(), // persist drafts
 });
@@ -208,6 +224,132 @@ export const discoverySaveSchema = z.object({
     (d) => d.budgetMin == null || d.budgetMax == null || d.budgetMin <= d.budgetMax,
     { message: "budgetMin must be less than or equal to budgetMax", path: ["budgetMax"] },
   ),
+});
+
+// ── CRM V2 ──────────────────────────────────────────────────────────────────
+export const discoveryLaneCreateSchema = z.object({
+  slug: z.string().min(2).max(80).regex(/^[a-z0-9-]+$/),
+  name: z.string().min(2),
+  description: z.string().min(5),
+  workspace: zWorkspace.default("DK"),
+  active: z.boolean().default(true),
+  sourceTypes: z.array(zSourceType).default([]),
+  queryTemplates: z.array(z.string()).default([]),
+  positiveKeywords: z.array(z.string()).default([]),
+  negativeKeywords: z.array(z.string()).default([]),
+  scoringConfig: z.record(z.number()).optional(),
+  evidenceRequirements: z.array(z.string()).default([]),
+  conversionGuidance: z.string().optional(),
+});
+
+export const discoveryRunCreateSchema = z.object({
+  laneId: z.string().min(1),
+  query: z.string().max(500).optional(),
+  freeformBrief: z.string().max(1200).optional(),
+  useAiPlanner: z.boolean().default(false),
+  searchMode: z.enum(["focused", "balanced", "wide"]).default("balanced"),
+  queryCount: z.number().int().min(1).max(8).optional(),
+  requiredTerms: z.array(z.string().min(1).max(80)).max(12).default([]),
+  excludedTerms: z.array(z.string().min(1).max(80)).max(12).default([]),
+  workspace: zWorkspace.optional(),
+  maxResults: z.number().int().min(4).max(30).default(12),
+  includeWeb: z.boolean().default(true),
+  includeSources: z.boolean().default(true),
+  provider: z.enum(["auto", "tavily", "brave", "serper", "none"]).default("auto"),
+});
+
+export const discoveryCandidateActionSchema = z.object({
+  action: z.enum(["review", "save", "dismiss", "duplicate", "feedback"]),
+  reason: z.string().optional(),
+  feedback: z.record(z.unknown()).optional(),
+  status: zDiscoveryCandidateStatus.optional(),
+});
+
+export const accountCreateSchema = z.object({
+  name: z.string().min(1),
+  type: zAccountType.default("UNKNOWN"),
+  website: z.string().url().optional().or(z.literal("")),
+  domain: z.string().optional(),
+  description: z.string().optional(),
+  country: z.string().optional(),
+  region: z.string().optional(),
+  workspace: zWorkspace.default("DK"),
+  source: z.string().optional(),
+  fitScore: z.number().int().min(0).max(100).optional(),
+  tags: z.array(z.string()).default([]),
+});
+export const accountUpdateSchema = accountCreateSchema.partial();
+
+export const personCreateSchema = z.object({
+  accountId: z.string().optional(),
+  name: z.string().optional(),
+  role: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  phone: z.string().optional(),
+  linkedin: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const dealCreateSchema = z.object({
+  accountId: z.string().optional(),
+  sourceId: z.string().optional(),
+  laneId: z.string().optional(),
+  title: z.string().min(3),
+  summary: z.string().optional(),
+  rawContent: z.string().optional(),
+  valueMin: z.number().int().nonnegative().optional(),
+  valueMax: z.number().int().nonnegative().optional(),
+  currency: z.string().default("DKK"),
+  deadline: z.coerce.date().optional(),
+  status: zDealStatus.default("DISCOVERED"),
+  priority: z.number().int().min(0).max(3).default(0),
+  workspace: zWorkspace.default("DK"),
+  category: z.string().optional(),
+  applicationRoute: zApplicationRoute.default("UNKNOWN"),
+  url: z.string().url().optional().or(z.literal("")),
+  matchScore: z.number().int().min(0).max(100).optional(),
+  confidenceScore: z.number().int().min(0).max(100).optional(),
+  pursuitScore: z.number().int().min(0).max(100).optional(),
+  nextAction: z.string().optional(),
+});
+export const dealUpdateSchema = dealCreateSchema.partial().extend({
+  wonLostReason: z.string().optional(),
+  statusReason: z.string().optional(),
+});
+
+export const taskCreateSchema = z.object({
+  accountId: z.string().optional(),
+  dealId: z.string().optional(),
+  personId: z.string().optional(),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  dueAt: z.coerce.date().optional(),
+  status: zTaskStatus.default("OPEN"),
+  priority: zTaskPriority.default("MEDIUM"),
+});
+export const taskPatchSchema = taskCreateSchema.partial().extend({ id: z.string().min(1) });
+
+export const touchpointCreateSchema = z.object({
+  accountId: z.string().optional(),
+  dealId: z.string().optional(),
+  personId: z.string().optional(),
+  kind: zTouchpointKind.default("NOTE"),
+  occurredAt: z.coerce.date().optional(),
+  summary: z.string().min(1),
+  body: z.string().optional(),
+  outcome: z.string().optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+export const conversionAssetCreateSchema = z.object({
+  accountId: z.string().optional(),
+  dealId: z.string().optional(),
+  candidateId: z.string().optional(),
+  kind: zConversionAssetKind.default("SUMMARY"),
+  title: z.string().optional(),
+  content: z.string().min(1),
+  model: z.string().optional(),
+  promptSnapshot: z.string().optional(),
 });
 
 // ── Settings ─────────────────────────────────────────────────────────────────

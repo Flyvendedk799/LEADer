@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseFilters, opportunityCreateSchema, bulkOpportunitySchema } from "./index";
+import { parseFilters, opportunityCreateSchema, bulkOpportunitySchema, discoveryRunCreateSchema } from "./index";
 
 describe("parseFilters", () => {
   it("drops invalid enum values from a crafted querystring", () => {
@@ -54,5 +54,27 @@ describe("bulkOpportunitySchema", () => {
   });
   it("rejects an unknown action", () => {
     expect(bulkOpportunitySchema.safeParse({ ids: ["a"], action: "nuke" }).success).toBe(false);
+  });
+});
+
+describe("discoveryRunCreateSchema", () => {
+  it("accepts AI-assisted freeform search controls", () => {
+    const result = discoveryRunCreateSchema.safeParse({
+      laneId: "lane_123",
+      query: "Find boring B2B companies with spreadsheet-heavy reporting pain",
+      freeformBrief: "Prioritize SMEs that need AI automation or internal tools.",
+      useAiPlanner: true,
+      searchMode: "wide",
+      queryCount: 7,
+      requiredTerms: ["reporting", "workflow"],
+      excludedTerms: ["course", "job"],
+      maxResults: 20,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.useAiPlanner).toBe(true);
+      expect(result.data.searchMode).toBe("wide");
+      expect(result.data.requiredTerms).toEqual(["reporting", "workflow"]);
+    }
   });
 });
