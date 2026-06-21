@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkflowActionQueue } from "@/components/workflows/workflow-action-queue";
+import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { requireOwnerId } from "@/lib/auth";
@@ -149,6 +150,15 @@ export default async function WorkflowsPage() {
     dealTitle: task.deal?.title ?? null,
     accountName: task.deal?.account?.name ?? task.account?.name ?? null,
   }));
+  const workflowDeal = (deal: (typeof staleDeals)[number]) => ({
+    id: deal.id,
+    title: deal.title,
+    status: deal.status,
+    accountName: deal.account?.name ?? null,
+    deadline: deal.deadline?.toISOString() ?? null,
+    updatedAt: deal.updatedAt.toISOString(),
+    nextAction: deal.nextAction ?? null,
+  });
 
   return (
     <div className="space-y-6">
@@ -266,19 +276,8 @@ export default async function WorkflowsPage() {
                 Stale deals
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {staleDeals.map((deal) => (
-                <Link key={deal.id} href={`/deals/${deal.id}`} className="block rounded-md border border-border bg-surface/40 p-3 hover:border-primary/50">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-medium">{deal.title}</p>
-                    <Badge variant={DEAL_STATUS_META[deal.status].variant}>{DEAL_STATUS_META[deal.status].label}</Badge>
-                  </div>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">
-                    {deal.account?.name ?? "No account"} - updated {freshness(deal.updatedAt)}
-                  </p>
-                </Link>
-              ))}
-              {staleDeals.length === 0 ? <EmptyLine>No stale open deals.</EmptyLine> : null}
+            <CardContent>
+              <WorkflowDealQueue deals={staleDeals.map(workflowDeal)} mode="stale" />
             </CardContent>
           </Card>
 
@@ -289,16 +288,8 @@ export default async function WorkflowsPage() {
                 Deadline watch
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {upcomingDeadlines.map((deal) => (
-                <Link key={deal.id} href={`/deals/${deal.id}`} className="block rounded-md border border-border bg-surface/40 p-3 hover:border-primary/50">
-                  <p className="truncate text-sm font-medium">{deal.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {deal.account?.name ?? "No account"} - {formatDate(deal.deadline)}
-                  </p>
-                </Link>
-              ))}
-              {upcomingDeadlines.length === 0 ? <EmptyLine>No upcoming deadlines.</EmptyLine> : null}
+            <CardContent>
+              <WorkflowDealQueue deals={upcomingDeadlines.map(workflowDeal)} mode="deadline" />
             </CardContent>
           </Card>
 
