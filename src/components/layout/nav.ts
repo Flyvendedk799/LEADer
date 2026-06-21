@@ -2,6 +2,7 @@ import {
   ClipboardPaste,
   Building2,
   BriefcaseBusiness,
+  Compass,
   Globe2,
   LayoutDashboard,
   Search,
@@ -19,6 +20,7 @@ export interface NavItem {
 /** Primary (Denmark) navigation — shared by the desktop sidebar and mobile drawer. */
 export const PRIMARY_NAV: NavItem[] = [
   { href: "/discover", label: "Discover", icon: Search },
+  { href: "/workflows", label: "Workflows", icon: Compass },
   { href: "/", label: "Cockpit", icon: LayoutDashboard },
   { href: "/deals", label: "Deals", icon: BriefcaseBusiness },
   { href: "/accounts", label: "Accounts", icon: Building2 },
