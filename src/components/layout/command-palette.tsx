@@ -27,11 +27,11 @@ export function openCommandPalette() {
 interface OppHit {
   id: string;
   title: string;
-  organization: string | null;
-  budgetMin: number | null;
-  budgetMax: number | null;
+  account: { name: string } | null;
+  valueMin: number | null;
+  valueMax: number | null;
   currency: string | null;
-  matchScore: number | null;
+  pursuitScore: number | null;
 }
 
 interface Result {
@@ -82,7 +82,7 @@ export function CommandPalette() {
     }
   }, [open]);
 
-  // Debounced opportunity search while the palette is open.
+  // Debounced deal search while the palette is open.
   React.useEffect(() => {
     if (!open) return;
     const term = query.trim();
@@ -95,10 +95,7 @@ export function CommandPalette() {
     const controller = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `/api/opportunities?q=${encodeURIComponent(term)}&pageSize=6`,
-          { signal: controller.signal },
-        );
+        const res = await fetch(`/api/deals?q=${encodeURIComponent(term)}&pageSize=6`, { signal: controller.signal });
         if (!res.ok) throw new Error();
         const data = (await res.json()) as { items: OppHit[] };
         setHits(data.items ?? []);
@@ -122,19 +119,19 @@ export function CommandPalette() {
     const term = query.trim().toLowerCase();
     const out: Result[] = [];
 
-    // Opportunities (only when searching) come first — the most specific hits.
+    // Deals (only when searching) come first — the most specific hits.
     for (const o of hits) {
       out.push({
         id: `opp-${o.id}`,
-        group: "Opportunities",
+        group: "Deals",
         label: o.title,
-        hint: [o.organization, formatBudget(o.budgetMin, o.budgetMax, o.currency ?? "DKK")]
+        hint: [o.account?.name, formatBudget(o.valueMin, o.valueMax, o.currency ?? "DKK")]
           .filter(Boolean)
           .join(" · "),
         icon: <Search className="h-4 w-4 text-muted-foreground" />,
-        score: o.matchScore,
+        score: o.pursuitScore,
         perform: () => {
-          router.push(`/opportunities/${o.id}`);
+          router.push(`/deals/${o.id}`);
           close();
         },
       });
@@ -159,10 +156,10 @@ export function CommandPalette() {
       {
         id: "act-new",
         group: "Actions",
-        label: "New opportunity",
+        label: "New deal",
         icon: <Plus className="h-4 w-4 text-muted-foreground" />,
         perform: () => {
-          router.push("/opportunities?new=1");
+          router.push("/deals");
           close();
         },
       },

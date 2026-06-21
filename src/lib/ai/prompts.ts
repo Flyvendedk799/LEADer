@@ -5,10 +5,11 @@ import type { AiAction } from "@/lib/types";
 
 export const OWNER_PROFILE_DEFAULT = `Fullstack developer, AI builder, MVP/prototype developer,
 product strategy & technical roadmap advisor, automation consultant, startup/SME-focused
-technical partner. Prefers funded/voucher/accelerator/innovation assignments under 100,000 DKK
-that are active, have a clear deadline, and a direct application or contact route.`;
+technical partner. Strong track record landing funded work, but uses that as one acquisition
+lane inside a broader client-acquisition system: direct startups, SME automation, tenders,
+community/manual leads and warm-network follow-ups.`;
 
-export const SYSTEM_BASE = `You are LEADer, an opportunity-intelligence assistant for a solo
+export const SYSTEM_BASE = `You are LEADer, a client-acquisition CRM assistant for a solo
 technical consultant. Be concise, concrete, and honest. Never invent budgets, deadlines, or
 contact details that are not present in the source text. Output must match the requested format.`;
 
@@ -44,6 +45,23 @@ Use null when not present. Do not guess.`,
 fitForSoloTechnicalSupplier: boolean }.`,
         true,
       );
+    case "planDiscoverySearch":
+      return base(
+        `Turn the user's freeform discovery intent into a strict JSON search plan for public-source discovery.
+Return exactly: {
+  "summary": string,
+  "queries": string[] (3-8 concrete search queries, no private/community scraping),
+  "requiredTerms": string[] (0-8 terms that candidates should contain),
+  "excludedTerms": string[] (0-8 terms to filter out),
+  "positiveKeywords": string[] (3-10 lane-fit keywords),
+  "evidenceRequirements": string[] (2-6 evidence checks),
+  "suggestedLaneSlug": string | null,
+  "confidence": number (0-100),
+  "notes": string[] (0-5 short caveats or strategy notes)
+}.
+Respect compliance: public automated sources only; community/network intent must be manual or user-assisted.`,
+        true,
+      );
     case "explainScore":
       return base("In 2–3 sentences, explain why this opportunity is (or isn't) a strong match for the user's profile. Be specific about budget, deadline, and skill fit.");
     case "draftApplication":
@@ -57,7 +75,23 @@ fitForSoloTechnicalSupplier: boolean }.`,
     case "compare":
       return base("Compare these opportunities for the user. Return a short markdown table plus a one-line recommendation of which to pursue first and why.");
     case "nextAction":
+    case "nextBestAction":
       return base("Recommend the single best next action for this opportunity in one short sentence (e.g. 'Email the contact to confirm scope before the deadline').");
+    case "qualifyLead":
+      return base(
+        `Qualify this lead as JSON with keys: fit (0-100), confidence (0-100), buyerIntent (LOW|MEDIUM|HIGH),
+recommendedStatus (DISCOVERED|QUALIFYING|INTERESTING|CONTACTED|PROPOSAL|NEGOTIATION|WON|LOST|ARCHIVED),
+risks (string[]), reasons (string[]), nextAction (string). Be strict about evidence.`,
+        true,
+      );
+    case "draftOutreach":
+      return base("Write a concise, human outreach email (subject + body) that references the specific account/lead evidence and proposes one low-friction next step.");
+    case "draftProposal":
+      return base("Write a short proposal outline with scope, approach, timeline, proof points, assumptions, and a clear next step. Keep it practical and buyer-facing.");
+    case "draftFollowUp":
+      return base("Write a warm follow-up message that references the previous context, adds one useful angle, and asks for a simple next step. Keep it under 130 words.");
+    case "summarizeAccount":
+      return base("Summarize this account for sales context: what they do, likely pain, open deals, relationship context, and best next move. Use bullets.");
     case "similar":
       return base("Identify the 2–4 most similar opportunities and explain the common thread in one sentence.");
     case "searchQueries":

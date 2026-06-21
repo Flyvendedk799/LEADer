@@ -1,16 +1,26 @@
 import { PageHeader } from "@/components/shared/page-header";
-import { DiscoveryWorkbench } from "@/components/discovery/discovery-workbench";
+import { LaneMissionControl } from "@/components/discovery/lane-mission-control";
+import { requireOwnerId } from "@/lib/auth";
+import { ensureDefaultDiscoveryLanes } from "@/lib/crm/lanes";
+import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export default function DiscoverPage() {
+export default async function DiscoverPage() {
+  const ownerId = await requireOwnerId();
+  await ensureDefaultDiscoveryLanes(ownerId);
+  const lanes = await db.discoveryLane.findMany({
+    where: { ownerId, active: true },
+    orderBy: { createdAt: "asc" },
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Discover"
-        description="Find Danish software, MVP, AI and udbud leads before they enter your pipeline."
+        title="Discovery mission control"
+        description="Run focused acquisition lanes, inspect evidence, and promote candidates into deals."
       />
-      <DiscoveryWorkbench initialWorkspace="DK" />
+      <LaneMissionControl lanes={lanes} />
     </div>
   );
 }

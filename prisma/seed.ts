@@ -11,6 +11,9 @@ import { scoreOpportunity } from "../src/lib/scoring";
 import { DEFAULT_WEIGHTS } from "../src/lib/scoring/config";
 import { hashPassword } from "../src/lib/auth/password";
 import { LOCAL_EMBED_MODEL, localEmbed, opportunityEmbedText } from "../src/lib/ai/embeddings";
+import { ensureDefaultDiscoveryLanes } from "../src/lib/crm/lanes";
+import { confidenceScore, pursuitScore } from "../src/lib/crm/scoring";
+import { dealStatusFromOpportunity } from "../src/lib/crm/status";
 
 const db = new PrismaClient();
 
@@ -19,6 +22,14 @@ const OWNER_PASSWORD = process.env.SEED_PASSWORD || "leader-demo-1234";
 const day = 24 * 60 * 60 * 1000;
 const future = (d: number) => new Date(Date.now() + d * day);
 const past = (d: number) => new Date(Date.now() - d * day);
+
+function accountType(category?: string, ingest?: string): Prisma.AccountCreateInput["type"] {
+  const text = `${category ?? ""} ${ingest ?? ""}`.toLowerCase();
+  if (text.includes("community")) return "COMMUNITY";
+  if (text.includes("tender")) return "PUBLIC_BUYER";
+  if (text.includes("startup") || text.includes("mvp") || text.includes("accelerator")) return "STARTUP";
+  return "COMPANY";
+}
 
 async function main() {
   console.log("🌱 Seeding LEADer…");
@@ -53,9 +64,25 @@ async function main() {
   });
 
   // Clean previous demo data for a deterministic re-seed.
+  await db.conversionAsset.deleteMany({ where: { ownerId: user.id } });
+  await db.task.deleteMany({ where: { ownerId: user.id } });
+  await db.touchpoint.deleteMany({ where: { ownerId: user.id } });
+  await db.evidence.deleteMany({ where: { ownerId: user.id } });
+  await db.discoveryCandidate.deleteMany({ where: { ownerId: user.id } });
+  await db.discoveryMission.deleteMany({ where: { ownerId: user.id } });
+  await db.dealPerson.deleteMany({ where: { deal: { ownerId: user.id } } });
+  await db.deal.deleteMany({ where: { ownerId: user.id } });
+  await db.person.deleteMany({ where: { ownerId: user.id } });
+  await db.account.deleteMany({ where: { ownerId: user.id } });
+  await db.discoveryLane.deleteMany({ where: { ownerId: user.id } });
+  await db.communityImport.deleteMany({ where: { ownerId: user.id } });
   await db.opportunity.deleteMany({ where: { ownerId: user.id } });
   await db.source.deleteMany({ where: { ownerId: user.id } });
   await db.list.deleteMany({ where: { ownerId: user.id } });
+
+  await ensureDefaultDiscoveryLanes(user.id);
+  const lanes = await db.discoveryLane.findMany({ where: { ownerId: user.id } });
+  const laneBySlug = new Map(lanes.map((lane) => [lane.slug, lane.id]));
 
   // ── Sources (both lanes) ─────────────────────────────────────────────────
   const mk = (s: Omit<Prisma.SourceUncheckedCreateInput, "ownerId">) =>
@@ -224,7 +251,7 @@ async function main() {
     );
     breakdown.computedAt = new Date().toISOString();
 
-    await db.opportunity.create({
+    const opp = await db.opportunity.create({
       data: {
         ownerId: user.id,
         sourceId: d.sourceId,
@@ -258,6 +285,125 @@ async function main() {
         activities: { create: { type: "IMPORT", message: `Seeded (${d.ingest ?? "AUTOMATED"})` } },
       },
     });
+
+    const acct = await db.account.upsert({
+      where: { ownerId_name: { ownerId: user.id, name: d.org } },
+      update: {
+        type: accountType(d.category, d.ingest),
+        workspace: d.workspace ?? "DK",
+        country: d.workspace === "GLOBAL" ? undefined : "DK",
+        fitScore: breakdown.total,
+        source: "seed",
+      },
+      create: {
+        ownerId: user.id,
+        name: d.org,
+        type: accountType(d.category, d.ingest),
+        workspace: d.workspace ?? "DK",
+        country: d.workspace === "GLOBAL" ? undefined : "DK",
+        fitScore: breakdown.total,
+        source: "seed",
+      },
+    });
+
+    const laneId =
+      d.ingest === "COMMUNITY"
+        ? laneBySlug.get("community-manual")
+        : d.category === "Tender"
+          ? laneBySlug.get("tenders-procurement")
+          : d.category === "AI / automation"
+            ? laneBySlug.get("sme-ai-automation")
+            : d.category === "MVP / prototype" || d.category === "Accelerator"
+              ? laneBySlug.get("direct-startup-mvp")
+              : laneBySlug.get("funded-work");
+    const conf = confidenceScore({
+      hasUrl: Boolean(d.url),
+      hasDeadline: Boolean(d.deadline),
+      hasBudget: d.budgetMin != null || d.budgetMax != null,
+      hasOrganization: Boolean(d.org),
+      evidenceCount: 1,
+      sourceKind: d.ingest === "COMMUNITY" ? "community" : "source-scan",
+    });
+    const pursuit = pursuitScore({
+      matchScore: breakdown.total,
+      confidenceScore: conf,
+      deadline: d.deadline,
+      priority: d.status === "WATCH" || d.status === "INTERESTING" ? 2 : 0,
+    });
+
+    const deal = await db.deal.create({
+      data: {
+        ownerId: user.id,
+        accountId: acct.id,
+        sourceId: d.sourceId,
+        laneId,
+        legacyOpportunityId: opp.id,
+        title: d.title,
+        summary: d.description,
+        rawContent: d.description,
+        valueMin: d.budgetMin,
+        valueMax: d.budgetMax,
+        currency: "DKK",
+        deadline: d.deadline,
+        status: dealStatusFromOpportunity(d.status ?? "NEW"),
+        priority: d.status === "WATCH" || d.status === "INTERESTING" ? 2 : 0,
+        workspace: d.workspace ?? "DK",
+        category: d.category,
+        applicationRoute: d.applicationRoute ?? "UNKNOWN",
+        url: d.url,
+        matchScore: breakdown.total,
+        confidenceScore: conf,
+        pursuitScore: pursuit,
+        qualification: { seededFromOpportunity: opp.id, ingestMethod: d.ingest ?? "AUTOMATED" },
+        nextAction:
+          d.status === "WON" || d.status === "LOST" || d.status === "ARCHIVED"
+            ? undefined
+            : "Qualify buyer, budget and next step.",
+      },
+    });
+
+    await db.evidence.create({
+      data: {
+        ownerId: user.id,
+        accountId: acct.id,
+        dealId: deal.id,
+        kind: d.url ? "WEB_RESULT" : d.ingest === "COMMUNITY" ? "USER_NOTE" : "SOURCE_SNIPPET",
+        url: d.url,
+        title: d.title,
+        snippet: d.description,
+        sourceName: "seed",
+        provider: d.ingest ?? "AUTOMATED",
+        confidence: conf,
+        metadata: { opportunityId: opp.id, category: d.category },
+      },
+    });
+
+    if (d.status !== "WON" && d.status !== "LOST" && d.status !== "ARCHIVED") {
+      await db.task.create({
+        data: {
+          ownerId: user.id,
+          accountId: acct.id,
+          dealId: deal.id,
+          title: "Qualify buyer, budget and next step",
+          description: "Seeded CRM follow-up task.",
+          dueAt: d.deadline ? new Date(Math.min(d.deadline.getTime(), Date.now() + 3 * day)) : future(3),
+          priority: pursuit >= 80 ? "HIGH" : "MEDIUM",
+        },
+      });
+    }
+
+    for (const contact of d.contacts ?? []) {
+      const person = contact.email
+        ? await db.person.upsert({
+            where: { ownerId_email: { ownerId: user.id, email: contact.email } },
+            update: { accountId: acct.id, name: contact.name, role: contact.role },
+            create: { ownerId: user.id, accountId: acct.id, name: contact.name, email: contact.email, role: contact.role },
+          })
+        : await db.person.create({ data: { ownerId: user.id, accountId: acct.id, name: contact.name, role: contact.role } });
+      await db.dealPerson.create({
+        data: { dealId: deal.id, personId: person.id, role: contact.role },
+      });
+    }
   }
 
   // ── Lists + watchlist + tags + a saved search ─────────────────────────────
@@ -322,6 +468,9 @@ async function main() {
   const counts = {
     sources: await db.source.count({ where: { ownerId: user.id } }),
     opportunities: await db.opportunity.count({ where: { ownerId: user.id } }),
+    accounts: await db.account.count({ where: { ownerId: user.id } }),
+    deals: await db.deal.count({ where: { ownerId: user.id } }),
+    lanes: await db.discoveryLane.count({ where: { ownerId: user.id } }),
     lists: await db.list.count({ where: { ownerId: user.id } }),
   };
   console.log("✅ Seed complete:", counts);

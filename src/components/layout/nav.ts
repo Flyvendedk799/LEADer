@@ -1,14 +1,12 @@
 import {
   ClipboardPaste,
-  Columns3,
+  Building2,
+  BriefcaseBusiness,
   Globe2,
   LayoutDashboard,
-  ListChecks,
   Search,
   Radar,
   Settings,
-  Star,
-  Target,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,11 +19,9 @@ export interface NavItem {
 /** Primary (Denmark) navigation — shared by the desktop sidebar and mobile drawer. */
 export const PRIMARY_NAV: NavItem[] = [
   { href: "/discover", label: "Discover", icon: Search },
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/opportunities", label: "Opportunities", icon: Target },
-  { href: "/board", label: "Pipeline board", icon: Columns3 },
-  { href: "/watchlist", label: "Watchlist", icon: Star },
-  { href: "/lists", label: "Lists", icon: ListChecks },
+  { href: "/", label: "Cockpit", icon: LayoutDashboard },
+  { href: "/deals", label: "Deals", icon: BriefcaseBusiness },
+  { href: "/accounts", label: "Accounts", icon: Building2 },
   { href: "/sources", label: "Sources", icon: Radar },
   { href: "/import", label: "Community import", icon: ClipboardPaste },
 ];

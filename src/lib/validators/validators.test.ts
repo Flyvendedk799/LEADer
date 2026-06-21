@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bulkOpportunitySchema,
   discoveryFeedbackSchema,
+  discoveryRunCreateSchema,
   discoverySaveSourceSchema,
   discoverySearchSchema,
   opportunityCreateSchema,
@@ -65,6 +66,26 @@ describe("bulkOpportunitySchema", () => {
 });
 
 describe("discovery schemas", () => {
+  it("accepts AI-assisted freeform search controls", () => {
+    const result = discoveryRunCreateSchema.safeParse({
+      laneId: "lane_123",
+      query: "Find boring B2B companies with spreadsheet-heavy reporting pain",
+      freeformBrief: "Prioritize SMEs that need AI automation or internal tools.",
+      useAiPlanner: true,
+      searchMode: "wide",
+      queryCount: 7,
+      requiredTerms: ["reporting", "workflow"],
+      excludedTerms: ["course", "job"],
+      maxResults: 20,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.useAiPlanner).toBe(true);
+      expect(result.data.searchMode).toBe("wide");
+      expect(result.data.requiredTerms).toEqual(["reporting", "workflow"]);
+    }
+  });
+
   it("accepts a source-only result filter", () => {
     const r = discoverySearchSchema.safeParse({
       query: "software udbud",

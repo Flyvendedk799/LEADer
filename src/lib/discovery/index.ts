@@ -28,6 +28,9 @@ export { DISCOVERY_PRESETS } from "./presets";
 
 export interface DiscoverySearchInput {
   query: string;
+  queryVariants?: string[];
+  requiredTerms?: string[];
+  excludedTerms?: string[];
   workspace?: Workspace;
   maxResults?: number;
   includeWeb?: boolean;
@@ -741,6 +744,64 @@ async function buildSearchPlan(
   } catch {
     return fallback;
   }
+}
+
+function cleanSearchTerms(values: string[] = [], limit = 12) {
+  return uniqueStrings(values.map((value) => cleanText(value, 80).toLowerCase()).filter(Boolean), limit);
+}
+
+function queryTerm(term: string, exclude = false) {
+  const cleaned = cleanText(term, 80);
+  if (!cleaned) return "";
+  const value = /\s/.test(cleaned) ? `"${cleaned}"` : cleaned;
+  return exclude ? `-${value}` : value;
+}
+
+function withHardSearchModifiers(queries: string[], requiredTerms: string[] = [], excludedTerms: string[] = []) {
+  const required = cleanSearchTerms(requiredTerms).map((term) => queryTerm(term));
+  const excluded = cleanSearchTerms(excludedTerms).map((term) => queryTerm(term, true));
+  const modifiers = [...required, ...excluded].filter(Boolean).join(" ");
+  if (!modifiers) return uniqueStrings(queries.map((query) => normalizeSearchQuery(query)), 7);
+  return uniqueStrings(
+    queries.map((query) => normalizeSearchQuery([query, modifiers].filter(Boolean).join(" "))),
+    7,
+  );
+}
+
+function candidateContains(text: string, term: string) {
+  const cleaned = term.toLowerCase().trim();
+  if (!cleaned) return true;
+  return text.includes(cleaned);
+}
+
+function filterBySearchTerms<T extends Pick<DiscoveryCandidateDto, "title" | "description" | "rawContent" | "detailText" | "organization" | "sourceName" | "category" | "url">>(
+  candidates: T[],
+  requiredTerms: string[] = [],
+  excludedTerms: string[] = [],
+) {
+  const required = cleanSearchTerms(requiredTerms);
+  const excluded = cleanSearchTerms(excludedTerms);
+  if (!required.length && !excluded.length) return { candidates, removed: 0 };
+
+  const filtered = candidates.filter((candidate) => {
+    const text = [
+      candidate.title,
+      candidate.description,
+      candidate.rawContent,
+      candidate.detailText,
+      candidate.organization,
+      candidate.sourceName,
+      candidate.category,
+      candidate.url,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const hasRequired = required.every((term) => candidateContains(text, term));
+    const hasExcluded = excluded.some((term) => candidateContains(text, term));
+    return hasRequired && !hasExcluded;
+  });
+  return { candidates: filtered, removed: candidates.length - filtered.length };
 }
 
 function sourceLabel(url?: string): string {
@@ -1627,7 +1688,16 @@ export async function runDiscoverySearch(
     user,
     memory,
   );
-  const queries = searchPlan.queries;
+  const queries = withHardSearchModifiers(
+    [...(input.queryVariants ?? []), ...searchPlan.queries],
+    input.requiredTerms,
+    input.excludedTerms,
+  );
+  const effectiveSearchPlan = {
+    ...searchPlan,
+    queries,
+    avoidTerms: uniqueStrings([...(searchPlan.avoidTerms ?? []), ...cleanSearchTerms(input.excludedTerms)], 8),
+  };
   const warnings: string[] = [];
   let candidates: DiscoveryCandidateDto[] = [];
   let sourceScanCount = 0;
@@ -1652,7 +1722,7 @@ export async function runDiscoverySearch(
   }
 
   if (input.includeSources !== false) {
-    const sourceQuery = [input.query, ...searchPlan.focusTerms.slice(0, 8)].join(" ");
+    const sourceQuery = [input.query, ...searchPlan.focusTerms.slice(0, 8), ...(input.requiredTerms ?? [])].join(" ");
     const scanned = await scanSources(ownerId, sourceQuery, user, workspace, collectionLimit, feedbackModel);
     sourceScanCount = scanned.scanned;
     candidates.push(...scanned.candidates);
@@ -1685,8 +1755,13 @@ export async function runDiscoverySearch(
     warnings.push(`${hiddenCount} expired or stale candidates were hidden from the review list.`);
   }
 
-  const beforeSavedFilter = freshCandidates.length;
-  const unsavedCandidates = freshCandidates.filter((candidate) => !savedCandidateMatch(candidate, savedIndex));
+  const termFiltered = filterBySearchTerms(freshCandidates, input.requiredTerms, input.excludedTerms);
+  if (termFiltered.removed > 0) {
+    warnings.push(`Filtered ${termFiltered.removed} candidates by required/excluded search terms.`);
+  }
+
+  const beforeSavedFilter = termFiltered.candidates.length;
+  const unsavedCandidates = termFiltered.candidates.filter((candidate) => !savedCandidateMatch(candidate, savedIndex));
   const savedHiddenCount = beforeSavedFilter - unsavedCandidates.length;
   if (savedHiddenCount > 0) {
     warnings.push(`${savedHiddenCount} already saved results were hidden.`);
@@ -1704,7 +1779,7 @@ export async function runDiscoverySearch(
   return {
     candidates: unique,
     queries,
-    searchPlan,
+    searchPlan: effectiveSearchPlan,
     provider: providerState.provider,
     providerConfigured: providerState.configured,
     sourceScanCount,
