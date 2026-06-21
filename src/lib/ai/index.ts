@@ -147,6 +147,21 @@ function mockResult(action: AiAction, context = ""): AiResult {
       return { ...base, text: `**Comparison (mock)**\n\n| Field | A | B |\n|---|---|---|\n| Fit | high | medium |\n\nPursue the higher-scoring, sooner-deadline one first.${note}` };
     case "similar":
       return { ...base, text: `These share a startup/MVP + funded-supplier pattern.${note}` };
+    case "searchQueries":
+      return {
+        ...base,
+        data: {
+          queries: [
+            "software udbud Danmark teknisk sparring MVP prototype tilbudsfrist",
+            "site:ehsys.dk/indkoeb/alle OR site:beyondbeta.ehsys.dk/indkoeb/tilbud/indsend software produkt roadmap",
+            "SMV Digital softwareudvikling integration webapp leverandør voucher Danmark",
+            "AI automatisering proof of concept fullstack udvikler tilskud Danmark",
+          ],
+          focusTerms: ["software", "udbud", "tilbudsfrist", "MVP", "teknisk sparring", "produktroadmap"],
+          avoidTerms: ["guide", "kursus", "nyhed", "artikel"],
+          rationale: `Mock search plan for Danish funded software opportunities.${note}`,
+        },
+      };
     case "qualifyLead":
       return {
         ...base,

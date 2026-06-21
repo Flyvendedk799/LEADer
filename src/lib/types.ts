@@ -183,6 +183,7 @@ export type AiAction =
   | "compare"
   | "similar"
   | "nextAction"
+  | "searchQueries"
   | "qualifyLead"
   | "draftOutreach"
   | "draftProposal"
