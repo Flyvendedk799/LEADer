@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { BrainCircuit, Eye, EyeOff, MessageSquareText, Search, Trash2 } from "lucide-react";
+import { BrainCircuit, Eye, EyeOff, MessageSquareText, Search, Terminal, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-export type AiProvider = "openai" | "anthropic";
+export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription";
 export type SearchProvider = "tavily" | "brave" | "serper";
 
 export type PublicAiKeys = {
@@ -46,7 +46,14 @@ export type SearchProviderState = {
 
 const PROVIDER_DEFAULTS: Record<
   AiProvider,
-  { label: string; description: string; baseUrl: string; model: string; embeddingModel: string }
+  {
+    label: string;
+    description: string;
+    baseUrl: string;
+    model: string;
+    embeddingModel: string;
+    requiresApiKey: boolean;
+  }
 > = {
   openai: {
     label: "OpenAI",
@@ -54,19 +61,39 @@ const PROVIDER_DEFAULTS: Record<
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4o-mini",
     embeddingModel: "text-embedding-3-small",
+    requiresApiKey: true,
   },
   anthropic: {
-    label: "Claude",
+    label: "Claude API",
     description: "Claude models through Anthropic's Messages API.",
     baseUrl: "https://api.anthropic.com",
     model: "claude-3-5-sonnet-latest",
     embeddingModel: "text-embedding-3-small",
+    requiresApiKey: true,
+  },
+  codex: {
+    label: "Codex/ChatGPT",
+    description: "Use the local Codex CLI ChatGPT subscription. No API key.",
+    baseUrl: "https://chatgpt.com/backend-api",
+    model: "gpt-5.5",
+    embeddingModel: "text-embedding-3-small",
+    requiresApiKey: false,
+  },
+  "claude-subscription": {
+    label: "Claude Code",
+    description: "Use the local Claude Code subscription from macOS Keychain. No API key.",
+    baseUrl: "https://api.anthropic.com",
+    model: "claude-opus-4-8",
+    embeddingModel: "text-embedding-3-small",
+    requiresApiKey: false,
   },
 };
 
 const PROVIDERS: { value: AiProvider; icon: typeof BrainCircuit }[] = [
   { value: "openai", icon: BrainCircuit },
   { value: "anthropic", icon: MessageSquareText },
+  { value: "codex", icon: Terminal },
+  { value: "claude-subscription", icon: Terminal },
 ];
 
 const SEARCH_PROVIDER_LABELS: Record<SearchProvider, string> = {
@@ -89,14 +116,15 @@ export function initialAiProviderState(aiKeys: PublicAiKeys): AiProviderState {
 }
 
 export function aiProviderPayload(state: AiProviderState) {
+  const requiresApiKey = PROVIDER_DEFAULTS[state.provider].requiresApiKey;
   return {
     provider: state.provider,
     baseUrl: state.baseUrl.trim(),
     model: state.model.trim(),
     embeddingModel:
       state.provider === "openai" ? state.embeddingModel.trim() || undefined : undefined,
-    apiKey: state.apiKey.trim() || undefined,
-    clearApiKey: state.clearApiKey,
+    apiKey: requiresApiKey ? state.apiKey.trim() || undefined : undefined,
+    clearApiKey: requiresApiKey ? state.clearApiKey : false,
   };
 }
 
@@ -131,6 +159,7 @@ export function AiProviderFields({
 }: AiProviderFieldsProps) {
   const [showKey, setShowKey] = React.useState(false);
   const currentDefaults = PROVIDER_DEFAULTS[state.provider];
+  const requiresApiKey = currentDefaults.requiresApiKey;
   const hasSavedKey = Boolean(aiKeys?.hasApiKey && !state.clearApiKey);
 
   function chooseProvider(provider: AiProvider) {
@@ -227,61 +256,67 @@ export function AiProviderFields({
         </div>
       )}
 
-      <div className="grid gap-2">
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="ai-api-key">API key</Label>
-          {hasSavedKey && (
-            <span className="text-xs text-muted-foreground">
-              Saved key {aiKeys?.keyPreview || "configured"}
-            </span>
-          )}
-        </div>
-        <div className="relative">
-          <Input
-            id="ai-api-key"
-            type={showKey ? "text" : "password"}
-            value={state.apiKey}
-            disabled={disabled || state.clearApiKey}
-            onChange={(e) =>
-              onChange({ ...state, apiKey: e.target.value, clearApiKey: false })
-            }
-            className="pr-10"
-            placeholder={hasSavedKey ? "Leave blank to keep saved key" : "Paste your API key"}
-            autoComplete="off"
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            disabled={disabled || state.clearApiKey}
-            className="absolute right-0 top-0 h-9 w-9"
-            aria-label={showKey ? "Hide API key" : "Show API key"}
-            onClick={() => setShowKey((v) => !v)}
-          >
-            {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </Button>
-        </div>
-
-        {aiKeys?.hasApiKey && (
-          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2">
-            <p className="text-xs text-muted-foreground">
-              {state.clearApiKey ? "The saved key will be removed on save." : "Saved keys are masked in the browser."}
-            </p>
+      {requiresApiKey ? (
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="ai-api-key">API key</Label>
+            {hasSavedKey && (
+              <span className="text-xs text-muted-foreground">
+                Saved key {aiKeys?.keyPreview || "configured"}
+              </span>
+            )}
+          </div>
+          <div className="relative">
+            <Input
+              id="ai-api-key"
+              type={showKey ? "text" : "password"}
+              value={state.apiKey}
+              disabled={disabled || state.clearApiKey}
+              onChange={(e) =>
+                onChange({ ...state, apiKey: e.target.value, clearApiKey: false })
+              }
+              className="pr-10"
+              placeholder={hasSavedKey ? "Leave blank to keep saved key" : "Paste your API key"}
+              autoComplete="off"
+            />
             <Button
               type="button"
-              variant={state.clearApiKey ? "secondary" : "outline"}
-              size="sm"
-              disabled={disabled}
-              onClick={() =>
-                onChange({ ...state, apiKey: "", clearApiKey: !state.clearApiKey })
-              }
+              variant="ghost"
+              size="icon"
+              disabled={disabled || state.clearApiKey}
+              className="absolute right-0 top-0 h-9 w-9"
+              aria-label={showKey ? "Hide API key" : "Show API key"}
+              onClick={() => setShowKey((v) => !v)}
             >
-              <Trash2 className="h-4 w-4" />
-              {state.clearApiKey ? "Keep key" : "Remove key"}
+              {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           </div>
-        )}
-      </div>
+
+          {aiKeys?.hasApiKey && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                {state.clearApiKey ? "The saved key will be removed on save." : "Saved keys are masked in the browser."}
+              </p>
+              <Button
+                type="button"
+                variant={state.clearApiKey ? "secondary" : "outline"}
+                size="sm"
+                disabled={disabled}
+                onClick={() =>
+                  onChange({ ...state, apiKey: "", clearApiKey: !state.clearApiKey })
+                }
+              >
+                <Trash2 className="h-4 w-4" />
+                {state.clearApiKey ? "Keep key" : "Remove key"}
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted-foreground">
+          This provider uses your local subscription login on this machine.
+        </div>
+      )}
     </div>
   );
 }

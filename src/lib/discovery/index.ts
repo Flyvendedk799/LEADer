@@ -653,9 +653,9 @@ function deterministicSearchPlan(
           `${q} ${country} AI automatisering proof of concept fullstack udvikler tilskud ${avoidClause}`,
         ]
       : [
-          `${q} funded startup MVP fullstack software project remote ${avoidClause}`,
-          `${q} grant voucher innovation software supplier ${avoidClause}`,
-          `${q} technical roadmap prototype AI automation supplier tender`,
+          `${q} international fjernarbejde remote software projekt startup MVP fullstack ${avoidClause}`,
+          `${q} international grant voucher innovation software supplier tilskud leverandør ${avoidClause}`,
+          `${q} Europe remote dansk softwareudvikler AI automation consultant`,
         ];
   const sourceQueries =
     workspace === "DK"
@@ -666,8 +666,8 @@ function deterministicSearchPlan(
           savedSourceTerms ? `${q} ${savedSourceTerms}` : "",
         ]
       : [
-          `${q} software tenders startup grants source list`,
-          `${q} procurement portal innovation voucher software`,
+          `${q} software tenders startup grants source list dansk international`,
+          `${q} procurement portal innovation voucher software tilskud international`,
         ];
   const terms =
     resultKind === "sources"
@@ -683,7 +683,7 @@ function deterministicSearchPlan(
     rationale:
       workspace === "DK"
         ? "Søger bredt efter aktive danske softwareopgaver, EHSYS-lignende indkøb og relevante udbudskilder."
-        : "Searches for funded software, prototype, AI, and grant-backed supplier opportunities.",
+        : "Searches for funded software, prototype, AI, and grant-backed supplier opportunities while preserving Danish intent.",
     usedAi: false,
   };
 }
@@ -1231,14 +1231,19 @@ async function tavilySearch(query: string, maxResults: number, apiKey: string): 
     }));
 }
 
-async function braveSearch(query: string, maxResults: number, apiKey: string): Promise<SearchResult[]> {
+async function braveSearch(
+  query: string,
+  maxResults: number,
+  apiKey: string,
+  workspace: Workspace,
+): Promise<SearchResult[]> {
   const params = new URLSearchParams({
     q: query,
-    country: "DK",
     search_lang: "da",
     count: String(Math.min(maxResults, 20)),
     safesearch: "moderate",
   });
+  if (workspace === "DK") params.set("country", "DK");
   const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
     headers: {
       Accept: "application/json",
@@ -1261,14 +1266,24 @@ async function braveSearch(query: string, maxResults: number, apiKey: string): P
     }));
 }
 
-async function serperSearch(query: string, maxResults: number, apiKey: string): Promise<SearchResult[]> {
+async function serperSearch(
+  query: string,
+  maxResults: number,
+  apiKey: string,
+  workspace: Workspace,
+): Promise<SearchResult[]> {
   const res = await fetch("https://google.serper.dev/search", {
     method: "POST",
     headers: {
       "X-API-KEY": apiKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ q: query, gl: "dk", hl: "da", num: Math.min(maxResults, 20) }),
+    body: JSON.stringify({
+      q: query,
+      ...(workspace === "DK" ? { gl: "dk" } : {}),
+      hl: "da",
+      num: Math.min(maxResults, 20),
+    }),
   });
   if (!res.ok) throw new Error(`Serper search failed (${res.status})`);
   const data = (await res.json()) as {
@@ -1292,6 +1307,7 @@ async function runProviderSearch(
   apiKey: string,
   queries: string[],
   maxResults: number,
+  workspace: Workspace,
 ): Promise<SearchResult[]> {
   const perQuery = Math.max(3, Math.ceil(maxResults / Math.max(1, queries.length)));
   const out: SearchResult[] = [];
@@ -1300,8 +1316,8 @@ async function runProviderSearch(
       provider === "tavily"
         ? await tavilySearch(query, perQuery, apiKey)
         : provider === "brave"
-          ? await braveSearch(query, perQuery, apiKey)
-          : await serperSearch(query, perQuery, apiKey);
+          ? await braveSearch(query, perQuery, apiKey, workspace)
+          : await serperSearch(query, perQuery, apiKey, workspace);
     out.push(...results);
     if (out.length >= maxResults * 2) break;
   }
@@ -1709,6 +1725,7 @@ export async function runDiscoverySearch(
         providerState.apiKey,
         queries,
         collectionLimit,
+        workspace,
       );
       const webCandidates = await searchResultsToCandidates(webResults, user, workspace, collectionLimit, feedbackModel);
       candidates.push(...webCandidates);

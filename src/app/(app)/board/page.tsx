@@ -55,7 +55,7 @@ export default async function BoardPage({
       >
         <div className="flex items-center gap-1 rounded-md border border-border bg-surface p-0.5">
           {tab("DK", "🇩🇰 Denmark")}
-          {tab("GLOBAL", "🌍 Global")}
+          {tab("GLOBAL", "🌍 International")}
         </div>
         <Button asChild variant="outline">
           <Link href="/opportunities">Table view</Link>

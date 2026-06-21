@@ -73,7 +73,7 @@ export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
           AI provider
         </CardTitle>
         <CardDescription>
-          Choose AI and discovery search providers, save API keys, and switch anytime.
+          Choose AI and discovery search providers, save API keys, or use local subscriptions.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

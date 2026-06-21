@@ -5,7 +5,7 @@ import {
   normalizeStoredAiKeys,
   publicAiKeys,
 } from "./keys";
-import { aiConfig } from "./provider";
+import { aiConfig, hasLlm } from "./provider";
 
 describe("AI key storage", () => {
   const originalEnv = { ...process.env };
@@ -71,5 +71,37 @@ describe("AI key storage", () => {
     expect(cfg.provider).toBe("openai");
     expect(cfg.apiKey).toBe("user-key");
     expect(cfg.model).toBe("gpt-4o-mini");
+  });
+
+  it("stores subscription providers without API keys and treats them as live-capable", () => {
+    const stored = buildStoredAiKeys({
+      provider: "codex",
+      model: "gpt-5.5",
+      apiKey: "should-not-be-stored",
+    });
+
+    expect(stored.provider).toBe("codex");
+    expect(stored.encryptedApiKey).toBeUndefined();
+    expect(stored.keyPreview).toBeUndefined();
+    expect(publicAiKeys(stored)?.hasApiKey).toBe(false);
+
+    const cfg = aiConfig(stored);
+    expect(cfg.provider).toBe("codex");
+    expect(cfg.apiKey).toBe("");
+    expect(cfg.baseUrl).toBe("https://chatgpt.com/backend-api");
+    expect(hasLlm(stored)).toBe(true);
+  });
+
+  it("clears API-key metadata when switching to a subscription provider", () => {
+    const stored = buildStoredAiKeys({
+      provider: "openai",
+      apiKey: "sk-openai-test-abcdef",
+    });
+
+    const switched = buildStoredAiKeys({ provider: "claude-subscription" }, stored);
+
+    expect(switched.provider).toBe("claude-subscription");
+    expect(switched.encryptedApiKey).toBeUndefined();
+    expect(switched.keyPreview).toBeUndefined();
   });
 });

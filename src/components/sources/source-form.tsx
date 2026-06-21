@@ -54,7 +54,7 @@ const FREQUENCIES: MonitorFrequency[] = ["MANUAL", "HOURLY", "DAILY", "WEEKLY"];
 
 const WORKSPACE_LABELS: Record<Workspace, string> = {
   DK: "Denmark (DK)",
-  GLOBAL: "Global",
+  GLOBAL: "International",
 };
 const FREQUENCY_LABELS: Record<MonitorFrequency, string> = {
   MANUAL: "Manual",

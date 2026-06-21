@@ -42,7 +42,7 @@ export function Sidebar() {
         })}
 
         <div className="my-3 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Global
+          International
         </div>
         <Link
           href={GLOBAL_NAV.href}

@@ -218,7 +218,7 @@ export function OnboardingFlow({ user }: { user: OnboardingUser }) {
             <div>
               <h2 className="text-sm font-semibold text-foreground">AI provider</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                API keys are optional during setup and can be changed later in Settings.
+                API keys and local subscription providers can be changed later in Settings.
               </p>
             </div>
             <AiProviderFields

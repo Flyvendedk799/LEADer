@@ -265,7 +265,7 @@ export function DiscoveryWorkbench({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="DK">Denmark</SelectItem>
-                    <SelectItem value="GLOBAL">Global</SelectItem>
+                    <SelectItem value="GLOBAL">International</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

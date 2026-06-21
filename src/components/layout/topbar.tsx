@@ -84,7 +84,7 @@ export function Topbar({ user }: TopbarProps) {
             href="/global"
             className={`rounded px-2.5 py-1 font-medium transition-colors ${onGlobal ? "bg-accent/15 text-accent" : "text-muted-foreground hover:text-foreground"}`}
           >
-            🌍 Global
+            🌍 International
           </Link>
         </div>
 

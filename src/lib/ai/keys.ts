@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
-export type AiProvider = "openai" | "anthropic";
+export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription";
 export type SearchProvider = "tavily" | "brave" | "serper";
 
 export interface StoredSearchKey {
@@ -34,7 +34,15 @@ export interface PublicAiKeys {
 }
 
 export interface AiKeysUpdate {
-  provider?: AiProvider | "claude" | "openai-compatible";
+  provider?:
+    | AiProvider
+    | "claude"
+    | "openai-compatible"
+    | "codex-subscription"
+    | "chatgpt"
+    | "chatgpt-subscription"
+    | "claude-code"
+    | "claude-code-subscription";
   baseUrl?: string;
   model?: string;
   embeddingModel?: string;
@@ -62,6 +70,16 @@ export const AI_PROVIDER_DEFAULTS: Record<
     baseUrl: "https://api.anthropic.com",
     model: "claude-3-5-sonnet-latest",
   },
+  codex: {
+    label: "Codex/ChatGPT subscription",
+    baseUrl: "https://chatgpt.com/backend-api",
+    model: "gpt-5.5",
+  },
+  "claude-subscription": {
+    label: "Claude Code subscription",
+    baseUrl: "https://api.anthropic.com",
+    model: "claude-opus-4-8",
+  },
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,6 +87,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function normalizeProvider(value: unknown): AiProvider {
+  if (
+    value === "codex" ||
+    value === "codex-subscription" ||
+    value === "chatgpt" ||
+    value === "chatgpt-subscription"
+  ) {
+    return "codex";
+  }
+  if (
+    value === "claude-subscription" ||
+    value === "claude-code" ||
+    value === "claude-code-subscription"
+  ) {
+    return "claude-subscription";
+  }
   if (value === "anthropic" || value === "claude") return "anthropic";
   return "openai";
 }
@@ -202,23 +235,28 @@ export function buildStoredAiKeys(input: AiKeysUpdate, existingRaw?: unknown): S
   const provider = normalizeProvider(input.provider ?? existing?.provider);
   const defaults = AI_PROVIDER_DEFAULTS[provider];
   const sameProvider = !existing || existing.provider === provider;
+  const usesSubscription = provider === "codex" || provider === "claude-subscription";
   const apiKey = input.apiKey?.trim();
 
   const encryptedApiKey = input.clearApiKey
     ? undefined
-    : apiKey
-      ? encryptApiKey(apiKey)
-      : sameProvider
-        ? existing?.encryptedApiKey
-        : undefined;
+    : usesSubscription
+      ? undefined
+      : apiKey
+        ? encryptApiKey(apiKey)
+        : sameProvider
+          ? existing?.encryptedApiKey
+          : undefined;
 
   const keyPreview = input.clearApiKey
     ? undefined
-    : apiKey
-      ? apiKeyPreview(apiKey)
-      : encryptedApiKey
-        ? existing?.keyPreview
-        : undefined;
+    : usesSubscription
+      ? undefined
+      : apiKey
+        ? apiKeyPreview(apiKey)
+        : encryptedApiKey
+          ? existing?.keyPreview
+          : undefined;
 
   const stored: StoredAiKeys = {
     provider,

@@ -8,10 +8,12 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required (see .env.example)"),
   DEV_USER_EMAIL: z.string().default("owner@leader.local"),
   // AI (optional — empty key => offline mock mode)
+  LLM_PROVIDER: z.string().default("openai"),
   LLM_API_KEY: z.string().default(""),
   LLM_BASE_URL: z.string().default("https://api.openai.com/v1"),
   LLM_MODEL: z.string().default("gpt-4o-mini"),
   LLM_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
+  CODEX_AUTH_FILE: z.string().default(""),
   AI_KEYS_ENCRYPTION_SECRET: z.string().default(""),
   // Crawler
   CRAWLER_USER_AGENT: z.string().default("LEADerBot/0.1 (+respects robots.txt)"),
@@ -48,5 +50,5 @@ export function getEnv(): Env {
 }
 
 export function hasLlmKey(): boolean {
-  return Boolean(process.env.LLM_API_KEY);
+  return Boolean(process.env.LLM_API_KEY || ["codex", "claude-subscription"].includes(process.env.LLM_PROVIDER || ""));
 }

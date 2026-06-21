@@ -188,9 +188,10 @@ For Facebook groups & communities — **never automated**.
 
 ## 7. AI Processing Pipeline (`lib/ai`)
 
-One typed gateway, provider-agnostic (OpenAI-compatible). Every action has a strict prompt
+One typed gateway, provider-agnostic (OpenAI-compatible, Anthropic, or local Codex/Claude
+subscription auth). Every action has a strict prompt
 template (`prompts.ts`) and a JSON-validated output. **Mock fallback** returns deterministic
-stub data when `LLM_API_KEY` is unset so the whole app runs without a key.
+stub data when no API key or local subscription login is available so the whole app runs without a key.
 
 Actions:
 1. `summarize` — concise opportunity summary.

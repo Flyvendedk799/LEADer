@@ -25,7 +25,7 @@ export default async function GlobalPage() {
   return (
     <div>
       <PageHeader
-        title="Global opportunities"
+        title="International opportunities"
         description="International tasks, kept separate from your Danish pipeline."
       />
 

@@ -64,9 +64,10 @@ session lookup later; all queries already filter by the returned `ownerId`.
 ## AI seam
 All AI goes through `lib/ai/index.ts` -> `provider.ts`. User-level provider settings live in
 `User.aiKeys` with encrypted API keys and masked client metadata; the gateway supports OpenAI-compatible
-chat completions and Claude via Anthropic. With no user key or `LLM_API_KEY`, a deterministic
-**mock** returns valid structured output so the app fully runs offline. Swap `LLM_BASE_URL` to
-use any OpenAI-compatible endpoint.
+chat completions, Claude via Anthropic, Codex/ChatGPT subscription auth from the local Codex CLI,
+and Claude Code subscription auth from macOS Keychain. With no user key, subscription login, or
+`LLM_API_KEY`, a deterministic **mock** returns valid structured output so the app fully runs
+offline. Swap `LLM_BASE_URL` to use any OpenAI-compatible endpoint.
 
 ## Jobs seam
 `/api/cron/discover` runs due, enabled, automatable sources. Trigger via Vercel Cron, node-cron,

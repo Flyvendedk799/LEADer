@@ -76,7 +76,8 @@ Then **sign in at http://localhost:3000/login** with the credentials the seed pr
 That's it — the dashboard, opportunities, sources, lists, watchlist, import and settings
 pages are all populated by the seed. **No API keys needed**: the AI layer returns
 deterministic mock output (and a local embedding model powers "find similar") until you
-add an OpenAI or Claude key during onboarding, in **Settings → AI**, or via `LLM_API_KEY`.
+choose a local Codex/ChatGPT or Claude Code subscription provider, add an OpenAI/Claude
+API key during onboarding or in **Settings → AI**, or set `LLM_API_KEY`.
 
 ### Useful scripts
 ```bash
@@ -102,18 +103,22 @@ docker compose --profile full up --build   # app + Postgres
 ## Going live (real data + AI)
 
 1. **AI** — each user can add or change their provider in **Settings → AI**. Supported
-   chat providers are OpenAI-compatible chat completions and Claude via Anthropic's
-   Messages API. User-entered keys are encrypted before storage; set a stable
+   chat providers are OpenAI-compatible chat completions, Claude via Anthropic's
+   Messages API, Codex/ChatGPT subscription auth from the local Codex CLI, and
+   Claude Code subscription auth from macOS Keychain. User-entered keys are encrypted before storage; set a stable
    `AI_KEYS_ENCRYPTION_SECRET` in production so saved keys remain decryptable across
    deploys.
 
    `.env` still works as a server-wide fallback:
    ```
    AI_KEYS_ENCRYPTION_SECRET="use-a-long-random-secret"
+   LLM_PROVIDER="openai"                    # openai | anthropic | codex | claude-subscription
    LLM_API_KEY="sk-..."                     # any OpenAI-compatible key
    LLM_BASE_URL="https://api.openai.com/v1" # or Azure / local / OpenRouter…
    LLM_MODEL="gpt-4o-mini"
    ```
+   For `LLM_PROVIDER=codex`, stay signed in to the Codex CLI (`~/.codex/auth.json`).
+   For `LLM_PROVIDER=claude-subscription`, stay signed in to Claude Code on macOS.
    The AI gateway (`src/lib/ai`) switches from mock to live automatically.
 
 2. **Real sources** — in **Settings → Sources**, point sources at real **public** URLs/feeds.

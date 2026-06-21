@@ -245,7 +245,7 @@ export function NewOpportunityDialog() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="DK">Denmark</SelectItem>
-                  <SelectItem value="GLOBAL">Global</SelectItem>
+                  <SelectItem value="GLOBAL">International</SelectItem>
                 </SelectContent>
               </Select>
             </div>
