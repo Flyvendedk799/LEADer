@@ -18,6 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { WorkflowActionQueue } from "@/components/workflows/workflow-action-queue";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { requireOwnerId } from "@/lib/auth";
@@ -138,6 +139,16 @@ export default async function WorkflowsPage() {
   const runningMissions = missions.filter((mission) => mission.status === "QUEUED" || mission.status === "RUNNING");
   const openTaskCount = overdueTasks.length + dueTasks.length;
   const openPipelineValue = pipelineValue._sum.valueMax ?? pipelineValue._sum.valueMin ?? 0;
+  const actionTasks = [...overdueTasks, ...dueTasks].map((task) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    dueAt: task.dueAt?.toISOString() ?? null,
+    dealId: task.deal?.id ?? null,
+    dealTitle: task.deal?.title ?? null,
+    accountName: task.deal?.account?.name ?? task.account?.name ?? null,
+  }));
 
   return (
     <div className="space-y-6">
@@ -241,25 +252,8 @@ export default async function WorkflowsPage() {
                 Action queue
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {[...overdueTasks, ...dueTasks].map((task) => (
-                <Link
-                  key={task.id}
-                  href={task.deal ? `/deals/${task.deal.id}` : "/deals"}
-                  className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface/40 p-3 hover:border-primary/50"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{task.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {task.deal?.account?.name ?? task.account?.name ?? "No account"} - {task.priority.toLowerCase()}
-                    </p>
-                  </div>
-                  <span className={cn("shrink-0 text-xs", task.dueAt && task.dueAt < now ? "text-warning" : "text-muted-foreground")}>
-                    {task.dueAt ? relativeDeadline(task.dueAt) : "No due date"}
-                  </span>
-                </Link>
-              ))}
-              {openTaskCount === 0 ? <EmptyLine>No due actions.</EmptyLine> : null}
+            <CardContent>
+              <WorkflowActionQueue tasks={actionTasks} nowIso={now.toISOString()} />
             </CardContent>
           </Card>
         </div>
