@@ -152,6 +152,7 @@ interface UserProfile {
 const MAX_PAGE_FETCHES = 10;
 const MAX_SCAN_SOURCES = 8;
 const MAX_ATTACHMENTS = 8;
+const SEARCH_PROVIDER_TIMEOUT_MS = Math.max(3000, Number(process.env.SEARCH_PROVIDER_TIMEOUT_MS || 12000));
 const STALE_WITHOUT_DEADLINE_DAYS = 180;
 const MAX_FEEDBACK_ROWS = 500;
 
@@ -1213,6 +1214,7 @@ async function tavilySearch(query: string, maxResults: number, apiKey: string): 
       max_results: maxResults,
       include_raw_content: false,
     }),
+    signal: AbortSignal.timeout(SEARCH_PROVIDER_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`Tavily search failed (${res.status})`);
   const data = (await res.json()) as {
@@ -1249,6 +1251,7 @@ async function braveSearch(
       Accept: "application/json",
       "X-Subscription-Token": apiKey,
     },
+    signal: AbortSignal.timeout(SEARCH_PROVIDER_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`Brave search failed (${res.status})`);
   const data = (await res.json()) as {
@@ -1284,6 +1287,7 @@ async function serperSearch(
       hl: "da",
       num: Math.min(maxResults, 20),
     }),
+    signal: AbortSignal.timeout(SEARCH_PROVIDER_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`Serper search failed (${res.status})`);
   const data = (await res.json()) as {
@@ -1311,15 +1315,23 @@ async function runProviderSearch(
 ): Promise<SearchResult[]> {
   const perQuery = Math.max(3, Math.ceil(maxResults / Math.max(1, queries.length)));
   const out: SearchResult[] = [];
+  let lastError: unknown;
   for (const query of queries) {
-    const results =
-      provider === "tavily"
-        ? await tavilySearch(query, perQuery, apiKey)
-        : provider === "brave"
-          ? await braveSearch(query, perQuery, apiKey, workspace)
-          : await serperSearch(query, perQuery, apiKey, workspace);
-    out.push(...results);
+    try {
+      const results =
+        provider === "tavily"
+          ? await tavilySearch(query, perQuery, apiKey)
+          : provider === "brave"
+            ? await braveSearch(query, perQuery, apiKey, workspace)
+            : await serperSearch(query, perQuery, apiKey, workspace);
+      out.push(...results);
+    } catch (error) {
+      lastError = error;
+    }
     if (out.length >= maxResults * 2) break;
+  }
+  if (!out.length && lastError) {
+    throw lastError;
   }
   return out;
 }
