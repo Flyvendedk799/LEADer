@@ -1732,6 +1732,7 @@ export async function runDiscoverySearch(
 
   if (input.includeWeb !== false && providerState.configured && providerState.provider !== "none") {
     try {
+      const webStartedAt = Date.now();
       const webResults = await runProviderSearch(
         providerState.provider,
         providerState.apiKey,
@@ -1741,6 +1742,10 @@ export async function runDiscoverySearch(
       );
       const webCandidates = await searchResultsToCandidates(webResults, user, workspace, collectionLimit, feedbackModel);
       candidates.push(...webCandidates);
+      const webMs = Date.now() - webStartedAt;
+      if (webMs > 30_000) {
+        warnings.push(`Web discovery phase took ${Math.round(webMs / 1000)}s.`);
+      }
     } catch (e) {
       warnings.push(e instanceof Error ? e.message : "Web search failed");
     }
@@ -1751,11 +1756,16 @@ export async function runDiscoverySearch(
   }
 
   if (input.includeSources !== false) {
+    const sourceStartedAt = Date.now();
     const sourceQuery = [input.query, ...searchPlan.focusTerms.slice(0, 8), ...(input.requiredTerms ?? [])].join(" ");
     const scanned = await scanSources(ownerId, sourceQuery, user, workspace, collectionLimit, feedbackModel);
     sourceScanCount = scanned.scanned;
     candidates.push(...scanned.candidates);
     warnings.push(...scanned.warnings.slice(0, 4));
+    const sourceMs = Date.now() - sourceStartedAt;
+    if (sourceMs > 30_000) {
+      warnings.push(`Source scan phase took ${Math.round(sourceMs / 1000)}s across ${scanned.scanned} sources.`);
+    }
   }
 
   const resultKind = input.resultKind ?? "all";

@@ -32,6 +32,22 @@ type MissionLane = {
   conversionGuidance?: string | null;
 };
 
+export type DiscoveryMissionInput = {
+  laneId: string;
+  query?: string;
+  freeformBrief?: string;
+  useAiPlanner?: boolean;
+  searchMode?: DiscoverySearchMode;
+  queryCount?: number;
+  requiredTerms?: string[];
+  excludedTerms?: string[];
+  workspace?: Workspace;
+  maxResults: number;
+  includeWeb: boolean;
+  includeSources: boolean;
+  provider: "auto" | "tavily" | "brave" | "serper" | "none";
+};
+
 export const DEAL_INCLUDE = {
   account: true,
   lane: true,
@@ -43,6 +59,25 @@ export const DEAL_INCLUDE = {
 } satisfies Prisma.DealInclude;
 
 export type DealWithRelations = Prisma.DealGetPayload<{ include: typeof DEAL_INCLUDE }>;
+
+const DISCOVERY_MISSION_INCLUDE = {
+  lane: true,
+  candidates: {
+    include: { evidence: true, deal: true, account: true },
+    orderBy: [{ pursuitScore: "desc" as const }, { createdAt: "desc" as const }],
+  },
+} satisfies Prisma.DiscoveryMissionInclude;
+
+type PreparedDiscoveryMission = {
+  lane: MissionLane;
+  workspace: Workspace;
+  plan?: DiscoveryAiSearchPlan;
+  queries: string[];
+  query: string;
+  requiredTerms: string[];
+  excludedTerms: string[];
+  scoringLane: MissionLane;
+};
 
 function clean(value?: string | null, fallback = "Unknown account") {
   return value?.replace(/\s+/g, " ").trim() || fallback;
@@ -337,24 +372,10 @@ export async function getCockpit(ownerId: string, workspace: Workspace = "DK") {
   };
 }
 
-export async function runDiscoveryMission(
+async function prepareDiscoveryMission(
   ownerId: string,
-  input: {
-    laneId: string;
-    query?: string;
-    freeformBrief?: string;
-    useAiPlanner?: boolean;
-    searchMode?: DiscoverySearchMode;
-    queryCount?: number;
-    requiredTerms?: string[];
-    excludedTerms?: string[];
-    workspace?: Workspace;
-    maxResults: number;
-    includeWeb: boolean;
-    includeSources: boolean;
-    provider: "auto" | "tavily" | "brave" | "serper" | "none";
-  },
-) {
+  input: DiscoveryMissionInput,
+): Promise<PreparedDiscoveryMission> {
   const lane = await db.discoveryLane.findFirst({ where: { id: input.laneId, ownerId } });
   if (!lane) throw new Error("Discovery lane not found");
 
@@ -379,48 +400,122 @@ export async function runDiscoveryMission(
     negativeKeywords: cleanTerms([...(lane.negativeKeywords ?? []), ...excludedTerms], 24),
     evidenceRequirements: cleanTerms([...(lane.evidenceRequirements ?? []), ...(plan?.evidenceRequirements ?? [])], 12, 140),
   };
-  const mission = await db.discoveryMission.create({
-    data: { ownerId, laneId: lane.id, query: queries.join("\n"), workspace, provider: input.provider, status: "RUNNING" },
-  });
 
-  try {
-    const result = await runDiscoverySearch(ownerId, {
-      query,
-      queryVariants: queries,
-      requiredTerms,
-      excludedTerms,
+  return {
+    lane: lane as MissionLane,
+    workspace,
+    plan,
+    queries,
+    query,
+    requiredTerms,
+    excludedTerms,
+    scoringLane,
+  };
+}
+
+export async function createDiscoveryMission(
+  ownerId: string,
+  input: DiscoveryMissionInput,
+  status = "QUEUED",
+) {
+  const lane = await db.discoveryLane.findFirst({ where: { id: input.laneId, ownerId } });
+  if (!lane) throw new Error("Discovery lane not found");
+
+  const workspace = input.workspace ?? (lane.workspace as Workspace);
+  const queryCount = queryLimitForMode(input.searchMode, input.queryCount);
+  const focus = cleanTerm(input.query || input.freeformBrief, 500);
+  const queries = cleanTerms([
+    ...laneMissionQueries(lane, focus, queryCount),
+    ...(focus ? [`${focus} ${lane.positiveKeywords.slice(0, 5).join(" ")}`] : []),
+  ], queryCount, 360);
+
+  return db.discoveryMission.create({
+    data: {
+      ownerId,
+      laneId: lane.id,
+      query: queries.join("\n") || missionQuery(lane, input.query),
       workspace,
+      provider: input.provider,
+      status,
+    },
+    include: DISCOVERY_MISSION_INCLUDE,
+  });
+}
+
+export async function executeDiscoveryMission(
+  ownerId: string,
+  missionId: string,
+  input: DiscoveryMissionInput,
+) {
+  try {
+    const prepared = await prepareDiscoveryMission(ownerId, input);
+    await db.discoveryMission.update({
+      where: { id: missionId },
+      data: {
+        status: "RUNNING",
+        finishedAt: null,
+        warnings: [],
+        sourceScanCount: 0,
+        query: prepared.queries.join("\n"),
+        workspace: prepared.workspace,
+        provider: input.provider,
+      },
+    });
+
+    const phaseStartedAt = Date.now();
+    const result = await runDiscoverySearch(ownerId, {
+      query: prepared.query,
+      queryVariants: prepared.queries,
+      requiredTerms: prepared.requiredTerms,
+      excludedTerms: prepared.excludedTerms,
+      workspace: prepared.workspace,
       maxResults: input.maxResults,
       includeWeb: input.includeWeb,
       includeSources: input.includeSources,
       provider: input.provider,
     });
+    const searchMs = Date.now() - phaseStartedAt;
+    const warnings = [...result.warnings];
+    if (searchMs > 90_000) {
+      warnings.push(`Discovery network phase took ${Math.round(searchMs / 1000)}s.`);
+    }
 
     const candidates = [];
     for (const candidate of result.candidates) {
-      candidates.push(await persistCandidate(ownerId, mission.id, scoringLane, candidate));
+      candidates.push(await persistCandidate(ownerId, missionId, prepared.scoringLane, candidate));
     }
 
     const updated = await db.discoveryMission.update({
-      where: { id: mission.id },
+      where: { id: missionId },
       data: {
         status: "SUCCESS",
         finishedAt: new Date(),
-        warnings: result.warnings,
+        warnings,
         sourceScanCount: result.sourceScanCount,
         provider: result.provider,
       },
-      include: { lane: true, candidates: { include: { evidence: true }, orderBy: { pursuitScore: "desc" } } },
+      include: DISCOVERY_MISSION_INCLUDE,
     });
 
-    return { mission: updated, providerConfigured: result.providerConfigured, queries: result.queries, plan, candidates };
+    return {
+      mission: updated,
+      providerConfigured: result.providerConfigured,
+      queries: result.queries,
+      plan: prepared.plan,
+      candidates,
+    };
   } catch (error) {
     await db.discoveryMission.update({
-      where: { id: mission.id },
+      where: { id: missionId },
       data: { status: "ERROR", finishedAt: new Date(), warnings: [error instanceof Error ? error.message : "Discovery failed"] },
-    });
+    }).catch(() => {});
     throw error;
   }
+}
+
+export async function runDiscoveryMission(ownerId: string, input: DiscoveryMissionInput) {
+  const mission = await createDiscoveryMission(ownerId, input, "RUNNING");
+  return executeDiscoveryMission(ownerId, mission.id, input);
 }
 
 function laneFitMetadata(fit: LaneFitResult) {

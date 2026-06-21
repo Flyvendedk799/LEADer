@@ -6,12 +6,15 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   CheckCircle2,
+  Clock3,
   CopyX,
   Database,
   ExternalLink,
   Globe2,
+  History,
   Loader2,
   Radar,
+  RefreshCw,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -64,6 +67,10 @@ type MissionResult = {
     id: string;
     status: string;
     provider?: string | null;
+    startedAt?: string | Date;
+    finishedAt?: string | Date | null;
+    query?: string;
+    lane?: { id: string; name: string } | null;
     sourceScanCount?: number;
     warnings: string[];
     candidates: Candidate[];
@@ -85,12 +92,63 @@ type MissionResult = {
 
 type SearchMode = "focused" | "balanced" | "wide";
 
+type MissionSummary = {
+  id: string;
+  status: string;
+  provider?: string | null;
+  startedAt: string | Date;
+  finishedAt?: string | Date | null;
+  query: string;
+  lane?: { id: string; name: string } | null;
+  warnings: string[];
+  sourceScanCount?: number;
+  _count?: { candidates: number };
+};
+
 function listFromInput(value: string) {
   return value
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 12);
+}
+
+function missionCandidateCount(mission: MissionSummary) {
+  return mission._count?.candidates ?? 0;
+}
+
+function missionStatusVariant(status: string): React.ComponentProps<typeof Badge>["variant"] {
+  if (status === "SUCCESS") return "success";
+  if (status === "ERROR") return "warning";
+  if (status === "RUNNING" || status === "QUEUED") return "secondary";
+  return "outline";
+}
+
+function missionTime(value?: string | Date | null) {
+  if (!value) return "Pending";
+  return new Intl.DateTimeFormat("da-DK", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function missionDuration(start?: string | Date, end?: string | Date | null) {
+  if (!start) return "";
+  const startMs = new Date(start).getTime();
+  const endMs = end ? new Date(end).getTime() : Date.now();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return "";
+  const seconds = Math.max(0, Math.round((endMs - startMs) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+function queryPreview(value?: string) {
+  return (value || "")
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean)[0] || "Discovery mission";
 }
 
 export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
@@ -106,19 +164,100 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
   const [includeWeb, setIncludeWeb] = React.useState(true);
   const [includeSources, setIncludeSources] = React.useState(true);
   const [loading, setLoading] = React.useState(false);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [missions, setMissions] = React.useState<MissionSummary[]>([]);
+  const [activeMissionId, setActiveMissionId] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<MissionResult | null>(null);
   const selectedLane = lanes.find((lane) => lane.id === laneId);
   const candidates = result?.mission.candidates ?? [];
+  const missionStatus = result?.mission.status ?? "";
+  const missionRunning = missionStatus === "QUEUED" || missionStatus === "RUNNING";
   const counts = candidates.reduce<Record<string, number>>((acc, candidate) => {
     acc[candidate.status] = (acc[candidate.status] ?? 0) + 1;
     return acc;
   }, {});
 
+  const mergeMission = React.useCallback((mission: MissionSummary) => {
+    setMissions((current) => {
+      const next = current.filter((item) => item.id !== mission.id);
+      return [mission, ...next].sort(
+        (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+      ).slice(0, 20);
+    });
+  }, []);
+
+  const loadMission = React.useCallback(async (id: string, quiet = false) => {
+    if (!quiet) setRefreshing(true);
+    try {
+      const res = await fetch(`/api/discovery/runs/${id}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Could not load mission");
+      setResult(data);
+      setActiveMissionId(data.mission.id);
+      mergeMission({
+        id: data.mission.id,
+        status: data.mission.status,
+        provider: data.mission.provider,
+        startedAt: data.mission.startedAt,
+        finishedAt: data.mission.finishedAt,
+        query: data.mission.query || "",
+        lane: data.mission.lane,
+        warnings: data.mission.warnings ?? [],
+        sourceScanCount: data.mission.sourceScanCount,
+        _count: { candidates: data.mission.candidates?.length ?? 0 },
+      });
+    } catch (err) {
+      if (!quiet) toast.error("Could not load mission", err instanceof Error ? err.message : "Try again");
+    } finally {
+      if (!quiet) setRefreshing(false);
+    }
+  }, [mergeMission]);
+
+  const loadMissions = React.useCallback(async (openLatest = false, quiet = false) => {
+    if (!quiet) setRefreshing(true);
+    try {
+      const res = await fetch("/api/discovery/runs", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Could not load mission history");
+      const loaded = (data.missions ?? []) as MissionSummary[];
+      setMissions(loaded);
+      if (openLatest && loaded[0]) {
+        void loadMission(loaded[0].id, true);
+      }
+    } catch (err) {
+      if (!quiet) toast.error("Could not load missions", err instanceof Error ? err.message : "Try again");
+    } finally {
+      if (!quiet) setRefreshing(false);
+    }
+  }, [loadMission]);
+
+  React.useEffect(() => {
+    void loadMissions(true);
+  }, [loadMissions]);
+
+  React.useEffect(() => {
+    if (!activeMissionId || !missionRunning) return undefined;
+    const timer = window.setInterval(() => {
+      void loadMission(activeMissionId, true);
+      void loadMissions(false, true);
+    }, 3500);
+    return () => window.clearInterval(timer);
+  }, [activeMissionId, loadMission, loadMissions, missionRunning]);
+
+  React.useEffect(() => {
+    if (!missions.some((mission) => mission.status === "QUEUED" || mission.status === "RUNNING")) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void loadMissions(false, true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [loadMissions, missions]);
+
   async function runMission(e: React.FormEvent) {
     e.preventDefault();
     if (!laneId) return;
     setLoading(true);
-    setResult(null);
     try {
       const res = await fetch("/api/discovery/runs", {
         method: "POST",
@@ -140,7 +279,20 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Discovery failed");
       setResult(data);
-      toast.success("Discovery mission complete", `${data.mission.candidates.length} candidates`);
+      setActiveMissionId(data.mission.id);
+      mergeMission({
+        id: data.mission.id,
+        status: data.mission.status,
+        provider: data.mission.provider,
+        startedAt: data.mission.startedAt,
+        finishedAt: data.mission.finishedAt,
+        query: data.mission.query || "",
+        lane: data.mission.lane,
+        warnings: data.mission.warnings ?? [],
+        sourceScanCount: data.mission.sourceScanCount,
+        _count: { candidates: data.mission.candidates?.length ?? 0 },
+      });
+      toast.success("Discovery mission queued");
     } catch (err) {
       toast.error("Discovery failed", err instanceof Error ? err.message : "Could not run the lane");
     } finally {
@@ -311,7 +463,7 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
               </div>
               <Button type="submit" disabled={loading || !laneId || (!includeWeb && !includeSources)} className="w-full">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                Run lane
+                Queue lane
               </Button>
             </div>
           </div>
@@ -322,13 +474,19 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
             <div className="rounded-lg border border-border bg-card p-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium">
-                    {candidates.length} {candidates.length === 1 ? "candidate" : "candidates"}
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    {missionRunning ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : null}
+                    {result.mission.lane?.name ?? "Discovery mission"}
+                    <Badge variant={missionStatusVariant(result.mission.status)}>{result.mission.status.toLowerCase()}</Badge>
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {result.providerConfigured ? result.mission.provider || "web" : "source scan"} search
+                    {candidates.length} {candidates.length === 1 ? "candidate" : "candidates"}
+                    {" · "}
+                    {result.mission.provider || "web"} search
                     {" · "}
                     {result.mission.sourceScanCount ?? 0} sources scanned
+                    {" · "}
+                    {missionDuration(result.mission.startedAt, result.mission.finishedAt)}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -342,7 +500,7 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
             {candidates.length === 0 ? (
               <Card>
                 <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  No candidates found for this mission.
+                  {missionRunning ? "Mission running in background." : "No candidates found for this mission."}
                 </CardContent>
               </Card>
             ) : (
@@ -355,6 +513,59 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
       </div>
 
       <aside className="space-y-3">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between gap-2 text-sm">
+              <span className="flex items-center gap-2">
+                <History className="h-4 w-4 text-primary" />
+                Mission history
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => void loadMissions(false)}
+                disabled={refreshing}
+                title="Refresh"
+              >
+                <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {missions.length ? (
+              missions.map((mission) => (
+                <button
+                  key={mission.id}
+                  type="button"
+                  onClick={() => void loadMission(mission.id)}
+                  className={cn(
+                    "w-full rounded-md border border-border bg-surface/40 p-2 text-left transition hover:border-primary/40 hover:bg-surface",
+                    activeMissionId === mission.id && "border-primary/50 bg-primary/5",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium">{mission.lane?.name ?? "Discovery mission"}</span>
+                    <Badge variant={missionStatusVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{queryPreview(mission.query)}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock3 className="h-3 w-3" />
+                      {missionTime(mission.startedAt)}
+                    </span>
+                    <span>{missionDuration(mission.startedAt, mission.finishedAt)}</span>
+                    <span>{missionCandidateCount(mission)} candidates</span>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <p className="py-3 text-sm text-muted-foreground">No missions yet.</p>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
