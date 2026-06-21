@@ -6,8 +6,13 @@ import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export default async function DiscoverPage() {
+export default async function DiscoverPage({
+  searchParams,
+}: {
+  searchParams?: { mission?: string; run?: string };
+}) {
   const ownerId = await requireOwnerId();
+  const initialMissionId = searchParams?.mission ?? searchParams?.run ?? null;
   await ensureDefaultDiscoveryLanes(ownerId);
   const lanes = await db.discoveryLane.findMany({
     where: { ownerId, active: true },
@@ -20,7 +25,7 @@ export default async function DiscoverPage() {
         title="Discovery mission control"
         description="Run focused acquisition lanes, inspect evidence, and promote candidates into deals."
       />
-      <LaneMissionControl lanes={lanes} />
+      <LaneMissionControl lanes={lanes} initialMissionId={initialMissionId} />
     </div>
   );
 }

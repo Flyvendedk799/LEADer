@@ -23,6 +23,7 @@ import { ScoreBadge } from "@/components/shared/score-badge";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
+import { discoveryCandidateHref, discoveryMissionHref } from "@/lib/discovery-links";
 import { cn, formatBudget, formatDate, relativeDeadline, truncate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -179,7 +180,7 @@ export default async function WorkflowsPage() {
               {missions.map((mission) => (
                 <Link
                   key={mission.id}
-                  href="/discover"
+                  href={discoveryMissionHref(mission.id)}
                   className="grid gap-2 rounded-md border border-border bg-surface/40 p-3 hover:border-primary/50 md:grid-cols-[minmax(0,1fr)_auto]"
                 >
                   <div className="min-w-0">
@@ -214,7 +215,7 @@ export default async function WorkflowsPage() {
               {hotCandidates.map((candidate) => (
                 <Link
                   key={candidate.id}
-                  href="/discover"
+                  href={discoveryCandidateHref(candidate.missionId, candidate.id)}
                   className="flex items-start justify-between gap-3 rounded-md border border-border bg-surface/40 p-3 hover:border-primary/50"
                 >
                   <div className="min-w-0">

@@ -7,6 +7,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock3,
+  Link2,
   CopyX,
   Database,
   ExternalLink,
@@ -31,6 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ScoreBadge } from "@/components/shared/score-badge";
+import { discoveryMissionHref } from "@/lib/discovery-links";
 import { cn, formatBudget, formatDate, truncate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 
@@ -151,8 +153,15 @@ function queryPreview(value?: string) {
     .filter(Boolean)[0] || "Discovery mission";
 }
 
-export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
+export function LaneMissionControl({
+  lanes,
+  initialMissionId,
+}: {
+  lanes: DiscoveryLane[];
+  initialMissionId?: string | null;
+}) {
   const router = useRouter();
+  const initialMissionLoadedRef = React.useRef<string | null>(null);
   const [laneId, setLaneId] = React.useState(lanes[0]?.id ?? "");
   const [query, setQuery] = React.useState("");
   const [provider, setProvider] = React.useState<Provider>("auto");
@@ -186,7 +195,11 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
     });
   }, []);
 
-  const loadMission = React.useCallback(async (id: string, quiet = false) => {
+  const syncMissionUrl = React.useCallback((id: string) => {
+    window.history.replaceState(window.history.state, "", discoveryMissionHref(id));
+  }, []);
+
+  const loadMission = React.useCallback(async (id: string, quiet = false, syncUrl = true) => {
     if (!quiet) setRefreshing(true);
     try {
       const res = await fetch(`/api/discovery/runs/${id}`, { cache: "no-store" });
@@ -194,6 +207,7 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
       if (!res.ok) throw new Error(data?.error || "Could not load mission");
       setResult(data);
       setActiveMissionId(data.mission.id);
+      if (syncUrl) syncMissionUrl(data.mission.id);
       mergeMission({
         id: data.mission.id,
         status: data.mission.status,
@@ -211,7 +225,7 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
     } finally {
       if (!quiet) setRefreshing(false);
     }
-  }, [mergeMission]);
+  }, [mergeMission, syncMissionUrl]);
 
   const loadMissions = React.useCallback(async (openLatest = false, quiet = false) => {
     if (!quiet) setRefreshing(true);
@@ -222,7 +236,7 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
       const loaded = (data.missions ?? []) as MissionSummary[];
       setMissions(loaded);
       if (openLatest && loaded[0]) {
-        void loadMission(loaded[0].id, true);
+        void loadMission(loaded[0].id, true, false);
       }
     } catch (err) {
       if (!quiet) toast.error("Could not load missions", err instanceof Error ? err.message : "Try again");
@@ -232,8 +246,25 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
   }, [loadMission]);
 
   React.useEffect(() => {
+    const targetMissionId = initialMissionId?.trim() || null;
+    if (initialMissionLoadedRef.current === targetMissionId) return;
+    initialMissionLoadedRef.current = targetMissionId;
+    if (targetMissionId) {
+      void loadMission(targetMissionId, false, false);
+      void loadMissions(false, true);
+      return;
+    }
     void loadMissions(true);
-  }, [loadMissions]);
+  }, [initialMissionId, loadMission, loadMissions]);
+
+  React.useEffect(() => {
+    if (!result || !window.location.hash) return;
+    const hashId = decodeURIComponent(window.location.hash.slice(1));
+    if (!hashId.startsWith("candidate-")) return;
+    window.requestAnimationFrame(() => {
+      document.getElementById(hashId)?.scrollIntoView({ block: "start" });
+    });
+  }, [result]);
 
   React.useEffect(() => {
     if (!activeMissionId || !missionRunning) return undefined;
@@ -280,6 +311,7 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
       if (!res.ok) throw new Error(data?.error || "Discovery failed");
       setResult(data);
       setActiveMissionId(data.mission.id);
+      syncMissionUrl(data.mission.id);
       mergeMission({
         id: data.mission.id,
         status: data.mission.status,
@@ -297,6 +329,16 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
       toast.error("Discovery failed", err instanceof Error ? err.message : "Could not run the lane");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function copyActiveMissionLink() {
+    if (!activeMissionId) return;
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${discoveryMissionHref(activeMissionId)}`);
+      toast.success("Mission link copied");
+    } catch {
+      toast.error("Could not copy link", "Your browser blocked clipboard access.");
     }
   }
 
@@ -490,6 +532,16 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={copyActiveMissionLink}
+                    disabled={!activeMissionId}
+                  >
+                    <Link2 className="h-4 w-4" />
+                    Copy link
+                  </Button>
                   {["NEW", "REVIEWED", "SAVED", "DISMISSED", "DUPLICATE"].map((status) => (
                     counts[status] ? <Badge key={status} variant="outline">{status.toLowerCase()}: {counts[status]}</Badge> : null
                   ))}
@@ -539,7 +591,7 @@ export function LaneMissionControl({ lanes }: { lanes: DiscoveryLane[] }) {
                 <button
                   key={mission.id}
                   type="button"
-                  onClick={() => void loadMission(mission.id)}
+                  onClick={() => void loadMission(mission.id, false, true)}
                   className={cn(
                     "w-full rounded-md border border-border bg-surface/40 p-2 text-left transition hover:border-primary/40 hover:bg-surface",
                     activeMissionId === mission.id && "border-primary/50 bg-primary/5",
@@ -688,7 +740,7 @@ function CandidateCard({
           : "default";
 
   return (
-    <article className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <article id={`candidate-${candidate.id}`} className="scroll-mt-24 rounded-lg border border-border bg-card p-4 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
