@@ -473,6 +473,7 @@ export async function executeDiscoveryMission(
       includeWeb: input.includeWeb,
       includeSources: input.includeSources,
       provider: input.provider,
+      useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
     });
     const searchMs = Date.now() - phaseStartedAt;
     const warnings = [...result.warnings];

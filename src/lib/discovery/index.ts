@@ -37,6 +37,7 @@ export interface DiscoverySearchInput {
   includeSources?: boolean;
   provider?: "auto" | "tavily" | "brave" | "serper" | "none";
   resultKind?: "all" | "opportunities" | "sources";
+  useAiPlanner?: boolean;
 }
 
 export interface DiscoveryCandidateDto {
@@ -1709,13 +1710,15 @@ export async function runDiscoverySearch(
     loadSearchMemory(ownerId, feedbackModel),
     loadSavedDiscoveryIndex(ownerId),
   ]);
-  const searchPlan = await buildSearchPlan(
-    input.query,
-    workspace,
-    input.resultKind ?? "all",
-    user,
-    memory,
-  );
+  const searchPlan = input.useAiPlanner === false
+    ? deterministicSearchPlan(input.query, workspace, input.resultKind ?? "all", memory)
+    : await buildSearchPlan(
+        input.query,
+        workspace,
+        input.resultKind ?? "all",
+        user,
+        memory,
+      );
   const queries = withHardSearchModifiers(
     [...(input.queryVariants ?? []), ...searchPlan.queries],
     input.requiredTerms,
