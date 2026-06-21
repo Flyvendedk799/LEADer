@@ -19,13 +19,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkflowActionQueue } from "@/components/workflows/workflow-action-queue";
+import { WorkflowCandidateQueue } from "@/components/workflows/workflow-candidate-queue";
 import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
 import { PageHeader } from "@/components/shared/page-header";
-import { ScoreBadge } from "@/components/shared/score-badge";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
-import { discoveryCandidateHref, discoveryMissionHref } from "@/lib/discovery-links";
+import { discoveryMissionHref } from "@/lib/discovery-links";
 import { cn, formatBudget, formatDate, relativeDeadline, truncate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -150,6 +150,16 @@ export default async function WorkflowsPage() {
     dealTitle: task.deal?.title ?? null,
     accountName: task.deal?.account?.name ?? task.account?.name ?? null,
   }));
+  const candidateItems = hotCandidates.map((candidate) => ({
+    id: candidate.id,
+    title: candidate.title,
+    missionId: candidate.missionId ?? null,
+    laneName: candidate.lane?.name ?? null,
+    organization: candidate.organization ?? null,
+    sourceName: candidate.sourceName ?? null,
+    evidenceSnippet: candidate.evidence[0]?.snippet ?? null,
+    pursuitScore: candidate.pursuitScore ?? null,
+  }));
   const workflowDeal = (deal: (typeof staleDeals)[number]) => ({
     id: deal.id,
     title: deal.title,
@@ -232,26 +242,8 @@ export default async function WorkflowsPage() {
                 Hot candidate triage
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {hotCandidates.map((candidate) => (
-                <Link
-                  key={candidate.id}
-                  href={discoveryCandidateHref(candidate.missionId, candidate.id)}
-                  className="flex items-start justify-between gap-3 rounded-md border border-border bg-surface/40 p-3 hover:border-primary/50"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{candidate.title}</p>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {candidate.lane?.name ?? "Discovery"} - {candidate.organization ?? candidate.sourceName ?? "Unknown source"}
-                    </p>
-                    {candidate.evidence[0] ? (
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{truncate(candidate.evidence[0].snippet, 160)}</p>
-                    ) : null}
-                  </div>
-                  <ScoreBadge score={candidate.pursuitScore} size="sm" />
-                </Link>
-              ))}
-              {hotCandidates.length === 0 ? <EmptyLine>No hot candidates waiting.</EmptyLine> : null}
+            <CardContent>
+              <WorkflowCandidateQueue candidates={candidateItems} />
             </CardContent>
           </Card>
 
