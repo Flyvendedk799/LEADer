@@ -107,6 +107,37 @@ interface SearchResult {
   query: string;
 }
 
+type UdbudDkResultData = {
+  titel?: string;
+  ordregiver?: string;
+  ordregiverId?: string;
+  publiceringsdato?: string;
+  cpvKode?: string;
+  cpvTitel?: string;
+  formulartype?: string;
+  formulartypeKode?: string;
+  tidsfrister?: string[];
+  alleOrdregivere?: string[];
+  anslaaetVaerdiValuta?: string;
+  beskrivelse?: string;
+  bkSubType?: string;
+  bkSubTypeKode?: string;
+  erAendring?: boolean;
+};
+
+type UdbudDkResult = {
+  dataDa?: UdbudDkResultData;
+  dataEn?: UdbudDkResultData;
+  noticeId?: string;
+  noticeVersion?: string;
+  noticePublicationNumber?: string;
+};
+
+type UdbudDkSearchResponse = {
+  resultatElementDtoList?: UdbudDkResult[];
+  totaltAntalResultater?: number;
+};
+
 export type DiscoveryCandidateSaveInput = {
   id?: string;
   candidateKind?: "opportunity" | "source";
@@ -1345,6 +1376,209 @@ async function serperSearch(
     }));
 }
 
+function isTenderSearchIntent(query: string, queries: string[] = []) {
+  return /udbud|tender|procurement|tilbudsfrist|udbudsfrist|public rft|eu-supply|mercell|detaljevisning|offentlig/.test(
+    [query, ...queries].join(" ").toLowerCase(),
+  );
+}
+
+function sanitizeUdbudDkQuery(value?: string | null) {
+  const stop = new Set([
+    "and",
+    "danmark",
+    "denmark",
+    "detaljevisning",
+    "dk",
+    "eu",
+    "mercell",
+    "procurement",
+    "public",
+    "publicpurchase",
+    "rft",
+    "site",
+    "supplier",
+    "tender",
+    "tilbudsfrist",
+    "udbud",
+    "udbudsfrist",
+  ]);
+  const terms = cleanText(value ?? "", 260)
+    .replace(/site:\S+/gi, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/[-+()"“”]/g, " ")
+    .split(/\s+/)
+    .map((term) => term.trim().toLowerCase())
+    .filter((term) => term.length >= 3 && !stop.has(term) && !/^[/:.]+$/.test(term));
+  return uniqueStrings(terms, 7).join(" ");
+}
+
+function udbudDkSearchSeeds(query: string, queries: string[]) {
+  return uniqueStrings(
+    [
+      sanitizeUdbudDkQuery(query),
+      "software udvikling",
+      ...queries.map((item) => sanitizeUdbudDkQuery(item)),
+      "softwareudvikling",
+      "it konsulent",
+      "digitalisering",
+    ],
+    4,
+  );
+}
+
+function udbudDkNoticeUrl(result: Pick<UdbudDkResult, "noticeId" | "noticeVersion" | "noticePublicationNumber">) {
+  const params = new URLSearchParams({
+    noticeId: result.noticeId ?? "",
+    noticeVersion: result.noticeVersion ?? "01",
+    noticePublicationNumber: result.noticePublicationNumber ?? "",
+  });
+  return `https://udbud.dk/detaljevisning?${params.toString()}`;
+}
+
+function parseDanishDisplayDate(value?: string) {
+  if (!value) return undefined;
+  const match = value.match(/^(\d{2})-(\d{2})-(20\d{2})$/);
+  if (!match) return undefined;
+  const date = new Date(`${match[3]}-${match[2]}-${match[1]}T12:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function earliestFutureDeadline(values: string[] = []) {
+  const now = Date.now() - 12 * 60 * 60 * 1000;
+  const dates: Date[] = [];
+  for (const value of values) {
+    const date = parseMaybeDate(value);
+    if (date && date.getTime() >= now) dates.push(date);
+  }
+  dates.sort((a, b) => a.getTime() - b.getTime());
+  return dates[0] ?? null;
+}
+
+function udbudDkResultToCandidate(result: UdbudDkResult, query: string): OpportunityCandidate | null {
+  const data = result.dataDa ?? result.dataEn;
+  if (!data || !result.noticeId) return null;
+  const title = cleanText(data.titel ?? "", 220);
+  const description = cleanText(data.beskrivelse ?? "", 1400);
+  const organization = cleanText(data.ordregiver || data.alleOrdregivere?.[0] || "Udbud.dk", 180);
+  const deadline = earliestFutureDeadline(data.tidsfrister ?? []);
+  if (!title || !deadline) return null;
+  const daysUntilDeadline = (deadline.getTime() - Date.now()) / 86400000;
+  const structureText = `${title} ${data.beskrivelse ?? ""} ${data.bkSubType ?? ""}`.toLowerCase();
+  if (
+    daysUntilDeadline > 540 ||
+    /dynamisk indkøbssystem|dynamisk indkoebssystem|dynamic purchasing system|\bdis\b|standardsoftware|cirkulær it|cirkulaer it|levetidsforlængende|levetidsforlaengende/.test(
+      structureText,
+    )
+  ) {
+    return null;
+  }
+
+  const deadlineText = (data.tidsfrister ?? []).join(", ");
+  const cpv = [data.cpvKode, data.cpvTitel].filter(Boolean).join(" ");
+  const rawContent = cleanText(
+    [
+      title,
+      organization ? `Ordregiver: ${organization}` : "",
+      data.publiceringsdato ? `Publiceringsdato: ${data.publiceringsdato}` : "",
+      deadlineText ? `Tilbudsfrister: ${deadlineText}` : "",
+      cpv ? `CPV: ${cpv}` : "",
+      data.formulartype ? `Formulartype: ${data.formulartype}` : "",
+      data.bkSubType ? `Bekendtgørelsestype: ${data.bkSubType}` : "",
+      description,
+    ].join("\n"),
+    5000,
+  );
+
+  return enrichCandidate({
+    title,
+    description,
+    rawContent,
+    url: udbudDkNoticeUrl(result),
+    organization,
+    country: "DK",
+    category: "Tender",
+    currency: data.anslaaetVaerdiValuta || "DKK",
+    deadline,
+    postedAt: parseDanishDisplayDate(data.publiceringsdato),
+    applicationRoute: "APPLICATION",
+    contacts: organization ? [{ name: organization, role: "Ordregiver" }] : [],
+  });
+}
+
+async function udbudDkSearch(query: string, maxResults: number): Promise<UdbudDkResult[]> {
+  const res = await safeFetch("https://udbud.dk/soegning/public/soegeresultat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "User-Agent": crawlerSettings().userAgent,
+    },
+    body: JSON.stringify({
+      fritekstQuery: query,
+      pagineringDto: {
+        aktuelSide: 1,
+        maksElementer: Math.min(Math.max(maxResults, 1), 25),
+        sorteringFelt: "TILBUDSFRIST_DATO",
+        retning: "Asc",
+      },
+      filterDto: {
+        formularType: ["EU_UDBUD", "NATIONALE_UDBUD"],
+        opgaveType: [],
+        procedureType: [],
+        smvVenligType: [],
+      },
+      udbudStatusFilter: "AKTIV",
+    }),
+    signal: AbortSignal.timeout(SEARCH_PROVIDER_TIMEOUT_MS),
+  });
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`udbud.dk search failed (${res.status})`);
+  }
+  const data = JSON.parse(res.text) as UdbudDkSearchResponse;
+  return data.resultatElementDtoList ?? [];
+}
+
+async function udbudDkCandidates(
+  query: string,
+  queries: string[],
+  user: UserProfile,
+  maxResults: number,
+  feedbackModel?: FeedbackSignalModel,
+): Promise<DiscoveryCandidateDto[]> {
+  const candidates: DiscoveryCandidateDto[] = [];
+  const seen = new Set<string>();
+  const seeds = udbudDkSearchSeeds(query, queries);
+  const perQuery = Math.max(6, Math.ceil(maxResults / Math.max(1, seeds.length)));
+
+  for (const seed of seeds) {
+    if (candidates.length >= maxResults) break;
+    const results = await udbudDkSearch(seed, perQuery);
+    for (const result of results) {
+      if (candidates.length >= maxResults) break;
+      const candidate = udbudDkResultToCandidate(result, seed);
+      if (!candidate) continue;
+      const key = titleKey(`${candidate.title}:${candidate.organization}:${candidate.deadline}`) ?? candidate.url;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      candidates.push(
+        await toDiscoveryDto(
+          candidate,
+          user,
+          {
+            sourceName: "udbud.dk",
+            sourceKind: "web-search",
+            provider: "udbud.dk",
+            query: seed,
+          },
+          feedbackModel,
+        ),
+      );
+    }
+  }
+
+  return candidates;
+}
+
 async function runProviderSearch(
   provider: SearchProvider,
   apiKey: string,
@@ -1722,6 +1956,9 @@ export const __discoveryTesting = {
   evaluateFeedbackSignal,
   feedbackFeaturesFromCandidate,
   savedCandidateMatch,
+  sanitizeUdbudDkQuery,
+  udbudDkResultToCandidate,
+  udbudDkSearchSeeds,
 };
 
 export async function runDiscoverySearch(
@@ -1778,6 +2015,34 @@ export async function runDiscoverySearch(
   const warnings: string[] = [];
   let candidates: DiscoveryCandidateDto[] = [];
   let sourceScanCount = 0;
+  const resultKind = input.resultKind ?? "all";
+
+  if (
+    workspace === "DK" &&
+    input.includeWeb !== false &&
+    resultKind !== "sources" &&
+    isTenderSearchIntent(input.query, queries)
+  ) {
+    const udbudStartedAt = Date.now();
+    try {
+      await progress("Searching udbud.dk public tender index for active notices.");
+      const officialCandidates = await udbudDkCandidates(
+        input.query,
+        queries,
+        user,
+        collectionLimit,
+        feedbackModel,
+      );
+      candidates.push(...officialCandidates);
+      await progress(
+        `udbud.dk returned ${officialCandidates.length} active tender candidates in ${Math.round((Date.now() - udbudStartedAt) / 1000)}s.`,
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "udbud.dk search failed";
+      warnings.push(message);
+      await progress(`udbud.dk search warning: ${message}`);
+    }
+  }
 
   if (input.includeWeb !== false && providerState.configured && providerState.provider !== "none") {
     try {
@@ -1802,11 +2067,13 @@ export async function runDiscoverySearch(
       warnings.push(message);
       await progress(`Web search warning: ${message}`);
     }
-  } else if (input.includeWeb !== false) {
+  } else if (input.includeWeb !== false && providerState.provider !== "none") {
     warnings.push(
       "No web search API key configured. Add Tavily, Brave Search, or Serper in Settings -> AI to enable broad web discovery.",
     );
     await progress("Web search skipped because no configured search provider was available.");
+  } else if (input.includeWeb !== false) {
+    await progress("Generic web search skipped by provider setting.");
   }
 
   if (input.includeSources !== false) {
@@ -1824,7 +2091,6 @@ export async function runDiscoverySearch(
     }
   }
 
-  const resultKind = input.resultKind ?? "all";
   const beforeKindFilter = candidates.length;
   const kindCandidates = candidates.filter((candidate) => {
     if (resultKind === "opportunities") return candidate.candidateKind === "opportunity";

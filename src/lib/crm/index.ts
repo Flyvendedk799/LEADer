@@ -4,7 +4,14 @@ import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
 import { runDiscoverySearch, type DiscoveryCandidateDto } from "@/lib/discovery";
 import { discoveryCountLabel, discoveryLogEntry, formatDiscoveryElapsed } from "@/lib/crm/discovery-logging";
-import { laneCandidateGate, laneFit, laneMissionQueries, missionQuery, type LaneFitResult } from "@/lib/crm/lanes";
+import {
+  ensureDefaultDiscoveryLanes,
+  laneCandidateGate,
+  laneFit,
+  laneMissionQueries,
+  missionQuery,
+  type LaneFitResult,
+} from "@/lib/crm/lanes";
 import { confidenceScore, pursuitScore } from "@/lib/crm/scoring";
 import type { AccountType, DealStatus, DiscoveryAiSearchPlan, DiscoverySearchMode, Workspace } from "@/lib/types";
 
@@ -418,6 +425,7 @@ async function prepareDiscoveryMission(
   ownerId: string,
   input: DiscoveryMissionInput,
 ): Promise<PreparedDiscoveryMission> {
+  await ensureDefaultDiscoveryLanes(ownerId);
   const lane = await db.discoveryLane.findFirst({ where: { id: input.laneId, ownerId } });
   if (!lane) throw new Error("Discovery lane not found");
 
@@ -463,6 +471,7 @@ export async function createDiscoveryMission(
   input: DiscoveryMissionInput,
   status = "QUEUED",
 ) {
+  await ensureDefaultDiscoveryLanes(ownerId);
   const lane = await db.discoveryLane.findFirst({ where: { id: input.laneId, ownerId } });
   if (!lane) throw new Error("Discovery lane not found");
 
@@ -575,7 +584,7 @@ export async function executeDiscoveryMission(
 
     const phaseStartedAt = Date.now();
     const result = await runDiscoverySearch(ownerId, {
-      query: prepared.query,
+      query: cleanTerm(input.query || input.freeformBrief, 500) || prepared.query,
       queryVariants: prepared.queries,
       requiredTerms: prepared.requiredTerms,
       excludedTerms: prepared.excludedTerms,
@@ -584,6 +593,7 @@ export async function executeDiscoveryMission(
       includeWeb: input.includeWeb,
       includeSources: input.includeSources,
       provider: input.provider,
+      resultKind: prepared.lane.slug === "tenders-procurement" ? "opportunities" : undefined,
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
       onProgress: appendLog,
     });

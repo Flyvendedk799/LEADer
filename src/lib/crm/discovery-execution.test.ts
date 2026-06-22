@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
     },
     discoveryLane: {
       findFirst: vi.fn(),
+      upsert: vi.fn(),
     },
     discoveryCandidate: {
       findFirst: vi.fn(),
@@ -90,6 +91,7 @@ describe("discovery mission execution", () => {
       candidates: [],
     });
     mocks.db.discoveryLane.findFirst.mockResolvedValue(lane);
+    mocks.db.discoveryLane.upsert.mockResolvedValue({});
     mocks.runDiscoverySearch.mockResolvedValue({
       candidates: [candidate],
       queries: ["software udbud"],

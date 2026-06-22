@@ -15,7 +15,7 @@ export interface LaneDefinition {
   conversionGuidance: string;
 }
 
-type LaneLike = Pick<
+export type LaneLike = Pick<
   LaneDefinition,
   | "slug"
   | "name"
@@ -25,7 +25,7 @@ type LaneLike = Pick<
   | "evidenceRequirements"
 >;
 
-type CandidateLike = {
+export type CandidateLike = {
   title?: string | null;
   description?: string | null;
   rawContent?: string | null;
@@ -315,6 +315,40 @@ function isConcreteTenderUrl(host: string, path: string, url: string) {
   );
 }
 
+function isNonProductionTenderUrl(host: string) {
+  return /^(pre|test|staging)\./.test(host);
+}
+
+function parsedDeadline(value?: string | Date | null) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function hasActiveDeadlineValue(value?: string | Date | null) {
+  const date = parsedDeadline(value);
+  if (!date) return false;
+  return date.getTime() >= Date.now() - 12 * 60 * 60 * 1000;
+}
+
+function hasDatedDeadlineCue(text: string) {
+  const deadlineWords = /tilbudsfrist|udbudsfrist|frist for tilbud|submission deadline|deadline|response deadline|tender deadline/;
+  const datePattern =
+    /(?:20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}[./-]\d{1,2}[./-]20\d{2}|\d{1,2}\.?\s+(?:januar|februar|marts|april|maj|juni|juli|august|september|oktober|november|december|jan|feb|mar|apr|jun|jul|aug|sep|okt|nov|dec)\s+20\d{2})/;
+  return deadlineWords.test(text) && datePattern.test(text);
+}
+
+function hasTenderDeadlineEvidence(candidate: CandidateLike, text: string) {
+  return hasActiveDeadlineValue(candidate.deadline) || hasDatedDeadlineCue(text);
+}
+
+function hasLongRunningTenderHorizon(candidate: CandidateLike) {
+  const deadline = parsedDeadline(candidate.deadline);
+  if (!deadline) return false;
+  const days = (deadline.getTime() - Date.now()) / 86400000;
+  return days > 540;
+}
+
 function hasTenderCue(text: string, url: string) {
   return /udbud|udbudsfrist|tilbudsfrist|afgiv tilbud|indsend tilbud|public rft|request for tender|contract notice|procurement|tender|noticeid|publicpurchase|mercell|eu-supply|ethics|comdia|ted\.europa\.eu|e-avrop/.test(
     `${text} ${url}`,
@@ -322,13 +356,15 @@ function hasTenderCue(text: string, url: string) {
 }
 
 function hasTenderConcreteCue(candidate: CandidateLike, text: string, url: string, concreteTenderUrl: boolean) {
-  return (
-    Boolean(candidate.deadline) ||
+  const hasDeadline = hasTenderDeadlineEvidence(candidate, text);
+  const hasSubmissionRoute =
     candidate.applicationRoute === "APPLICATION" ||
-    concreteTenderUrl ||
-    /tilbudsfrist|udbudsfrist|frist for tilbud|submission deadline|deadline|afgiv tilbud|indsend tilbud|send tilbud|public rft|noticeid|noticepublicationnumber|publicpurchase|rfq|detaljevisning|\/tender\/|\/ctm\/supplier\/publicpurchase|mercell\.com\/da-dk\/udbud/.test(
+    /tilbudsfrist|udbudsfrist|frist for tilbud|afgiv tilbud|indsend tilbud|send tilbud|submit (?:a )?(?:bid|tender|proposal)|public rft|rfq|noticeid|noticepublicationnumber|publicpurchase|\/ctm\/supplier\/publicpurchase|\/app\/rfq\//.test(
       `${text} ${url}`,
-    )
+    );
+  return (
+    hasDeadline &&
+    (hasSubmissionRoute || concreteTenderUrl)
   );
 }
 
@@ -339,31 +375,56 @@ function hasTechnicalTenderScope(text: string) {
 }
 
 function isJobOrRecruitingResult(text: string, host: string, path: string) {
-  return /linkedin\.com|thehub\.io/.test(host) ||
+  return /thehub\.io/.test(host) ||
     /\/jobs?\b|\/careers?\b|\/stillinger?\b|\/jobopslag\b/.test(path) ||
-    /job posting|jobannonce|job ad|full.?time|part.?time|internship|praktik|cofounder|co-founder|equity.?based|recruitment|hiring|søger en developer|søger developer|technical cofounder|cto role/.test(
+    /job posting|jobannonce|job ad|startup jobs|how to get .*job|full.?time|part.?time|internship|praktik|cofounder|co-founder|equity.?based|recruitment|hiring|søger en developer|søger developer|webudvikler til|technical cofounder|cto role|jobmakker/.test(
       text,
     );
 }
 
 function isGenericTenderSource(text: string, host: string, path: string) {
-  return /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen/.test(host) ||
+  return /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen|info\.mercell/.test(host) ||
     /\/$|\/alle\/?$|\/sources?\/?$|\/kilder?\/?$|\/udbud\/?$|\/indkoeb\/alle\/?$|\/indkøb\/alle\/?$/.test(path) ||
-    /find tenders?|tender portal|procurement platform|udbudsportal|udbudsliste|alle udbud|liste over|oversigt over|database|markedsplads|offentlige udbud|søg efter udbud|soeg efter udbud/.test(
+    /find tenders?|tender portal|procurement platform|udbudsportal|udbudsliste|alle udbud|liste over|oversigt over|database|markedsplads|offentlige udbud|søg efter udbud|soeg efter udbud|komplette guide|guide til offentlige indkøb|udbudsindsigter/.test(
       text,
     );
 }
 
-export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): LaneCandidateGateResult {
-  if (lane.slug !== "tenders-procurement") return { allowed: true };
+function isPurchasingSystemOrCatalogue(text: string) {
+  return /dynamisk indkøbssystem|dynamisk indkoebssystem|dynamic purchasing system|\bdis\b|standardsoftware|cirkulær it|cirkulaer it|levetidsforlængende|levetidsforlaengende/.test(
+    text,
+  );
+}
 
+function isGenericTenderTitle(text: string) {
+  return /^(?:udbud\.dk|digitale udbud|mercell|public rft|e-procurement|procurement solutions)\b/.test(text.trim());
+}
+
+function hasTenderBuyerEvidence(candidate: CandidateLike, text: string) {
+  const org = `${candidate.organization ?? ""} ${candidate.sourceName ?? ""}`.toLowerCase().trim();
+  const genericOrg = !org || /^(?:udbud|udbud\.dk|mercell|eu-supply|tender impulse|bidsandtenders|in-tend|procuman|linkedin|the hub)\b/.test(org);
+  return !genericOrg || /ordregiver|contracting authority|offentlig ordregiver|kommune|municipality|styrelse|ministeriet|ministry|region\b|universitet|university|hospital|agency/.test(text);
+}
+
+export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): LaneCandidateGateResult {
   const text = candidateText(candidate);
   const evidenceText = candidateEvidenceText(candidate);
   const { host, path, url } = candidateUrlParts(candidate.url);
+
+  if (lane.slug === "direct-startup-mvp" && isJobOrRecruitingResult(text, host, path)) {
+    return { allowed: false, reason: "job/recruiting result" };
+  }
+
+  if (lane.slug !== "tenders-procurement") return { allowed: true };
+
   const concreteTenderUrl = isConcreteTenderUrl(host, path, url);
 
   if (isJobOrRecruitingResult(text, host, path)) {
     return { allowed: false, reason: "job/recruiting result" };
+  }
+
+  if (isNonProductionTenderUrl(host)) {
+    return { allowed: false, reason: "non-production tender URL" };
   }
 
   if (/\/arkiv\/|\/archive\//.test(url)) {
@@ -382,8 +443,20 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
     return { allowed: false, reason: "generic tender source, not a concrete opportunity" };
   }
 
+  if (isGenericTenderTitle(`${candidate.title ?? ""}`.toLowerCase()) && !hasTenderDeadlineEvidence(candidate, text)) {
+    return { allowed: false, reason: "generic tender title without active deadline" };
+  }
+
   if (!hasTenderCue(text, url)) {
     return { allowed: false, reason: "missing tender evidence" };
+  }
+
+  if (!hasTenderDeadlineEvidence(candidate, text)) {
+    return { allowed: false, reason: "missing active tender deadline" };
+  }
+
+  if (hasLongRunningTenderHorizon(candidate) || isPurchasingSystemOrCatalogue(text)) {
+    return { allowed: false, reason: "long-running procurement system/catalogue" };
   }
 
   if (!hasTenderConcreteCue(candidate, text, url, concreteTenderUrl)) {
@@ -397,6 +470,34 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
   return { allowed: true };
 }
 
+export function filterLaneCandidates<T extends CandidateLike>(
+  lane: LaneLike,
+  candidates: T[],
+): { candidates: T[]; removed: number; reasons: string[] } {
+  const reasonCounts = new Map<string, number>();
+  const filtered: T[] = [];
+
+  for (const candidate of candidates) {
+    const gate = laneCandidateGate(lane, candidate);
+    if (gate.allowed) {
+      filtered.push(candidate);
+      continue;
+    }
+    const reason = gate.reason ?? "lane guard";
+    reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+  }
+
+  const reasons = [...reasonCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => `${count} ${reason}`);
+
+  return {
+    candidates: filtered,
+    removed: candidates.length - filtered.length,
+    reasons,
+  };
+}
+
 function includesTerm(text: string, term: string) {
   const t = term.toLowerCase().trim();
   if (!t) return false;
@@ -407,7 +508,7 @@ function includesTerm(text: string, term: string) {
   return text.includes(t);
 }
 
-function evidenceSatisfied(requirement: string, candidate: CandidateLike, text: string) {
+function evidenceSatisfied(lane: LaneLike, requirement: string, candidate: CandidateLike, text: string) {
   const req = requirement.toLowerCase();
   const hasBudget = candidate.budgetMin != null || candidate.budgetMax != null;
   const hasDeadline = Boolean(candidate.deadline);
@@ -419,6 +520,16 @@ function evidenceSatisfied(requirement: string, candidate: CandidateLike, text: 
   const buyer = hasOrg || /buyer|kunde|company|startup|founder|programme|program|ordning|kommune|municipality/.test(text);
   const relationship = /past customer|warm intro|referral|follow-up|dormant|known contact|tidligere kunde|netværk/.test(text);
   const sourceContext = Boolean(candidate.rawContent || candidate.description);
+
+  if (lane.slug === "tenders-procurement") {
+    if (/scope/.test(req)) return hasTechnicalTenderScope(candidateEvidenceText(candidate));
+    if (/deadline|active call/.test(req)) return hasTenderDeadlineEvidence(candidate, text);
+    if (/submission|route|frist/.test(req)) {
+      const { host, path, url } = candidateUrlParts(candidate.url);
+      return hasTenderConcreteCue(candidate, text, url, isConcreteTenderUrl(host, path, url));
+    }
+    if (/buyer|ordregiver/.test(req)) return hasTenderBuyerEvidence(candidate, text);
+  }
 
   if (/budget|funding|funded|tilskud|grant|programme|program/.test(req)) return hasBudget || funding || buyer;
   if (/deadline|active call|submission|frist|route/.test(req)) return hasDeadline || /deadline|frist|apply|application|submit|ansøg|tilbud/.test(text);
@@ -440,7 +551,7 @@ export function laneFit(lane: LaneLike, candidate: CandidateLike): LaneFitResult
     6,
   );
   const evidenceMatches = uniqueStrings(
-    lane.evidenceRequirements.filter((requirement) => evidenceSatisfied(requirement, candidate, text)),
+    lane.evidenceRequirements.filter((requirement) => evidenceSatisfied(lane, requirement, candidate, text)),
     6,
   );
   const missingEvidence = uniqueStrings(

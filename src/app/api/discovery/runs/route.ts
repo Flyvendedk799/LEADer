@@ -6,6 +6,7 @@ import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createDiscoveryMission } from "@/lib/crm";
 import { discoveryLogEntry, discoveryQueueLogMessage } from "@/lib/crm/discovery-logging";
+import { filterLaneCandidates, type CandidateLike, type LaneLike } from "@/lib/crm/lanes";
 import {
   discoveryQueueSnapshot,
   enqueueDiscoveryMission,
@@ -23,10 +24,49 @@ const discoveryRunActionSchema = z.object({
   action: z.enum(["CANCEL", "CANCEL_ALL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
 });
 
+const candidateGateSelect = {
+  title: true,
+  description: true,
+  rawContent: true,
+  url: true,
+  organization: true,
+  sourceName: true,
+  sourceKind: true,
+  category: true,
+  budgetMin: true,
+  budgetMax: true,
+  deadline: true,
+  applicationRoute: true,
+} satisfies Partial<Record<keyof CandidateLike, true>>;
+
 const missionListInclude = {
   lane: true,
+  candidates: {
+    select: candidateGateSelect,
+  },
   _count: { select: { candidates: true } },
 };
+
+function visibleMissionListRow<T extends {
+  lane: LaneLike | null;
+  candidates: CandidateLike[];
+  warnings: string[];
+  _count: { candidates: number };
+}>(mission: T) {
+  const { candidates, ...rest } = mission;
+  if (!mission.lane) return rest;
+  const visible = filterLaneCandidates(mission.lane, candidates);
+  return {
+    ...rest,
+    warnings: visible.removed > 0
+      ? [...rest.warnings, `${visible.removed} stale or off-lane candidates hidden from this mission.`]
+      : rest.warnings,
+    _count: {
+      ...rest._count,
+      candidates: visible.candidates.length,
+    },
+  };
+}
 
 export async function GET() {
   try {
@@ -38,7 +78,7 @@ export async function GET() {
       take: 20,
       include: missionListInclude,
     });
-    return NextResponse.json({ missions, queue });
+    return NextResponse.json({ missions: missions.map(visibleMissionListRow), queue });
   } catch (err) {
     return apiError(err);
   }

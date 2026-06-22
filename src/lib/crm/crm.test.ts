@@ -57,6 +57,7 @@ describe("CRM discovery lanes", () => {
 
   it("keeps the tender lane focused on concrete active software tenders", () => {
     const lane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "tenders-procurement")!;
+    const activeDeadline = new Date(Date.now() + 90 * 86400000).toISOString();
 
     expect(
       laneCandidateGate(lane, {
@@ -79,20 +80,43 @@ describe("CRM discovery lanes", () => {
     expect(
       laneCandidateGate(lane, {
         title: "Latest IT-Software Tenders & Government Contracts",
-        description: "A tender portal and database of IT tenders.",
+        description: "A tender portal and database of IT tenders with alerts, buyers and deadlines.",
         url: "https://tenderimpulse.com/it-software-tenders",
-        candidateKind: "source",
+        candidateKind: "opportunity",
       }),
     ).toEqual({ allowed: false, reason: "generic tender source, not a concrete opportunity" });
 
     expect(
       laneCandidateGate(lane, {
+        title: "bids&tenders: Digital eProcurement Platform for USA & Canada",
+        description: "bids&tenders is a digital eProcurement platform for public agencies.",
+        url: "https://bidsandtenders.com/",
+        candidateKind: "opportunity",
+        applicationRoute: "APPLICATION",
+      }),
+    ).toEqual({ allowed: false, reason: "generic tender source, not a concrete opportunity" });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "02.14 It-konsulenter (DIS)",
+        description: "Dynamisk indkøbssystem for IT-konsulenter med lang løbetid.",
+        rawContent: "CPV 72000000 It-tjenester. Tilbudsfrist 26-08-2049.",
+        url: "https://udbud.dk/detaljevisning?noticeId=94ef2048-9a7b-4179-8d97-c179940adfa8&noticeVersion=01",
+        organization: "Statens og Kommunernes Indkøbsservice",
+        candidateKind: "opportunity",
+        deadline: "2049-08-26T11:00:00.000Z",
+        applicationRoute: "APPLICATION",
+      }),
+    ).toEqual({ allowed: false, reason: "long-running procurement system/catalogue" });
+
+    expect(
+      laneCandidateGate(lane, {
         title: "Udvikling og drift af moderniseret datafordeler",
-        description: "Offentligt udbud om software udvikling, drift, vedligeholdelse og support. Tilbudsfrist 30-06-2026.",
+        description: "Offentligt udbud om software udvikling, drift, vedligeholdelse og support. Tilbudsfrist 30-06-2099.",
         url: "https://www.mercell.com/da-dk/udbud/147043739/udvikling-og-drift-af-moderniseret-datafordeler-udbud.aspx",
         organization: "Digitaliseringsstyrelsen",
         candidateKind: "opportunity",
-        deadline: "2026-06-30T12:00:00.000Z",
+        deadline: activeDeadline,
         applicationRoute: "APPLICATION",
       }),
     ).toEqual({ allowed: true });
@@ -102,10 +126,27 @@ describe("CRM discovery lanes", () => {
         title: "udbud.dk detaljevisning",
         description: "Beskrivelse: kontrakt om drift, vedligehold, support og udvikling af eksisterende webshopløsning. Tilbudsfrist.",
         rawContent:
-          "Ordregivers eksisterende webshopløsning er baseret på Magento. Leverandøren vil være ansvarlig for hosting, drift, support, vedligehold og udvikling.",
+          "Ordregivers eksisterende webshopløsning er baseret på Magento. Leverandøren vil være ansvarlig for hosting, drift, support, vedligehold og udvikling. Tilbudsfrist 30-06-2099.",
         url: "https://udbud.dk/detaljevisning?noticeId=794e64fd-0135-4a5f-95e0-9decd15f2a99&noticePublicationNumber=00090691-2025",
         organization: "Offentlig ordregiver",
         candidateKind: "source",
+        deadline: activeDeadline,
+      }),
+    ).toEqual({ allowed: true });
+
+    expect(
+      laneCandidateGate(lane, {
+        title:
+          "Udbud med forhandling vedr. levering, implementering, vedligeholdelse, support og udvikling af IT-løsning til understøttelse af Tolkeportalen",
+        description:
+          "Udbudsprocessen omfatter en kontrakt vedrørende levering, implementering, vedligeholdelse, support og udvikling af en IT-løsning. Ansøgning og tilbud håndteres via udbudsplatform.",
+        rawContent:
+          "Ordregiver: Social- og Boligstyrelsen. CPV: 72000000 It-tjenester: rådgivning, programmeludvikling, internet og support. Tilbudsfrist 25-08-2026.",
+        url: "https://udbud.dk/detaljevisning?noticeId=3e7ca982-c07b-421e-ae75-c771014a708a&noticeVersion=01&noticePublicationNumber=00403929-2026",
+        organization: "Social- og Boligstyrelsen",
+        candidateKind: "opportunity",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
       }),
     ).toEqual({ allowed: true });
 
@@ -120,7 +161,7 @@ describe("CRM discovery lanes", () => {
         organization: "Mercell",
         candidateKind: "source",
       }),
-    ).toEqual({ allowed: true });
+    ).toEqual({ allowed: false, reason: "missing active tender deadline" });
 
     expect(
       laneCandidateGate(lane, {
@@ -133,21 +174,56 @@ describe("CRM discovery lanes", () => {
         organization: "Udbud",
         candidateKind: "source",
       }),
-    ).toEqual({ allowed: false, reason: "missing software/technical scope" });
+    ).toEqual({ allowed: false, reason: "generic tender title without active deadline" });
 
     expect(
       laneCandidateGate(lane, {
         title: "Tailored biosafety lab training and UVI sensor PoC support for Kihleo",
         description:
-          "Danish Life Science Cluster søger via Beyond Beta en leverandør til skræddersyet biosafety lab training og PoC-support med tilbudsfrist 01-07-2026.",
+          "Danish Life Science Cluster søger via Beyond Beta en leverandør til skræddersyet biosafety lab training og PoC-support med tilbudsfrist 01-07-2099.",
         rawContent:
-          "04-06-2026 01-07-2026 14.44 Danish Life Science Cluster Beyond Beta Tailored biosafety lab training and UVI sensor PoC support for Kihleo",
+          "04-06-2099 01-07-2099 14.44 Danish Life Science Cluster Beyond Beta Tailored biosafety lab training and UVI sensor PoC support for Kihleo",
         url: "https://beyondbeta.ehsys.dk/indkoeb/tilbud/indsend/f576aa3a-c671-450f-4f38-08debfdbb015",
         candidateKind: "opportunity",
-        deadline: "2026-07-01T12:44:00.000Z",
+        deadline: activeDeadline,
         applicationRoute: "APPLICATION",
       }),
     ).toEqual({ allowed: false, reason: "missing software/technical scope" });
+  });
+
+  it("blocks job-board spillover from direct startup missions", () => {
+    const lane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "direct-startup-mvp")!;
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "Tech & Startup Jobs in Denmark | The Hub, June 2026",
+        description: "Full-time, part-time and cofounder startup jobs.",
+        url: "https://thehub.io/jobs/location/denmark/copenhagen",
+      }),
+    ).toEqual({ allowed: false, reason: "job/recruiting result" });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "Denmark Startup Jobs on LinkedIn: How to Get Full Stack Developer Job",
+        description: "A complete guide to landing a full stack developer job.",
+        url: "https://www.linkedin.com/posts/denmark-startup-jobs_how-to-get-full-stack-developer-job",
+      }),
+    ).toEqual({ allowed: false, reason: "job/recruiting result" });
+  });
+
+  it("does not count generic tender platform copy as real tender evidence", () => {
+    const lane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "tenders-procurement")!;
+    const fit = laneFit(lane, {
+      title: "Latest 2026 IT-Software Tenders & Government Contracts",
+      description: "Access the latest IT tenders, software tenders, tender alerts, deadlines and procurement buyers.",
+      url: "https://tenderimpulse.com/it-software-tenders",
+      sourceName: "Tender Impulse",
+      applicationRoute: "APPLICATION",
+    });
+
+    expect(fit.evidenceMatches).not.toContain("deadline");
+    expect(fit.evidenceMatches).not.toContain("submission route");
+    expect(fit.evidenceMatches).not.toContain("buyer");
   });
 });
 
