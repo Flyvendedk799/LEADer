@@ -2,13 +2,18 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { BriefcaseBusiness, Database, Loader2, Sparkles, Target, TimerReset } from "lucide-react";
+import { BookmarkPlus, BriefcaseBusiness, Database, Loader2, Sparkles, Target, TimerReset } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import {
+  workflowRecommendationPresetPayload,
+  workflowRecommendationRunPayload,
+} from "@/lib/workflows/recommendation-actions";
 
 type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
+type Workspace = "DK" | "GLOBAL";
 
 type WorkflowRunOptions = {
   dailySweep?: {
@@ -37,6 +42,7 @@ export type WorkflowRecommendationItem = {
   reason: string;
   metric: string;
   playbook: WorkflowPlaybook;
+  workspace?: Workspace;
   options?: WorkflowRunOptions;
   tone: "primary" | "warning" | "success" | "default";
   icon: "sparkles" | "target" | "timer" | "database" | "briefcase";
@@ -46,6 +52,14 @@ type WorkflowRunResponse = {
   run?: {
     id: string;
     status: string;
+  };
+  error?: unknown;
+};
+
+type WorkflowPresetResponse = {
+  preset?: {
+    id: string;
+    name: string;
   };
   error?: unknown;
 };
@@ -75,16 +89,12 @@ export function WorkflowRecommendationPanel({
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
   async function queueRecommendation(recommendation: WorkflowRecommendationItem) {
-    setBusyId(recommendation.id);
+    setBusyId(`queue-${recommendation.id}`);
     try {
       const res = await fetch("/api/workflows/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          playbook: recommendation.playbook,
-          workspace: "DK",
-          options: recommendation.options,
-        }),
+        body: JSON.stringify(workflowRecommendationRunPayload(recommendation)),
       });
       const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
       if (!res.ok || !data?.run) {
@@ -99,6 +109,27 @@ export function WorkflowRecommendationPanel({
     }
   }
 
+  async function saveRecommendationPreset(recommendation: WorkflowRecommendationItem) {
+    setBusyId(`save-${recommendation.id}`);
+    try {
+      const res = await fetch("/api/workflows/presets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(workflowRecommendationPresetPayload(recommendation)),
+      });
+      const data = (await res.json().catch(() => null)) as WorkflowPresetResponse | null;
+      if (!res.ok || !data?.preset) {
+        throw new Error(String(data?.error || "Could not save preset"));
+      }
+      toast.success("Workflow preset saved", data.preset.name);
+      router.refresh();
+    } catch (err) {
+      toast.error("Could not save preset", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (recommendations.length === 0) {
     return <p className="py-4 text-center text-sm text-muted-foreground">No urgent workflow moves right now.</p>;
   }
@@ -106,7 +137,8 @@ export function WorkflowRecommendationPanel({
   return (
     <div className="grid gap-2 lg:grid-cols-2">
       {recommendations.map((recommendation) => {
-        const busy = busyId === recommendation.id;
+        const queueBusy = busyId === `queue-${recommendation.id}`;
+        const saveBusy = busyId === `save-${recommendation.id}`;
         return (
           <div
             key={recommendation.id}
@@ -122,16 +154,36 @@ export function WorkflowRecommendationPanel({
               </div>
               <p className="mt-2 text-xs text-muted-foreground">{recommendation.reason}</p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={Boolean(busyId)}
-              onClick={() => queueRecommendation(recommendation)}
-              className="w-full md:w-auto"
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon name={recommendation.icon} />}
-              Queue
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={Boolean(busyId)}
+                onClick={() => saveRecommendationPreset(recommendation)}
+                className="flex-1 md:flex-none"
+              >
+                {saveBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <BookmarkPlus className="h-4 w-4" />
+                )}
+                Save
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={Boolean(busyId)}
+                onClick={() => queueRecommendation(recommendation)}
+                className="flex-1 md:flex-none"
+              >
+                {queueBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Icon name={recommendation.icon} />
+                )}
+                Queue
+              </Button>
+            </div>
           </div>
         );
       })}
