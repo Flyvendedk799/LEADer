@@ -16,6 +16,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { formatDate, relativeDeadline } from "@/lib/utils";
 import type { TaskPriority, TaskStatus } from "@/lib/types";
+import { workflowTaskHref } from "@/lib/workflows/task-links";
 
 export type WorkflowTaskItem = {
   id: string;
@@ -25,6 +26,7 @@ export type WorkflowTaskItem = {
   dueAt: string | null;
   dealId: string | null;
   dealTitle: string | null;
+  accountId: string | null;
   accountName: string | null;
 };
 
@@ -146,7 +148,7 @@ export function WorkflowActionQueue({
         </Button>
       </div>
       {items.map((task) => {
-        const href = task.dealId ? `/deals/${task.dealId}` : "/deals";
+        const href = workflowTaskHref(task);
         const busy = busyId === task.id;
         return (
           <div

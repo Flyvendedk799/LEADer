@@ -250,6 +250,7 @@ export default async function WorkflowsPage() {
     dueAt: task.dueAt?.toISOString() ?? null,
     dealId: task.deal?.id ?? null,
     dealTitle: task.deal?.title ?? null,
+    accountId: task.deal?.account?.id ?? task.account?.id ?? null,
     accountName: task.deal?.account?.name ?? task.account?.name ?? null,
   }));
   const candidateItems = hotCandidates.map((candidate) => ({

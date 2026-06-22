@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { formatDate, truncate } from "@/lib/utils";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
+import { workflowTaskHref } from "@/lib/workflows/task-links";
 
 export const dynamic = "force-dynamic";
 
@@ -268,7 +269,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
               {tasks.map((task) => (
                 <Link
                   key={task.id}
-                  href={task.dealId ? `/deals/${task.dealId}` : "/workflows"}
+                  href={workflowTaskHref(task)}
                   className="grid gap-2 rounded-md border border-border bg-surface/40 p-3 transition-colors hover:border-primary/50 md:grid-cols-[minmax(0,1fr)_auto]"
                 >
                   <div className="min-w-0">
