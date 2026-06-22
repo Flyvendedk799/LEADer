@@ -58,6 +58,30 @@ type WorkflowRunResponse = {
   error?: unknown;
 };
 
+type WorkflowRunPreview = {
+  phases?: {
+    dailySweep: boolean;
+    candidateHarvest: boolean;
+    pipelineRescue: boolean;
+  };
+  dailySweep?: {
+    includeSources: boolean;
+    includeAlerts: boolean;
+    dueSources: number;
+  };
+  candidateHarvest?: {
+    minScore: number;
+    limit: number;
+    matchingCandidates: number;
+    willReview: number;
+  };
+  pipelineRescue?: {
+    staleDeals: number;
+    deadlineDeals: number;
+    willReview: number;
+  };
+};
+
 type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
 type WorkflowRunOptions = {
   dailySweep?: {
@@ -138,6 +162,8 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
   const [sourceResult, setSourceResult] = React.useState<string | null>(null);
   const [sweepResult, setSweepResult] = React.useState<DailySweepResult | null>(null);
   const [sweepRun, setSweepRun] = React.useState<WorkflowRunResponse["run"] | null>(null);
+  const [preview, setPreview] = React.useState<WorkflowRunPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
 
   React.useEffect(() => {
     setLaneId((current) => current || pickDefaultLane(lanes));
@@ -228,6 +254,77 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
       },
     };
   }
+
+  const currentOperatingDayOptions = React.useMemo(
+    () => ({
+      operatingDay: {
+        dailySweep: daySweep,
+        candidateHarvest: dayHarvest,
+        pipelineRescue: dayRescue,
+      },
+      dailySweep: {
+        includeSources: daySources,
+        includeAlerts: dayAlerts,
+      },
+      candidateHarvest: {
+        minScore: candidateMinScore,
+        limit: candidateLimit,
+      },
+      pipelineRescue: {
+        staleDays: pipelineStaleDays,
+        deadlineDays: pipelineDeadlineDays,
+        limit: pipelineLimit,
+      },
+    }),
+    [
+      candidateLimit,
+      candidateMinScore,
+      dayAlerts,
+      dayHarvest,
+      dayRescue,
+      daySources,
+      daySweep,
+      pipelineDeadlineDays,
+      pipelineLimit,
+      pipelineStaleDays,
+    ],
+  );
+
+  React.useEffect(() => {
+    if (!daySweep && !dayHarvest && !dayRescue) {
+      setPreview(null);
+      setPreviewLoading(false);
+      return;
+    }
+    let stopped = false;
+    const controller = new AbortController();
+    setPreviewLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch("/api/workflows/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            playbook: "operating-day",
+            workspace: "DK",
+            options: currentOperatingDayOptions,
+          }),
+        });
+        const data = (await res.json().catch(() => null)) as { preview?: WorkflowRunPreview } | null;
+        if (!stopped && res.ok) setPreview(data?.preview ?? null);
+      } catch {
+        if (!stopped) setPreview(null);
+      } finally {
+        if (!stopped) setPreviewLoading(false);
+      }
+    }, 300);
+    return () => {
+      stopped = true;
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [currentOperatingDayOptions, dayHarvest, dayRescue, daySweep]);
 
   async function runDailySweep() {
     setBusy("daily-sweep");
@@ -401,6 +498,32 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
               disabled={!dayRescue}
             />
           </div>
+          <div className="grid gap-2 md:grid-cols-4">
+            <PreviewMetric
+              label="Due sources"
+              value={preview?.dailySweep?.dueSources ?? 0}
+              muted={!daySweep || !daySources}
+              loading={previewLoading}
+            />
+            <PreviewMetric
+              label="Candidates"
+              value={preview?.candidateHarvest?.willReview ?? 0}
+              muted={!dayHarvest}
+              loading={previewLoading}
+            />
+            <PreviewMetric
+              label="Stale deals"
+              value={preview?.pipelineRescue?.staleDeals ?? 0}
+              muted={!dayRescue}
+              loading={previewLoading}
+            />
+            <PreviewMetric
+              label="Deadlines"
+              value={preview?.pipelineRescue?.deadlineDeals ?? 0}
+              muted={!dayRescue}
+              loading={previewLoading}
+            />
+          </div>
         </div>
       </div>
 
@@ -551,6 +674,27 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
         </div>
         {sourceResult ? <p className="mt-2 text-xs text-muted-foreground">{sourceResult}</p> : null}
       </div>
+    </div>
+  );
+}
+
+function PreviewMetric({
+  label,
+  value,
+  muted,
+  loading,
+}: {
+  label: string;
+  value: number;
+  muted?: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <div className={`rounded-md border border-border bg-card px-3 py-2 ${muted ? "opacity-50" : ""}`}>
+      <p className="text-[11px] font-medium uppercase text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-semibold tracking-normal">
+        {loading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : value}
+      </p>
     </div>
   );
 }
