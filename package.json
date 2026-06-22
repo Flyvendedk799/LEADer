@@ -5,7 +5,9 @@
   "description": "LEADer — personal lead-intelligence platform for funded startup work, voucher assignments and tender-like opportunities (Denmark-first, global-ready).",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "prisma generate",
     "build": "next build",
+    "pretypecheck": "prisma generate",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

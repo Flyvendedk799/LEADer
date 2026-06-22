@@ -24,6 +24,7 @@ import { WorkflowActivityFeed } from "@/components/workflows/workflow-activity-f
 import { WorkflowAlertQueue } from "@/components/workflows/workflow-alert-queue";
 import { WorkflowCandidateQueue } from "@/components/workflows/workflow-candidate-queue";
 import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
+import { WorkflowRunQueue } from "@/components/workflows/workflow-run-queue";
 import { WorkflowSavedSearchQueue } from "@/components/workflows/workflow-saved-search-queue";
 import { WorkflowSourceQueue } from "@/components/workflows/workflow-source-queue";
 import { WorkflowUsecaseLauncher } from "@/components/workflows/workflow-usecase-launcher";
@@ -35,6 +36,7 @@ import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { describeSavedSearchFilters, savedSearchFiltersToHref } from "@/lib/saved-searches";
 import { cn, formatBudget } from "@/lib/utils";
+import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 
 export const dynamic = "force-dynamic";
 
@@ -79,10 +81,12 @@ export default async function WorkflowsPage() {
   const weekFromNow = new Date(now.getTime() + 7 * 86400000);
   const staleCutoff = new Date(now.getTime() - 14 * 86400000);
   await ensureDefaultDiscoveryLanes(ownerId);
+  await recoverWorkflowQueue(ownerId);
 
   const [
     lanes,
     missions,
+    workflowRuns,
     hotCandidates,
     overdueTasks,
     dueTasks,
@@ -107,6 +111,11 @@ export default async function WorkflowsPage() {
       where: { ownerId },
       include: { lane: true, _count: { select: { candidates: true } } },
       orderBy: { startedAt: "desc" },
+      take: 8,
+    }),
+    db.workflowRun.findMany({
+      where: { ownerId },
+      orderBy: { createdAt: "desc" },
       take: 8,
     }),
     db.discoveryCandidate.findMany({
@@ -192,6 +201,7 @@ export default async function WorkflowsPage() {
   ]);
 
   const runningMissions = missions.filter((mission) => mission.status === "QUEUED" || mission.status === "RUNNING");
+  const runningWorkflowRuns = workflowRuns.filter((run) => run.status === "QUEUED" || run.status === "RUNNING");
   const openTaskCount = overdueTasks.length + dueTasks.length;
   const openPipelineValue = pipelineValue._sum.valueMax ?? pipelineValue._sum.valueMin ?? 0;
   const actionTasks = [...overdueTasks, ...dueTasks].map((task) => ({
@@ -255,7 +265,44 @@ export default async function WorkflowsPage() {
     name: lane.name,
     description: lane.description,
   }));
+  const workflowRunItems = workflowRuns.map((run) => {
+    const result = run.result && typeof run.result === "object" && !Array.isArray(run.result)
+      ? (run.result as Record<string, unknown>)
+      : null;
+    const sources = result?.sources && typeof result.sources === "object" && !Array.isArray(result.sources)
+      ? (result.sources as Record<string, unknown>)
+      : null;
+    const digest = result?.digest && typeof result.digest === "object" && !Array.isArray(result.digest)
+      ? (result.digest as Record<string, unknown>)
+      : null;
+    const reminders = result?.reminders && typeof result.reminders === "object" && !Array.isArray(result.reminders)
+      ? (result.reminders as Record<string, unknown>)
+      : null;
+    const summary = result
+      ? `${Number(sources?.ran ?? 0)} sources - ${Number(sources?.created ?? 0)} new - ${Number(sources?.updated ?? 0)} updated - ${Number(reminders?.created ?? 0)} reminders - ${Number(digest?.created ?? 0)} digest`
+      : null;
+    return {
+      id: run.id,
+      playbook: run.playbook,
+      workspace: run.workspace,
+      status: run.status,
+      createdAt: run.createdAt.toISOString(),
+      startedAt: run.startedAt?.toISOString() ?? null,
+      finishedAt: run.finishedAt?.toISOString() ?? null,
+      log: run.log,
+      summary,
+    };
+  });
   const workflowActivityItems = [
+    ...workflowRuns.map((run) => ({
+      id: `workflow-run-${run.id}`,
+      kind: "workflow" as const,
+      title: `${run.playbook.replace(/-/g, " ")} playbook`,
+      description: run.log.at(-1) ?? null,
+      status: run.status,
+      href: "/workflows",
+      createdAt: (run.finishedAt ?? run.startedAt ?? run.createdAt).toISOString(),
+    })),
     ...missions.map((mission) => ({
       id: `mission-${mission.id}`,
       kind: "mission" as const,
@@ -326,7 +373,7 @@ export default async function WorkflowsPage() {
       </PageHeader>
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <ControlMetric label="Running" value={runningMissions.length} icon={<Radar />} tone="primary" />
+        <ControlMetric label="Running" value={runningMissions.length + runningWorkflowRuns.length} icon={<Radar />} tone="primary" />
         <ControlMetric label="Hot candidates" value={hotCandidates.length} icon={<Target />} tone="warning" />
         <ControlMetric label="Due actions" value={openTaskCount} icon={<CalendarClock />} tone="warning" />
         <ControlMetric label="Stale deals" value={staleDeals.length} icon={<TimerReset />} tone="default" />
@@ -367,6 +414,18 @@ export default async function WorkflowsPage() {
                 </Link>
               ))}
               {missions.length === 0 ? <EmptyLine>No discovery runs yet.</EmptyLine> : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Compass className="h-4 w-4 text-primary" />
+                Playbook runs
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <WorkflowRunQueue runs={workflowRunItems} />
             </CardContent>
           </Card>
 

@@ -7,13 +7,14 @@ import {
   FileText,
   Radar,
   RotateCw,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { formatDate, truncate } from "@/lib/utils";
 
-export type WorkflowActivityKind = "mission" | "source" | "alert" | "asset" | "opportunity";
+export type WorkflowActivityKind = "mission" | "workflow" | "source" | "alert" | "asset" | "opportunity";
 
 export type WorkflowActivityItem = {
   id: string;
@@ -27,6 +28,7 @@ export type WorkflowActivityItem = {
 
 const ICONS: Record<WorkflowActivityKind, LucideIcon> = {
   mission: Radar,
+  workflow: Workflow,
   source: RotateCw,
   alert: Bell,
   asset: Bot,

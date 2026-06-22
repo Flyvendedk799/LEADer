@@ -44,6 +44,17 @@ type DailySweepResult = {
   log?: string[];
 };
 
+type WorkflowRunResponse = {
+  queued?: boolean;
+  run?: {
+    id: string;
+    status: string;
+    log: string[];
+    result?: DailySweepResult | null;
+  };
+  error?: unknown;
+};
+
 export type WorkflowLaneItem = {
   id: string;
   slug: string;
@@ -91,6 +102,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
   const [busy, setBusy] = React.useState<string | null>(null);
   const [sourceResult, setSourceResult] = React.useState<string | null>(null);
   const [sweepResult, setSweepResult] = React.useState<DailySweepResult | null>(null);
+  const [sweepRun, setSweepRun] = React.useState<WorkflowRunResponse["run"] | null>(null);
 
   React.useEffect(() => {
     setLaneId((current) => current || pickDefaultLane(lanes));
@@ -154,24 +166,54 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
   async function runDailySweep() {
     setBusy("daily-sweep");
     setSweepResult(null);
+    setSweepRun(null);
     try {
       const res = await fetch("/api/workflows/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ playbook: "daily-sweep", workspace: "DK" }),
       });
-      const data = (await res.json().catch(() => null)) as DailySweepResult & { error?: string } | null;
-      if (!res.ok || !data) throw new Error(data?.error || "Could not run daily sweep");
-      const summary = dailySweepSummary(data);
-      setSweepResult(data);
-      toast.success("Daily sweep finished", summary);
+      const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
+      if (!res.ok || !data?.run) throw new Error(String(data?.error || "Could not queue daily sweep"));
+      setSweepRun(data.run);
+      toast.success("Daily sweep queued", "It will keep running in the background.");
       router.refresh();
     } catch (err) {
-      toast.error("Could not run daily sweep", err instanceof Error ? err.message : "Try again");
+      toast.error("Could not queue daily sweep", err instanceof Error ? err.message : "Try again");
     } finally {
       setBusy(null);
     }
   }
+
+  React.useEffect(() => {
+    if (!sweepRun?.id || !["QUEUED", "RUNNING"].includes(sweepRun.status)) return;
+    let stopped = false;
+    const timer = window.setInterval(async () => {
+      try {
+        const res = await fetch("/api/workflows/run", { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as { runs?: WorkflowRunResponse["run"][] } | null;
+        const next = data?.runs?.find((run) => run?.id === sweepRun.id);
+        if (!next || stopped) return;
+        setSweepRun(next);
+        if (next.result) setSweepResult(next.result);
+        if (!["QUEUED", "RUNNING"].includes(next.status)) {
+          window.clearInterval(timer);
+          if (next.status === "SUCCESS" && next.result) {
+            toast.success("Daily sweep finished", dailySweepSummary(next.result));
+          } else if (next.status === "ERROR") {
+            toast.error("Daily sweep failed", next.log.at(-1) ?? "Check playbook runs.");
+          }
+          router.refresh();
+        }
+      } catch {
+        // Keep the page quiet; the durable run remains visible in Playbook runs.
+      }
+    }, 2500);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [router, sweepRun?.id, sweepRun?.status]);
 
   async function runDueSources() {
     setBusy("sources");
@@ -209,6 +251,15 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
               <div className="mt-2 space-y-1 text-xs text-muted-foreground">
                 <p>{dailySweepSummary(sweepResult)}</p>
                 {sweepResult.log?.slice(-3).map((entry, index) => (
+                  <p key={`${entry}-${index}`} className="font-mono text-[11px]">
+                    {entry}
+                  </p>
+                ))}
+              </div>
+            ) : sweepRun ? (
+              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                <p>Queued as {sweepRun.status.toLowerCase()} background run.</p>
+                {sweepRun.log?.slice(-3).map((entry, index) => (
                   <p key={`${entry}-${index}`} className="font-mono text-[11px]">
                     {entry}
                   </p>

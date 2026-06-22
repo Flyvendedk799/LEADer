@@ -54,30 +54,13 @@ interface Result {
   perform: () => void | Promise<void>;
 }
 
-type DailySweepResult = {
-  sources?: {
-    ran: number;
-    created: number;
-    updated: number;
-    failed: number;
+type WorkflowRunResponse = {
+  run?: {
+    id: string;
+    status: string;
   };
-  reminders?: {
-    created: number;
-    emailed: number;
-  };
-  digest?: {
-    created: number;
-    emailed: number;
-  };
+  error?: unknown;
 };
-
-function dailySweepSummary(result: DailySweepResult) {
-  const sources = result.sources;
-  const sourcePart = sources
-    ? `${sources.ran} sources - ${sources.created} new - ${sources.updated} updated${sources.failed ? ` - ${sources.failed} failed` : ""}`
-    : "Sources checked";
-  return `${sourcePart} - ${result.reminders?.created ?? 0} reminders - ${result.digest?.created ?? 0} digest`;
-}
 
 export function CommandPalette() {
   const router = useRouter();
@@ -185,9 +168,9 @@ export function CommandPalette() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ playbook: "daily-sweep", workspace: "DK" }),
       });
-      const data = (await res.json().catch(() => null)) as DailySweepResult & { error?: string } | null;
-      if (!res.ok || !data) throw new Error(data?.error || "Could not run daily sweep");
-      toast.success("Daily sweep finished", dailySweepSummary(data));
+      const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
+      if (!res.ok || !data?.run) throw new Error(String(data?.error || "Could not queue daily sweep"));
+      toast.success("Daily sweep queued", "It will keep running in the background.");
       router.refresh();
       close();
     } catch (err) {

@@ -222,6 +222,7 @@ model User {
   discoveryLanes      DiscoveryLane[]
   discoveryMissions   DiscoveryMission[]
   discoveryCandidates DiscoveryCandidate[]
+  workflowRuns        WorkflowRun[]
   evidence            Evidence[]
   touchpoints         Touchpoint[]
   tasks               Task[]
@@ -710,6 +711,25 @@ model DiscoveryCandidate {
   @@index([laneId])
   @@index([missionId])
   @@index([pursuitScore])
+}
+
+model WorkflowRun {
+  id         String    @id @default(cuid())
+  ownerId    String
+  owner      User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  playbook   String
+  workspace  Workspace @default(DK)
+  status     String    @default("QUEUED")
+  input      Json?
+  result     Json?
+  log        String[]  @default([])
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([ownerId, createdAt])
+  @@index([ownerId, status])
 }
 
 model Evidence {

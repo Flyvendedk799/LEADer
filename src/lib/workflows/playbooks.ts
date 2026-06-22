@@ -1,7 +1,11 @@
+import type { Prisma } from "@prisma/client";
+
 import { dispatchForOwner, type DispatchResult } from "@/lib/alerts/dispatch";
+import { db } from "@/lib/db";
 import { runDueDiscovery, type RunResult } from "@/lib/ingestion";
 import type { Workspace } from "@/lib/types";
 import { summarizeSourceRuns, type SourceRunSummary } from "./summary";
+import type { WorkflowRunInput } from "./types";
 
 export type WorkflowPlaybook = "daily-sweep";
 
@@ -18,6 +22,76 @@ export type DailySweepResult = {
 
 function workflowLogEntry(message: string) {
   return `${new Date().toISOString()} ${message}`;
+}
+
+export function workflowRunSummary(result: DailySweepResult) {
+  const failed = result.sources.failed ? `, ${result.sources.failed} failed` : "";
+  return `${result.sources.ran} sources, ${result.sources.created} new, ${result.sources.updated} updated${failed}; ${result.reminders.created} reminders; ${result.digest.created} digest.`;
+}
+
+export async function createWorkflowRun(ownerId: string, input: WorkflowRunInput, status = "QUEUED") {
+  return db.workflowRun.create({
+    data: {
+      ownerId,
+      playbook: input.playbook,
+      workspace: input.workspace,
+      status,
+      input: JSON.parse(JSON.stringify(input)) as Prisma.InputJsonValue,
+      log: [
+        workflowLogEntry(
+          `${status === "RUNNING" ? "Started" : "Queued"} ${input.playbook} playbook for ${input.workspace}.`,
+        ),
+      ],
+      startedAt: status === "RUNNING" ? new Date() : null,
+    },
+  });
+}
+
+export async function executeWorkflowRun(ownerId: string, runId: string, input: WorkflowRunInput) {
+  try {
+    await db.workflowRun.update({
+      where: { id: runId },
+      data: {
+        status: "RUNNING",
+        startedAt: new Date(),
+        finishedAt: null,
+        log: { push: workflowLogEntry("Worker started playbook.") },
+      },
+    });
+
+    const result = await runDailySweep(ownerId, input.workspace);
+
+    for (const entry of result.log) {
+      await db.workflowRun.update({ where: { id: runId }, data: { log: { push: entry } } });
+    }
+
+    return db.workflowRun.update({
+      where: { id: runId },
+      data: {
+        status: "SUCCESS",
+        result: JSON.parse(JSON.stringify(result)) as Prisma.InputJsonValue,
+        finishedAt: new Date(),
+        log: { push: workflowLogEntry(`Playbook complete: ${workflowRunSummary(result)}`) },
+      },
+    });
+  } catch (error) {
+    await db.workflowRun.update({
+      where: { id: runId },
+      data: {
+        status: "ERROR",
+        result: {
+          error: error instanceof Error ? error.message : "Workflow playbook failed",
+        },
+        finishedAt: new Date(),
+        log: {
+          push: workflowLogEntry(
+            `Playbook failed: ${error instanceof Error ? error.message : "Workflow playbook failed"}`,
+          ),
+        },
+      },
+    }).catch(() => {});
+    throw error;
+  }
 }
 
 export async function runDailySweep(ownerId: string, workspace: Workspace = "DK"): Promise<DailySweepResult> {
