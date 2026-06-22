@@ -6,10 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
+import { WorkflowRunControls } from "@/components/workflows/workflow-run-controls";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatDate, truncate } from "@/lib/utils";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
+import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +49,7 @@ function compactJson(value: unknown) {
 
 export default async function WorkflowRunDetailPage({ params }: { params: { id: string } }) {
   const ownerId = await requireOwnerId();
-  await recoverWorkflowQueue(ownerId);
+  const queue = await recoverWorkflowQueue(ownerId);
 
   const run = await db.workflowRun.findFirst({
     where: { id: params.id, ownerId },
@@ -102,6 +104,21 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           </Link>
         </Button>
       </PageHeader>
+
+      <WorkflowRunControls
+        run={{
+          id: run.id,
+          playbook: run.playbook,
+          workspace: run.workspace,
+          status: run.status,
+          createdAt: run.createdAt.toISOString(),
+          startedAt: run.startedAt?.toISOString() ?? null,
+          finishedAt: run.finishedAt?.toISOString() ?? null,
+          log: run.log,
+          summary: workflowRunResultSummary(run.playbook, run.result),
+        }}
+        queue={queue}
+      />
 
       <section className="grid gap-3 md:grid-cols-4">
         <RunMetric label="Status" value={run.status.toLowerCase()} icon={<Activity />} badge={run.status} />
