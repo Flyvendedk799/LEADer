@@ -63,7 +63,19 @@ export function reorderDiscoveryQueueIds(ids: string[], missionId: string, actio
   return { ids: nextIds, moved: true, reason: null };
 }
 
-export function reorderQueuedDiscoveryMission(ownerId: string, missionId: string, action: DiscoveryQueueMoveAction) {
+async function persistOwnerQueueOrder(ownerId: string) {
+  const ownerQueue = queue.filter((item) => item.ownerId === ownerId);
+  await Promise.all(
+    ownerQueue.map((item, index) =>
+      db.discoveryMission.updateMany({
+        where: { id: item.missionId, ownerId, status: "QUEUED" },
+        data: { queuePriority: ownerQueue.length - index },
+      }),
+    ),
+  );
+}
+
+export async function reorderQueuedDiscoveryMission(ownerId: string, missionId: string, action: DiscoveryQueueMoveAction) {
   const ownerIndexes = queue
     .map((item, index) => (item.ownerId === ownerId ? index : null))
     .filter((index): index is number => index !== null);
@@ -80,6 +92,7 @@ export function reorderQueuedDiscoveryMission(ownerId: string, missionId: string
     if (item) queue[ownerIndexes[ownerIndex]] = item;
   });
 
+  await persistOwnerQueueOrder(ownerId);
   return { moved: true, reason: null, queue: discoveryQueueSnapshot(ownerId) };
 }
 
@@ -135,7 +148,7 @@ export async function recoverDiscoveryQueue(ownerId: string) {
       status: { in: ["QUEUED", "RUNNING"] },
       finishedAt: null,
     },
-    orderBy: { startedAt: "asc" },
+    orderBy: [{ queuePriority: "desc" }, { startedAt: "asc" }],
     select: { id: true, status: true, input: true },
   });
 

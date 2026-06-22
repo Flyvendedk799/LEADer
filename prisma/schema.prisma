@@ -649,6 +649,7 @@ model DiscoveryMission {
   workspace       Workspace     @default(DK)
   provider        String?
   status          String        @default("RUNNING")
+  queuePriority   Int           @default(0)
   warnings        String[]      @default([])
   log             String[]      @default([])
   sourceScanCount Int           @default(0)
@@ -659,6 +660,7 @@ model DiscoveryMission {
   candidates DiscoveryCandidate[]
 
   @@index([ownerId, startedAt])
+  @@index([ownerId, status, queuePriority, startedAt])
   @@index([laneId, startedAt])
 }
 

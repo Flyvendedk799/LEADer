@@ -123,7 +123,7 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: "Only waiting queued discovery missions can be moved" }, { status: 409 });
       }
 
-      const moved = reorderQueuedDiscoveryMission(ownerId, source.id, parsed.data.action as DiscoveryQueueMoveAction);
+      const moved = await reorderQueuedDiscoveryMission(ownerId, source.id, parsed.data.action as DiscoveryQueueMoveAction);
       if (moved.reason === "not_queued") {
         return NextResponse.json({ error: "Discovery mission is not waiting in the queue" }, { status: 409 });
       }
