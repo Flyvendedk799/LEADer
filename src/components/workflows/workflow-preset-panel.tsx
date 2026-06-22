@@ -3,7 +3,24 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Database, Edit3, ExternalLink, Loader2, Plus, PlayCircle, Save, Sparkles, Target, TimerReset, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  Clock3,
+  Database,
+  Edit3,
+  ExternalLink,
+  Loader2,
+  MoreHorizontal,
+  PauseCircle,
+  Plus,
+  PlayCircle,
+  Save,
+  SkipForward,
+  Sparkles,
+  Target,
+  TimerReset,
+  Trash2,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +32,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,6 +46,11 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { cn, formatDate } from "@/lib/utils";
+import {
+  workflowPresetScheduleControlLabel,
+  workflowPresetScheduleControlPayload,
+  type WorkflowPresetScheduleControlAction,
+} from "@/lib/workflows/schedule-controls";
 
 type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
 type Workspace = "DK" | "GLOBAL";
@@ -338,6 +367,25 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
     }
   }
 
+  async function controlSchedule(preset: WorkflowPresetPanelItem, action: WorkflowPresetScheduleControlAction) {
+    setBusyId(`schedule-${action}-${preset.id}`);
+    try {
+      const res = await fetch(`/api/workflows/presets/${preset.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(workflowPresetScheduleControlPayload(preset, action)),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.preset) throw new Error(String(data?.error || "Could not update schedule"));
+      toast.success(workflowPresetScheduleControlLabel(action), preset.name);
+      router.refresh();
+    } catch (err) {
+      toast.error("Could not update schedule", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const saveDisabled =
     saving ||
     form.name.trim().length < 2 ||
@@ -360,6 +408,7 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
           {presets.map((preset) => {
             const queueBusy = busyId === `queue-${preset.id}`;
             const deleteBusy = busyId === `delete-${preset.id}`;
+            const scheduleBusy = Boolean(busyId?.startsWith("schedule-") && busyId.endsWith(`-${preset.id}`));
             return (
               <div
                 key={preset.id}
@@ -451,6 +500,50 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
                     {queueBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
                     Queue
                   </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9"
+                        disabled={Boolean(busyId)}
+                        aria-label="Schedule controls"
+                        title="Schedule controls"
+                      >
+                        {scheduleBusy ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <MoreHorizontal className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onSelect={() => controlSchedule(preset, preset.scheduleEnabled ? "PAUSE" : "RESUME")}
+                      >
+                        {preset.scheduleEnabled ? (
+                          <PauseCircle className="h-4 w-4" />
+                        ) : (
+                          <PlayCircle className="h-4 w-4" />
+                        )}
+                        {workflowPresetScheduleControlLabel(preset.scheduleEnabled ? "PAUSE" : "RESUME")}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => controlSchedule(preset, "SNOOZE_1H")}>
+                        <Clock3 className="h-4 w-4" />
+                        {workflowPresetScheduleControlLabel("SNOOZE_1H")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => controlSchedule(preset, "SNOOZE_24H")}>
+                        <Clock3 className="h-4 w-4" />
+                        {workflowPresetScheduleControlLabel("SNOOZE_24H")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => controlSchedule(preset, "SKIP_ONCE")}>
+                        <SkipForward className="h-4 w-4" />
+                        {workflowPresetScheduleControlLabel("SKIP_ONCE")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <Button
                     type="button"
                     variant="outline"
