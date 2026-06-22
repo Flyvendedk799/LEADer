@@ -34,6 +34,12 @@ type AgentResponse = {
   model: string;
 };
 
+export const PLATFORM_AGENT_EVENT = "leader:platform-agent";
+
+export function openPlatformAgent(prompt?: string) {
+  window.dispatchEvent(new CustomEvent(PLATFORM_AGENT_EVENT, { detail: { prompt } }));
+}
+
 const STARTERS = [
   "What needs my attention today?",
   "Find hot discovery candidates",
@@ -62,6 +68,16 @@ export function PlatformAgent() {
   React.useEffect(() => {
     scrollRef.current?.scrollIntoView({ block: "end" });
   }, [messages, pending]);
+
+  React.useEffect(() => {
+    function onEvent(event: Event) {
+      const detail = (event as CustomEvent<{ prompt?: string }>).detail;
+      setOpen(true);
+      if (detail?.prompt) setInput(detail.prompt);
+    }
+    window.addEventListener(PLATFORM_AGENT_EVENT, onEvent);
+    return () => window.removeEventListener(PLATFORM_AGENT_EVENT, onEvent);
+  }, []);
 
   async function send(override?: string) {
     const text = (override ?? input).trim();
