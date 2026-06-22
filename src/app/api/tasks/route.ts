@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { taskCreateSchema, taskPatchSchema } from "@/lib/validators";
+import { taskPatchActionSchema, taskPatchData, taskPatchEmptyMessage, taskPatchWhere } from "@/lib/tasks/actions";
+import { taskCreateSchema } from "@/lib/validators";
 
 export async function GET(req: Request) {
   try {
@@ -40,18 +41,15 @@ export async function PATCH(req: Request) {
   try {
     const ownerId = await requireOwnerId();
     const body = await req.json().catch(() => ({}));
-    const parsed = taskPatchSchema.safeParse(body);
+    const parsed = taskPatchActionSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-    const { id, ...data } = parsed.data;
-    const task = await db.task.updateMany({
-      where: { id, ownerId },
-      data: {
-        ...data,
-        completedAt: data.status === "DONE" ? new Date() : undefined,
-      },
+    const result = await db.task.updateMany({
+      where: taskPatchWhere(ownerId, parsed.data),
+      data: taskPatchData(parsed.data),
     });
-    if (task.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json(await db.task.findFirst({ where: { id, ownerId } }));
+    if (result.count === 0) return NextResponse.json({ error: taskPatchEmptyMessage(parsed.data) }, { status: 404 });
+    if ("ids" in parsed.data) return NextResponse.json({ ok: true, count: result.count });
+    return NextResponse.json(await db.task.findFirst({ where: { id: parsed.data.id, ownerId } }));
   } catch (err) {
     return apiError(err);
   }

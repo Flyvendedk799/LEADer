@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Clock3, Loader2, MoreHorizontal, TimerReset, XCircle } from "lucide-react";
+import { CheckCheck, CheckCircle2, Clock3, Loader2, MoreHorizontal, TimerReset, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,7 @@ export function WorkflowActionQueue({
   const router = useRouter();
   const [items, setItems] = React.useState(tasks);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const bulkBusy = busyId?.startsWith("bulk:");
 
   React.useEffect(() => {
     setItems(tasks);
@@ -86,12 +87,64 @@ export function WorkflowActionQueue({
     }
   }
 
+  async function updateVisibleTasks(patch: Partial<Pick<WorkflowTaskItem, "status" | "dueAt">>, label: string) {
+    const previous = items;
+    const ids = items.map((task) => task.id);
+    setBusyId(`bulk:${patch.status ?? "dueAt"}`);
+    setItems((current) =>
+      patch.status && patch.status !== "OPEN" ? [] : current.map((task) => ({ ...task, ...patch })),
+    );
+
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ids,
+          ...(patch.status ? { status: patch.status } : {}),
+          ...(patch.dueAt ? { dueAt: patch.dueAt } : {}),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Task update failed");
+      toast.success(label);
+      router.refresh();
+    } catch (err) {
+      setItems(previous);
+      toast.error("Task update failed", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (items.length === 0) {
     return <p className="py-4 text-center text-sm text-muted-foreground">No due actions.</p>;
   }
 
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={Boolean(busyId)}
+          onClick={() => updateVisibleTasks({ dueAt: snoozeDate(1), status: "OPEN" }, "Visible tasks moved to tomorrow")}
+        >
+          {bulkBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <TimerReset className="h-4 w-4" />}
+          Tomorrow all
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="success"
+          disabled={Boolean(busyId)}
+          onClick={() => updateVisibleTasks({ status: "DONE" }, "Visible tasks completed")}
+        >
+          {bulkBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4" />}
+          Done all
+        </Button>
+      </div>
       {items.map((task) => {
         const href = task.dealId ? `/deals/${task.dealId}` : "/deals";
         const busy = busyId === task.id;
