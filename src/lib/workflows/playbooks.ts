@@ -8,7 +8,7 @@ import type { Workspace } from "@/lib/types";
 import { summarizeSourceRuns, type SourceRunSummary } from "./summary";
 import type { WorkflowRunInput } from "./types";
 
-export type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest";
+export type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
 
 const OPEN_DEAL_STATUSES = ["DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION"] as const;
 const DAY = 24 * 60 * 60 * 1000;
@@ -60,7 +60,21 @@ export type CandidateHarvestResult = {
   log: string[];
 };
 
-export type WorkflowPlaybookResult = DailySweepResult | PipelineRescueResult | CandidateHarvestResult;
+export type OperatingDayResult = {
+  playbook: "operating-day";
+  workspace: Workspace;
+  ranAt: string;
+  durationMs: number;
+  dailySweep: DailySweepResult;
+  candidateHarvest: CandidateHarvestResult;
+  pipelineRescue: PipelineRescueResult;
+  dealIds: string[];
+  taskIds: string[];
+  log: string[];
+};
+
+export type WorkflowPlaybookResult = DailySweepResult | PipelineRescueResult | CandidateHarvestResult | OperatingDayResult;
+type WorkflowLogSink = (entry: string) => void | Promise<void>;
 
 function workflowLogEntry(message: string) {
   return `${new Date().toISOString()} ${message}`;
@@ -87,6 +101,10 @@ function prepDueDate(deadline: Date | null) {
 }
 
 export function workflowRunSummary(result: WorkflowPlaybookResult) {
+  if (result.playbook === "operating-day") {
+    const rescueTasks = result.pipelineRescue.staleDeals.tasksCreated + result.pipelineRescue.deadlines.tasksCreated;
+    return `${result.dailySweep.sources.created} new from sources, ${result.candidateHarvest.candidates.saved} candidates saved, ${rescueTasks} rescue tasks created.`;
+  }
   if (result.playbook === "candidate-harvest") {
     return `${result.candidates.saved} hot candidates saved as deals, ${result.candidates.alreadyInPipeline} already in pipeline.`;
   }
@@ -116,6 +134,15 @@ export async function createWorkflowRun(ownerId: string, input: WorkflowRunInput
 }
 
 export async function executeWorkflowRun(ownerId: string, runId: string, input: WorkflowRunInput) {
+  const persistedPlaybookLogs = new Set<string>();
+  async function recordPlaybookLog(entry: string) {
+    persistedPlaybookLogs.add(entry);
+    await db.workflowRun.updateMany({
+      where: { id: runId, ownerId, status: { not: "CANCELED" } },
+      data: { log: { push: entry } },
+    });
+  }
+
   try {
     const started = await db.workflowRun.updateMany({
       where: { id: runId, ownerId, status: { not: "CANCELED" } },
@@ -130,13 +157,14 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
       return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
     }
 
-    const result = await runWorkflowPlaybook(ownerId, input);
+    const result = await runWorkflowPlaybook(ownerId, input, recordPlaybookLog);
     const current = await db.workflowRun.findFirst({ where: { id: runId, ownerId }, select: { status: true } });
     if (current?.status === "CANCELED") {
       return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
     }
 
     for (const entry of result.log) {
+      if (persistedPlaybookLogs.has(entry)) continue;
       await db.workflowRun.update({ where: { id: runId }, data: { log: { push: entry } } });
     }
 
@@ -430,8 +458,64 @@ export async function runCandidateHarvest(ownerId: string, workspace: Workspace 
   };
 }
 
-export async function runWorkflowPlaybook(ownerId: string, input: WorkflowRunInput): Promise<WorkflowPlaybookResult> {
+export async function runOperatingDay(
+  ownerId: string,
+  workspace: Workspace = "DK",
+  onLog?: WorkflowLogSink,
+): Promise<OperatingDayResult> {
+  const startedAt = Date.now();
+  const log: string[] = [];
+
+  async function record(entry: string) {
+    log.push(entry);
+    await onLog?.(entry);
+  }
+
+  await record(workflowLogEntry(`Started operating day for ${workspace}.`));
+
+  const dailySweep = await runDailySweep(ownerId, workspace);
+  for (const entry of dailySweep.log) {
+    await record(`[daily-sweep] ${entry}`);
+  }
+  await record(workflowLogEntry(`Daily sweep complete: ${workflowRunSummary(dailySweep)}`));
+
+  const candidateHarvest = await runCandidateHarvest(ownerId, workspace);
+  for (const entry of candidateHarvest.log) {
+    await record(`[candidate-harvest] ${entry}`);
+  }
+  await record(workflowLogEntry(`Candidate harvest complete: ${workflowRunSummary(candidateHarvest)}`));
+
+  const pipelineRescue = await runPipelineRescue(ownerId, workspace);
+  for (const entry of pipelineRescue.log) {
+    await record(`[pipeline-rescue] ${entry}`);
+  }
+  await record(workflowLogEntry(`Pipeline rescue complete: ${workflowRunSummary(pipelineRescue)}`));
+
+  const durationMs = Date.now() - startedAt;
+  await record(workflowLogEntry(`Finished operating day in ${Math.round(durationMs / 1000)}s.`));
+
+  return {
+    playbook: "operating-day",
+    workspace,
+    ranAt: new Date().toISOString(),
+    durationMs,
+    dailySweep,
+    candidateHarvest,
+    pipelineRescue,
+    dealIds: [...new Set(candidateHarvest.dealIds)],
+    taskIds: [...new Set([...candidateHarvest.taskIds, ...pipelineRescue.taskIds])],
+    log,
+  };
+}
+
+export async function runWorkflowPlaybook(
+  ownerId: string,
+  input: WorkflowRunInput,
+  onLog?: WorkflowLogSink,
+): Promise<WorkflowPlaybookResult> {
   switch (input.playbook) {
+    case "operating-day":
+      return runOperatingDay(ownerId, input.workspace, onLog);
     case "candidate-harvest":
       return runCandidateHarvest(ownerId, input.workspace);
     case "pipeline-rescue":

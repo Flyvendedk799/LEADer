@@ -75,6 +75,14 @@ function alertHref(raw: unknown) {
   return payload?.opportunityId ? `/opportunities/${payload.opportunityId}` : "/workflows";
 }
 
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 export default async function WorkflowsPage() {
   const ownerId = await requireOwnerId();
   const now = new Date();
@@ -266,33 +274,30 @@ export default async function WorkflowsPage() {
     description: lane.description,
   }));
   const workflowRunItems = workflowRuns.map((run) => {
-    const result = run.result && typeof run.result === "object" && !Array.isArray(run.result)
-      ? (run.result as Record<string, unknown>)
-      : null;
-    const sources = result?.sources && typeof result.sources === "object" && !Array.isArray(result.sources)
-      ? (result.sources as Record<string, unknown>)
-      : null;
-    const digest = result?.digest && typeof result.digest === "object" && !Array.isArray(result.digest)
-      ? (result.digest as Record<string, unknown>)
-      : null;
-    const reminders = result?.reminders && typeof result.reminders === "object" && !Array.isArray(result.reminders)
-      ? (result.reminders as Record<string, unknown>)
-      : null;
-    const staleDeals = result?.staleDeals && typeof result.staleDeals === "object" && !Array.isArray(result.staleDeals)
-      ? (result.staleDeals as Record<string, unknown>)
-      : null;
-    const deadlines = result?.deadlines && typeof result.deadlines === "object" && !Array.isArray(result.deadlines)
-      ? (result.deadlines as Record<string, unknown>)
-      : null;
-    const candidates = result?.candidates && typeof result.candidates === "object" && !Array.isArray(result.candidates)
-      ? (result.candidates as Record<string, unknown>)
-      : null;
+    const result = objectValue(run.result);
+    const sources = objectValue(result?.sources);
+    const digest = objectValue(result?.digest);
+    const reminders = objectValue(result?.reminders);
+    const staleDeals = objectValue(result?.staleDeals);
+    const deadlines = objectValue(result?.deadlines);
+    const candidates = objectValue(result?.candidates);
+    const dailySweep = objectValue(result?.dailySweep);
+    const candidateHarvest = objectValue(result?.candidateHarvest);
+    const pipelineRescue = objectValue(result?.pipelineRescue);
+    const operatingSources = objectValue(dailySweep?.sources);
+    const operatingCandidates = objectValue(candidateHarvest?.candidates);
+    const operatingStaleDeals = objectValue(pipelineRescue?.staleDeals);
+    const operatingDeadlines = objectValue(pipelineRescue?.deadlines);
+    const operatingRescueTasks =
+      numberValue(operatingStaleDeals?.tasksCreated) + numberValue(operatingDeadlines?.tasksCreated);
     const summary = result
-      ? run.playbook === "candidate-harvest"
-        ? `${Number(candidates?.saved ?? 0)} saved deals - ${Number(candidates?.alreadyInPipeline ?? 0)} already in pipeline`
+      ? run.playbook === "operating-day"
+        ? `${numberValue(operatingSources?.created)} source leads - ${numberValue(operatingCandidates?.saved)} saved deals - ${operatingRescueTasks} rescue tasks`
+        : run.playbook === "candidate-harvest"
+        ? `${numberValue(candidates?.saved)} saved deals - ${numberValue(candidates?.alreadyInPipeline)} already in pipeline`
         : run.playbook === "pipeline-rescue"
-        ? `${Number(staleDeals?.tasksCreated ?? 0)} stale tasks - ${Number(deadlines?.tasksCreated ?? 0)} deadline tasks - ${Number(result.nextActionsUpdated ?? 0)} next actions`
-        : `${Number(sources?.ran ?? 0)} sources - ${Number(sources?.created ?? 0)} new - ${Number(sources?.updated ?? 0)} updated - ${Number(reminders?.created ?? 0)} reminders - ${Number(digest?.created ?? 0)} digest`
+        ? `${numberValue(staleDeals?.tasksCreated)} stale tasks - ${numberValue(deadlines?.tasksCreated)} deadline tasks - ${numberValue(result.nextActionsUpdated)} next actions`
+        : `${numberValue(sources?.ran)} sources - ${numberValue(sources?.created)} new - ${numberValue(sources?.updated)} updated - ${numberValue(reminders?.created)} reminders - ${numberValue(digest?.created)} digest`
       : null;
     return {
       id: run.id,

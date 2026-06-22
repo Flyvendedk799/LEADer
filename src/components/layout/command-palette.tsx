@@ -64,7 +64,7 @@ type WorkflowRunResponse = {
   error?: unknown;
 };
 
-type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest";
+type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
 
 export function CommandPalette() {
   const router = useRouter();
@@ -274,6 +274,14 @@ export function CommandPalette() {
           router.push("/import");
           close();
         },
+      },
+      {
+        id: "act-operating-day",
+        group: "Workflow actions",
+        label: "Run operating day",
+        hint: "Sweep, harvest, rescue",
+        icon: <Sparkles className="h-4 w-4 text-muted-foreground" />,
+        perform: () => queueWorkflowPlaybook("operating-day", "act-operating-day", "Operating day"),
       },
       {
         id: "act-candidate-harvest",

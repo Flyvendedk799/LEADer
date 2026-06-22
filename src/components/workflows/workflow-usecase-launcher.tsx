@@ -14,6 +14,7 @@ import {
   Radar,
   RefreshCw,
   Search,
+  Sparkles,
   Target,
 } from "lucide-react";
 
@@ -56,7 +57,7 @@ type WorkflowRunResponse = {
   error?: unknown;
 };
 
-type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest";
+type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
 
 export type WorkflowLaneItem = {
   id: string;
@@ -262,6 +263,24 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
 
   return (
     <div className="grid gap-3 md:grid-cols-3">
+      <div className="rounded-md border border-border bg-surface/40 p-3 md:col-span-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Sparkles className="h-4 w-4 text-primary" />
+            Operating day
+          </div>
+          <Button
+            type="button"
+            onClick={() => queueWorkflowPlaybook("operating-day", "operating-day", "Operating day")}
+            disabled={Boolean(busy)}
+            className="w-full sm:w-auto"
+          >
+            {busy === "operating-day" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            Run day
+          </Button>
+        </div>
+      </div>
+
       <div className="rounded-md border border-border bg-surface/40 p-3 md:col-span-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Activity, ArrowLeft, BriefcaseBusiness, CalendarClock, CheckCircle2, Clock3, ListChecks, RotateCw, Target } from "lucide-react";
+import { Activity, ArrowLeft, BriefcaseBusiness, CalendarClock, CheckCircle2, Clock3, ListChecks, RotateCw, Sparkles, Target } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,16 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
   const staleDeals = objectValue(result?.staleDeals);
   const deadlines = objectValue(result?.deadlines);
   const candidates = objectValue(result?.candidates);
+  const dailySweep = objectValue(result?.dailySweep);
+  const candidateHarvest = objectValue(result?.candidateHarvest);
+  const pipelineRescue = objectValue(result?.pipelineRescue);
+  const operatingSources = objectValue(dailySweep?.sources);
+  const operatingDigest = objectValue(dailySweep?.digest);
+  const operatingCandidates = objectValue(candidateHarvest?.candidates);
+  const operatingStaleDeals = objectValue(pipelineRescue?.staleDeals);
+  const operatingDeadlines = objectValue(pipelineRescue?.deadlines);
+  const operatingRescueTasks =
+    numberValue(operatingStaleDeals?.tasksCreated) + numberValue(operatingDeadlines?.tasksCreated);
   const taskIds = stringList(result?.taskIds);
   const dealIds = stringList(result?.dealIds);
   const tasks = taskIds.length
@@ -95,7 +105,14 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
         <RunMetric label="Finished" value={run.finishedAt ? formatDate(run.finishedAt) : "Running"} icon={<CheckCircle2 />} />
       </section>
 
-      {run.playbook === "candidate-harvest" ? (
+      {run.playbook === "operating-day" ? (
+        <section className="grid gap-3 md:grid-cols-4">
+          <RunMetric label="Source leads" value={numberValue(operatingSources?.created)} icon={<RotateCw />} />
+          <RunMetric label="Saved deals" value={numberValue(operatingCandidates?.saved)} icon={<BriefcaseBusiness />} />
+          <RunMetric label="Rescue tasks" value={operatingRescueTasks} icon={<Sparkles />} />
+          <RunMetric label="Digests" value={numberValue(operatingDigest?.created)} icon={<ListChecks />} />
+        </section>
+      ) : run.playbook === "candidate-harvest" ? (
         <section className="grid gap-3 md:grid-cols-4">
           <RunMetric label="Reviewed" value={numberValue(candidates?.reviewed)} icon={<Target />} />
           <RunMetric label="Saved deals" value={numberValue(candidates?.saved)} icon={<BriefcaseBusiness />} />
