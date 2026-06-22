@@ -110,6 +110,22 @@ type MissionSummary = {
   _count?: { candidates: number };
 };
 
+type DiscoveryQueueSnapshot = {
+  activeMissionId: string | null;
+  queuedMissionIds: string[];
+};
+
+type MissionListResponse = {
+  missions?: MissionSummary[];
+  queue?: Partial<DiscoveryQueueSnapshot>;
+  error?: string;
+};
+
+type MissionDetailResponse = MissionResult & {
+  queue?: Partial<DiscoveryQueueSnapshot>;
+  error?: string;
+};
+
 function listFromInput(value: string) {
   return value
     .split(",")
@@ -158,6 +174,36 @@ function missionLogParts(entry: string) {
   };
 }
 
+function normalizeQueue(queue?: Partial<DiscoveryQueueSnapshot> | null): DiscoveryQueueSnapshot {
+  return {
+    activeMissionId: typeof queue?.activeMissionId === "string" ? queue.activeMissionId : null,
+    queuedMissionIds: Array.isArray(queue?.queuedMissionIds)
+      ? queue.queuedMissionIds.filter((id): id is string => typeof id === "string")
+      : [],
+  };
+}
+
+function missionQueueLabel(id: string, queue: DiscoveryQueueSnapshot) {
+  if (queue.activeMissionId === id) return "active";
+  const queuedIndex = queue.queuedMissionIds.indexOf(id);
+  return queuedIndex >= 0 ? `queued #${queuedIndex + 1}` : null;
+}
+
+function sortMissionsWithQueue(items: MissionSummary[], queue: DiscoveryQueueSnapshot) {
+  const queueIndex = new Map(queue.queuedMissionIds.map((id, index) => [id, index]));
+  const rank = (mission: MissionSummary) => {
+    if (queue.activeMissionId === mission.id) return -1;
+    const index = queueIndex.get(mission.id);
+    return index == null ? Number.MAX_SAFE_INTEGER : index;
+  };
+  return [...items].sort((a, b) => {
+    const rankA = rank(a);
+    const rankB = rank(b);
+    if (rankA !== rankB) return rankA - rankB;
+    return new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime();
+  });
+}
+
 function queryPreview(value?: string) {
   return (value || "")
     .split("\n")
@@ -187,12 +233,23 @@ export function LaneMissionControl({
   const [loading, setLoading] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
   const [missions, setMissions] = React.useState<MissionSummary[]>([]);
+  const [queueState, setQueueState] = React.useState<DiscoveryQueueSnapshot>(() => normalizeQueue());
+  const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
   const [activeMissionId, setActiveMissionId] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<MissionResult | null>(null);
   const selectedLane = lanes.find((lane) => lane.id === laneId);
   const candidates = result?.mission.candidates ?? [];
   const missionStatus = result?.mission.status ?? "";
   const missionRunning = missionStatus === "QUEUED" || missionStatus === "RUNNING";
+  const liveQueue =
+    missionRunning ||
+    missions.some((mission) => mission.status === "QUEUED" || mission.status === "RUNNING") ||
+    Boolean(queueState.activeMissionId) ||
+    queueState.queuedMissionIds.length > 0;
+  const orderedMissions = React.useMemo(() => sortMissionsWithQueue(missions, queueState), [missions, queueState]);
+  const activeQueueLabel = activeMissionId ? missionQueueLabel(activeMissionId, queueState) : null;
+  const latestLog = result?.mission.log?.at(-1);
+  const latestLogMessage = latestLog ? missionLogParts(latestLog).message : null;
   const counts = candidates.reduce<Record<string, number>>((acc, candidate) => {
     acc[candidate.status] = (acc[candidate.status] ?? 0) + 1;
     return acc;
@@ -215,20 +272,23 @@ export function LaneMissionControl({
     if (!quiet) setRefreshing(true);
     try {
       const res = await fetch(`/api/discovery/runs/${id}`, { cache: "no-store" });
-      const data = await res.json();
+      const data = (await res.json()) as MissionDetailResponse;
       if (!res.ok) throw new Error(data?.error || "Could not load mission");
       setResult(data);
+      setQueueState(normalizeQueue(data.queue));
+      setLastUpdatedAt(new Date());
       setActiveMissionId(data.mission.id);
       if (syncUrl) syncMissionUrl(data.mission.id);
       mergeMission({
         id: data.mission.id,
         status: data.mission.status,
         provider: data.mission.provider,
-        startedAt: data.mission.startedAt,
+        startedAt: data.mission.startedAt ?? new Date().toISOString(),
         finishedAt: data.mission.finishedAt,
         query: data.mission.query || "",
         lane: data.mission.lane,
         warnings: data.mission.warnings ?? [],
+        log: data.mission.log ?? [],
         sourceScanCount: data.mission.sourceScanCount,
         _count: { candidates: data.mission.candidates?.length ?? 0 },
       });
@@ -243,10 +303,12 @@ export function LaneMissionControl({
     if (!quiet) setRefreshing(true);
     try {
       const res = await fetch("/api/discovery/runs", { cache: "no-store" });
-      const data = await res.json();
+      const data = (await res.json()) as MissionListResponse;
       if (!res.ok) throw new Error(data?.error || "Could not load mission history");
       const loaded = (data.missions ?? []) as MissionSummary[];
       setMissions(loaded);
+      setQueueState(normalizeQueue(data.queue));
+      setLastUpdatedAt(new Date());
       if (openLatest && loaded[0]) {
         void loadMission(loaded[0].id, true, false);
       }
@@ -288,14 +350,14 @@ export function LaneMissionControl({
   }, [activeMissionId, loadMission, loadMissions, missionRunning]);
 
   React.useEffect(() => {
-    if (!missions.some((mission) => mission.status === "QUEUED" || mission.status === "RUNNING")) {
+    if (!liveQueue) {
       return undefined;
     }
     const timer = window.setInterval(() => {
       void loadMissions(false, true);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [loadMissions, missions]);
+  }, [liveQueue, loadMissions]);
 
   async function runMission(e: React.FormEvent) {
     e.preventDefault();
@@ -319,20 +381,23 @@ export function LaneMissionControl({
           maxResults: Number(maxResults) || 16,
         }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as MissionDetailResponse;
       if (!res.ok) throw new Error(data?.error || "Discovery failed");
       setResult(data);
+      setQueueState(normalizeQueue(data.queue));
+      setLastUpdatedAt(new Date());
       setActiveMissionId(data.mission.id);
       syncMissionUrl(data.mission.id);
       mergeMission({
         id: data.mission.id,
         status: data.mission.status,
         provider: data.mission.provider,
-        startedAt: data.mission.startedAt,
+        startedAt: data.mission.startedAt ?? new Date().toISOString(),
         finishedAt: data.mission.finishedAt,
         query: data.mission.query || "",
         lane: data.mission.lane,
         warnings: data.mission.warnings ?? [],
+        log: data.mission.log ?? [],
         sourceScanCount: data.mission.sourceScanCount,
         _count: { candidates: data.mission.candidates?.length ?? 0 },
       });
@@ -532,6 +597,7 @@ export function LaneMissionControl({
                     {missionRunning ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : null}
                     {result.mission.lane?.name ?? "Discovery mission"}
                     <Badge variant={missionStatusVariant(result.mission.status)}>{result.mission.status.toLowerCase()}</Badge>
+                    {activeQueueLabel ? <Badge variant="secondary">{activeQueueLabel}</Badge> : null}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {candidates.length} {candidates.length === 1 ? "candidate" : "candidates"}
@@ -542,6 +608,9 @@ export function LaneMissionControl({
                     {" · "}
                     {missionDuration(result.mission.startedAt, result.mission.finishedAt)}
                   </p>
+                  {latestLogMessage ? (
+                    <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{latestLogMessage}</p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <Button
@@ -564,7 +633,7 @@ export function LaneMissionControl({
             {candidates.length === 0 ? (
               <Card>
                 <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  {missionRunning ? "Mission running in background." : "No candidates found for this mission."}
+                  {missionRunning ? "Mission running in background. It stays available in mission history." : "No candidates found for this mission."}
                 </CardContent>
               </Card>
             ) : (
@@ -584,6 +653,14 @@ export function LaneMissionControl({
                 <History className="h-4 w-4 text-primary" />
                 Mission history
               </span>
+              {liveQueue ? (
+                <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Live queue
+                </span>
+              ) : lastUpdatedAt ? (
+                <span className="text-xs font-normal text-muted-foreground">{missionTime(lastUpdatedAt)}</span>
+              ) : null}
               <Button
                 type="button"
                 variant="ghost"
@@ -598,8 +675,12 @@ export function LaneMissionControl({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {missions.length ? (
-              missions.map((mission) => (
+            {orderedMissions.length ? (
+              orderedMissions.map((mission) => {
+                const queueLabel = missionQueueLabel(mission.id, queueState);
+                const latestMissionLog = mission.log?.at(-1);
+                const latestMissionLogMessage = latestMissionLog ? missionLogParts(latestMissionLog).message : null;
+                return (
                 <button
                   key={mission.id}
                   type="button"
@@ -611,9 +692,15 @@ export function LaneMissionControl({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-medium">{mission.lane?.name ?? "Discovery mission"}</span>
-                    <Badge variant={missionStatusVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
+                    <span className="flex shrink-0 items-center gap-1">
+                      {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
+                      <Badge variant={missionStatusVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
+                    </span>
                   </div>
                   <p className="mt-1 truncate text-xs text-muted-foreground">{queryPreview(mission.query)}</p>
+                  {latestMissionLogMessage ? (
+                    <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{latestMissionLogMessage}</p>
+                  ) : null}
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
                       <Clock3 className="h-3 w-3" />
@@ -623,7 +710,8 @@ export function LaneMissionControl({
                     <span>{missionCandidateCount(mission)} candidates</span>
                   </div>
                 </button>
-              ))
+                );
+              })
             ) : (
               <p className="py-3 text-sm text-muted-foreground">No missions yet.</p>
             )}

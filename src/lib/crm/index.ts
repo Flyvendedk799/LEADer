@@ -465,6 +465,13 @@ export async function executeDiscoveryMission(
   missionId: string,
   input: DiscoveryMissionInput,
 ) {
+  const appendLog = async (message: string) => {
+    await db.discoveryMission.update({
+      where: { id: missionId },
+      data: { log: { push: missionLogEntry(message) } },
+    }).catch(() => {});
+  };
+
   try {
     await db.discoveryMission.update({
       where: { id: missionId },
@@ -477,6 +484,11 @@ export async function executeDiscoveryMission(
         log: { push: missionLogEntry("Worker started mission and is preparing probes.") },
       },
     });
+    await appendLog(
+      input.useAiPlanner
+        ? "Planning search probes with AI; wide missions can take a few minutes."
+        : "Compiling lane search probes without AI planning.",
+    );
     const prepared = await prepareDiscoveryMission(ownerId, input);
     await db.discoveryMission.update({
       where: { id: missionId },
@@ -508,6 +520,7 @@ export async function executeDiscoveryMission(
       includeSources: input.includeSources,
       provider: input.provider,
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
+      onProgress: appendLog,
     });
     const searchMs = Date.now() - phaseStartedAt;
     await db.discoveryMission.update({

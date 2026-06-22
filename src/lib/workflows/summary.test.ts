@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeSourceRuns } from "./summary";
+import { sourceRunSummaryText, summarizeSourceRuns } from "./summary";
 
 describe("summarizeSourceRuns", () => {
   it("summarizes successful, failed, and skipped source runs", () => {
@@ -33,5 +33,33 @@ describe("summarizeSourceRuns", () => {
       updated: 0,
       errors: [],
     });
+  });
+
+  it("formats source run summaries for operator feedback", () => {
+    expect(
+      sourceRunSummaryText({
+        ran: 3,
+        succeeded: 1,
+        failed: 1,
+        skipped: 1,
+        found: 4,
+        created: 2,
+        updated: 1,
+        errors: ["timeout"],
+      }),
+    ).toBe("3 ran, 2 new, 1 updated, 1 failed, 1 skipped");
+
+    expect(
+      sourceRunSummaryText({
+        ran: 0,
+        succeeded: 0,
+        failed: 0,
+        skipped: 0,
+        found: 0,
+        created: 0,
+        updated: 0,
+        errors: [],
+      }),
+    ).toBe("No due sources.");
   });
 });

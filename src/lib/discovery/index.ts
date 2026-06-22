@@ -38,6 +38,7 @@ export interface DiscoverySearchInput {
   provider?: "auto" | "tavily" | "brave" | "serper" | "none";
   resultKind?: "all" | "opportunities" | "sources";
   useAiPlanner?: boolean;
+  onProgress?: (message: string) => Promise<void> | void;
 }
 
 export interface DiscoveryCandidateDto {
@@ -1686,6 +1687,9 @@ export async function runDiscoverySearch(
   ownerId: string,
   input: DiscoverySearchInput,
 ): Promise<DiscoverySearchResult> {
+  const progress = async (message: string) => {
+    await input.onProgress?.(message);
+  };
   const user = await db.user.findUnique({
     where: { id: ownerId },
     select: {
@@ -1724,6 +1728,7 @@ export async function runDiscoverySearch(
     input.requiredTerms,
     input.excludedTerms,
   );
+  await progress(`Built ${queries.length} search probes for ${workspace} discovery.`);
   const effectiveSearchPlan = {
     ...searchPlan,
     queries,
@@ -1736,6 +1741,7 @@ export async function runDiscoverySearch(
   if (input.includeWeb !== false && providerState.configured && providerState.provider !== "none") {
     try {
       const webStartedAt = Date.now();
+      await progress(`Starting web search with ${queries.length} probes via ${providerState.provider}.`);
       const webResults = await runProviderSearch(
         providerState.provider,
         providerState.apiKey,
@@ -1746,26 +1752,32 @@ export async function runDiscoverySearch(
       const webCandidates = await searchResultsToCandidates(webResults, user, workspace, collectionLimit, feedbackModel);
       candidates.push(...webCandidates);
       const webMs = Date.now() - webStartedAt;
+      await progress(`Web search returned ${webCandidates.length} candidates in ${Math.round(webMs / 1000)}s.`);
       if (webMs > 30_000) {
         warnings.push(`Web discovery phase took ${Math.round(webMs / 1000)}s.`);
       }
     } catch (e) {
-      warnings.push(e instanceof Error ? e.message : "Web search failed");
+      const message = e instanceof Error ? e.message : "Web search failed";
+      warnings.push(message);
+      await progress(`Web search warning: ${message}`);
     }
   } else if (input.includeWeb !== false) {
     warnings.push(
       "No web search API key configured. Add Tavily, Brave Search, or Serper in Settings -> AI to enable broad web discovery.",
     );
+    await progress("Web search skipped because no configured search provider was available.");
   }
 
   if (input.includeSources !== false) {
     const sourceStartedAt = Date.now();
     const sourceQuery = [input.query, ...searchPlan.focusTerms.slice(0, 8), ...(input.requiredTerms ?? [])].join(" ");
+    await progress("Scanning saved sources for matching opportunities.");
     const scanned = await scanSources(ownerId, sourceQuery, user, workspace, collectionLimit, feedbackModel);
     sourceScanCount = scanned.scanned;
     candidates.push(...scanned.candidates);
     warnings.push(...scanned.warnings.slice(0, 4));
     const sourceMs = Date.now() - sourceStartedAt;
+    await progress(`Scanned ${scanned.scanned} saved sources in ${Math.round(sourceMs / 1000)}s.`);
     if (sourceMs > 30_000) {
       warnings.push(`Source scan phase took ${Math.round(sourceMs / 1000)}s across ${scanned.scanned} sources.`);
     }
@@ -1818,6 +1830,7 @@ export async function runDiscoverySearch(
   if (feedbackHiddenCount > 0) {
     warnings.push(`${feedbackHiddenCount} candidates were hidden by your discovery feedback.`);
   }
+  await progress(`Ranked ${unique.length} candidates after filters and dedupe.`);
   return {
     candidates: unique,
     queries,

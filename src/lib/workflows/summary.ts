@@ -42,3 +42,10 @@ export function summarizeSourceRuns(results: SummarizableRun[]): SourceRunSummar
     },
   );
 }
+
+export function sourceRunSummaryText(summary: SourceRunSummary) {
+  if (summary.ran === 0) return "No due sources.";
+  const failed = summary.failed ? `, ${summary.failed} failed` : "";
+  const skipped = summary.skipped ? `, ${summary.skipped} skipped` : "";
+  return `${summary.ran} ran, ${summary.created} new, ${summary.updated} updated${failed}${skipped}`;
+}

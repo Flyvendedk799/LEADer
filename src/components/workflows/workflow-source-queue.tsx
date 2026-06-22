@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { SOURCE_TYPE_META } from "@/lib/display";
 import { formatDate, relativeDeadline } from "@/lib/utils";
+import { sourceRunSummaryText, summarizeSourceRuns } from "@/lib/workflows/summary";
 import type { MonitorFrequency, SourceType, Workspace } from "@/lib/types";
 
 export type WorkflowSourceItem = {
@@ -24,7 +25,8 @@ export type WorkflowSourceItem = {
 };
 
 type RunResult = {
-  status: string;
+  sourceId: string;
+  status: "SUCCESS" | "ERROR" | "SKIPPED";
   found: number;
   created: number;
   updated: number;
@@ -36,6 +38,7 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
   const [items, setItems] = React.useState(sources);
   const [runningId, setRunningId] = React.useState<string | null>(null);
   const [disablingId, setDisablingId] = React.useState<string | null>(null);
+  const [runningDue, setRunningDue] = React.useState(false);
   const [results, setResults] = React.useState<Record<string, RunResult>>({});
 
   React.useEffect(() => {
@@ -70,11 +73,48 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
     } catch (err) {
       setResults((current) => ({
         ...current,
-        [source.id]: { status: "ERROR", found: 0, created: 0, updated: 0, error: err instanceof Error ? err.message : "Run failed" },
+        [source.id]: {
+          sourceId: source.id,
+          status: "ERROR",
+          found: 0,
+          created: 0,
+          updated: 0,
+          error: err instanceof Error ? err.message : "Run failed",
+        },
       }));
       toast.error("Source run failed", err instanceof Error ? err.message : "Try again");
     } finally {
       setRunningId(null);
+    }
+  }
+
+  async function runDueSources() {
+    setRunningDue(true);
+    try {
+      const res = await fetch("/api/cron/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = (await res.json().catch(() => null)) as { results?: RunResult[]; error?: string } | null;
+      const batch = Array.isArray(data?.results) ? data.results : [];
+      if (!res.ok) throw new Error(data?.error || "Due source run failed");
+      setResults((current) => {
+        const next = { ...current };
+        for (const result of batch) next[result.sourceId] = result;
+        return next;
+      });
+      const summary = summarizeSourceRuns(batch);
+      if (summary.failed) {
+        toast.error("Due source run completed with errors", sourceRunSummaryText(summary));
+      } else {
+        toast.success("Due sources checked", sourceRunSummaryText(summary));
+      }
+      router.refresh();
+    } catch (err) {
+      toast.error("Due source run failed", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setRunningDue(false);
     }
   }
 
@@ -106,6 +146,18 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
 
   return (
     <div className="space-y-2">
+      <div className="flex items-center justify-end">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={runningDue || Boolean(runningId) || Boolean(disablingId)}
+          onClick={runDueSources}
+        >
+          {runningDue ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+          Run due
+        </Button>
+      </div>
       {items.map((source) => {
         const meta = SOURCE_TYPE_META[source.type];
         const running = runningId === source.id;
@@ -147,7 +199,7 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={!meta.automatable || running || disabling}
+                disabled={!meta.automatable || running || disabling || runningDue}
                 onClick={() => runSource(source)}
                 title={meta.automatable ? "Run source now" : "Manual-only sources cannot be run automatically"}
               >
@@ -158,7 +210,7 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
                 type="button"
                 size="sm"
                 variant="ghost"
-                disabled={running || disabling}
+                disabled={running || disabling || runningDue}
                 onClick={() => disableSource(source)}
               >
                 {disabling ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
