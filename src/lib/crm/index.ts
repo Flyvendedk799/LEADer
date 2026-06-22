@@ -83,6 +83,17 @@ function clean(value?: string | null, fallback = "Unknown account") {
   return value?.replace(/\s+/g, " ").trim() || fallback;
 }
 
+function missionLogEntry(message: string) {
+  return `${new Date().toISOString()} ${message}`;
+}
+
+function missionSurfaces(input: Pick<DiscoveryMissionInput, "includeWeb" | "includeSources">) {
+  return [
+    input.includeWeb ? "web" : "",
+    input.includeSources ? "sources" : "",
+  ].filter(Boolean).join(" + ") || "none";
+}
+
 function host(url?: string | null) {
   if (!url) return undefined;
   try {
@@ -437,6 +448,12 @@ export async function createDiscoveryMission(
       workspace,
       provider: input.provider,
       status,
+      log: [
+        missionLogEntry(
+          `Queued ${input.searchMode ?? "balanced"} mission for ${missionSurfaces(input)} using ${input.provider}.`,
+        ),
+        ...(input.useAiPlanner ? [missionLogEntry("AI query planner requested.")] : []),
+      ],
     },
     include: DISCOVERY_MISSION_INCLUDE,
   });
@@ -448,6 +465,17 @@ export async function executeDiscoveryMission(
   input: DiscoveryMissionInput,
 ) {
   try {
+    await db.discoveryMission.update({
+      where: { id: missionId },
+      data: {
+        status: "RUNNING",
+        finishedAt: null,
+        warnings: [],
+        sourceScanCount: 0,
+        provider: input.provider,
+        log: { push: missionLogEntry("Worker started mission and is preparing probes.") },
+      },
+    });
     const prepared = await prepareDiscoveryMission(ownerId, input);
     await db.discoveryMission.update({
       where: { id: missionId },
@@ -459,6 +487,11 @@ export async function executeDiscoveryMission(
         query: prepared.queries.join("\n"),
         workspace: prepared.workspace,
         provider: input.provider,
+        log: {
+          push: missionLogEntry(
+            `Prepared ${prepared.queries.length} probes${prepared.plan ? " with AI planner" : ""}.`,
+          ),
+        },
       },
     });
 
@@ -476,6 +509,16 @@ export async function executeDiscoveryMission(
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
     });
     const searchMs = Date.now() - phaseStartedAt;
+    await db.discoveryMission.update({
+      where: { id: missionId },
+      data: {
+        log: {
+          push: missionLogEntry(
+            `Search returned ${result.candidates.length} candidates from ${result.provider}; scanned ${result.sourceScanCount} sources in ${Math.round(searchMs / 1000)}s.`,
+          ),
+        },
+      },
+    });
     const warnings = [...result.warnings];
     if (searchMs > 90_000) {
       warnings.push(`Discovery network phase took ${Math.round(searchMs / 1000)}s.`);
@@ -494,6 +537,7 @@ export async function executeDiscoveryMission(
         warnings,
         sourceScanCount: result.sourceScanCount,
         provider: result.provider,
+        log: { push: missionLogEntry(`Saved ${candidates.length} candidates; mission complete.`) },
       },
       include: DISCOVERY_MISSION_INCLUDE,
     });
@@ -508,7 +552,12 @@ export async function executeDiscoveryMission(
   } catch (error) {
     await db.discoveryMission.update({
       where: { id: missionId },
-      data: { status: "ERROR", finishedAt: new Date(), warnings: [error instanceof Error ? error.message : "Discovery failed"] },
+      data: {
+        status: "ERROR",
+        finishedAt: new Date(),
+        warnings: [error instanceof Error ? error.message : "Discovery failed"],
+        log: { push: missionLogEntry(`Mission failed: ${error instanceof Error ? error.message : "Discovery failed"}`) },
+      },
     }).catch(() => {});
     throw error;
   }

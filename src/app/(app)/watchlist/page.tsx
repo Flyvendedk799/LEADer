@@ -3,7 +3,7 @@ import { Search, Star } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { OPPORTUNITY_INCLUDE } from "@/lib/opportunities";
-import type { OpportunityFilter } from "@/lib/types";
+import { describeSavedSearchFilters, savedSearchFiltersToHref } from "@/lib/saved-searches";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -17,60 +17,6 @@ import { Button } from "@/components/ui/button";
 import { OpportunityTable } from "@/components/opportunities/opportunity-table";
 
 export const dynamic = "force-dynamic";
-
-// Serialise a stored OpportunityFilter blob into an /opportunities querystring
-// that parseFilters() will read back identically.
-function filtersToQuery(raw: unknown): string {
-  const f = (raw ?? {}) as OpportunityFilter;
-  const params = new URLSearchParams();
-  const setStr = (k: string, v?: string) => {
-    if (v) params.set(k, v);
-  };
-  const setNum = (k: string, v?: number) => {
-    if (v != null) params.set(k, String(v));
-  };
-  const setArr = (k: string, v?: string[]) => {
-    if (v?.length) params.set(k, v.join(","));
-  };
-
-  setStr("q", f.q);
-  setStr("workspace", f.workspace);
-  setArr("status", f.status);
-  setArr("source", f.source);
-  setArr("category", f.category);
-  setArr("tags", f.tags);
-  setStr("country", f.country);
-  setStr("region", f.region);
-  setNum("budgetMin", f.budgetMin);
-  setNum("budgetMax", f.budgetMax);
-  if (f.hasBudget != null) params.set("hasBudget", String(f.hasBudget));
-  setStr("deadlineFrom", f.deadlineFrom);
-  setStr("deadlineTo", f.deadlineTo);
-  if (f.activeOnly != null) params.set("activeOnly", String(f.activeOnly));
-  setNum("scoreMin", f.scoreMin);
-  setNum("scoreMax", f.scoreMax);
-  setArr("applicationRoute", f.applicationRoute);
-  setArr("ingestMethod", f.ingestMethod);
-  setStr("sort", f.sort);
-  setStr("order", f.order);
-
-  const qs = params.toString();
-  return qs ? `/opportunities?${qs}` : "/opportunities";
-}
-
-// Short human summary of the filters a saved search captures.
-function describeFilters(raw: unknown): string {
-  const f = (raw ?? {}) as OpportunityFilter;
-  const parts: string[] = [];
-  if (f.q) parts.push(`“${f.q}”`);
-  if (f.workspace) parts.push(f.workspace);
-  if (f.status?.length) parts.push(f.status.join(", "));
-  if (f.category?.length) parts.push(f.category.join(", "));
-  if (f.scoreMin != null) parts.push(`score ≥ ${f.scoreMin}`);
-  if (f.hasBudget === true) parts.push("has budget");
-  if (f.activeOnly) parts.push("active only");
-  return parts.length ? parts.join(" · ") : "All opportunities";
-}
 
 export default async function WatchlistPage() {
   const ownerId = await requireOwnerId();
@@ -139,12 +85,12 @@ export default async function WatchlistPage() {
                   {savedSearches.map((s) => (
                     <li key={s.id}>
                       <Link
-                        href={filtersToQuery(s.filters)}
+                        href={savedSearchFiltersToHref(s.filters)}
                         className="block rounded-lg border border-border bg-surface/50 px-3 py-2 transition-colors hover:border-primary/40 hover:bg-surface-2"
                       >
                         <span className="block text-sm font-medium">{s.name}</span>
                         <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                          {describeFilters(s.filters)}
+                          {describeSavedSearchFilters(s.filters)}
                         </span>
                       </Link>
                     </li>

@@ -646,6 +646,7 @@ model DiscoveryMission {
   provider        String?
   status          String        @default("RUNNING")
   warnings        String[]      @default([])
+  log             String[]      @default([])
   sourceScanCount Int           @default(0)
   startedAt       DateTime      @default(now())
   finishedAt      DateTime?

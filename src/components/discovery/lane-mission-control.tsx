@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
+  Activity,
   CheckCircle2,
   Clock3,
   Link2,
@@ -75,6 +76,7 @@ type MissionResult = {
     lane?: { id: string; name: string } | null;
     sourceScanCount?: number;
     warnings: string[];
+    log: string[];
     candidates: Candidate[];
   };
   providerConfigured?: boolean;
@@ -103,6 +105,7 @@ type MissionSummary = {
   query: string;
   lane?: { id: string; name: string } | null;
   warnings: string[];
+  log?: string[];
   sourceScanCount?: number;
   _count?: { candidates: number };
 };
@@ -144,6 +147,15 @@ function missionDuration(start?: string | Date, end?: string | Date | null) {
   const seconds = Math.max(0, Math.round((endMs - startMs) / 1000));
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+function missionLogParts(entry: string) {
+  const [stamp, ...rest] = entry.split(" ");
+  const date = new Date(stamp);
+  return {
+    time: Number.isNaN(date.getTime()) ? "" : missionTime(date),
+    message: rest.join(" ") || entry,
+  };
 }
 
 function queryPreview(value?: string) {
@@ -712,6 +724,30 @@ export function LaneMissionControl({
               <ul className="space-y-2 text-sm text-warning">
                 {result.mission.warnings.map((warning) => <li key={warning}>{warning}</li>)}
               </ul>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {result?.mission.log?.length ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Activity className="h-4 w-4 text-primary" />
+                Activity log
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ol className="space-y-2 text-xs text-muted-foreground">
+                {result.mission.log.slice(-12).map((entry, index) => {
+                  const item = missionLogParts(entry);
+                  return (
+                    <li key={`${entry}-${index}`} className="rounded-md bg-surface/70 p-2 leading-5">
+                      {item.time ? <span className="mr-2 font-medium text-foreground">{item.time}</span> : null}
+                      <span>{item.message}</span>
+                    </li>
+                  );
+                })}
+              </ol>
             </CardContent>
           </Card>
         ) : null}

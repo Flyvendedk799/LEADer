@@ -21,13 +21,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkflowActionQueue } from "@/components/workflows/workflow-action-queue";
 import { WorkflowCandidateQueue } from "@/components/workflows/workflow-candidate-queue";
 import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
+import { WorkflowSavedSearchQueue } from "@/components/workflows/workflow-saved-search-queue";
 import { WorkflowSourceQueue } from "@/components/workflows/workflow-source-queue";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
-import { cn, formatBudget, formatDate, relativeDeadline, truncate } from "@/lib/utils";
+import { describeSavedSearchFilters, savedSearchFiltersToHref } from "@/lib/saved-searches";
+import { cn, formatBudget, truncate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -50,11 +52,6 @@ function duration(start?: Date | null, end?: Date | null) {
 
 function firstQuery(value = "") {
   return value.split("\n").map((item) => item.trim()).filter(Boolean)[0] || "Discovery mission";
-}
-
-function freshness(date?: Date | null) {
-  if (!date) return "Never";
-  return relativeDeadline(date);
 }
 
 export default async function WorkflowsPage() {
@@ -179,6 +176,13 @@ export default async function WorkflowsPage() {
     frequency: source.frequency,
     enabled: source.enabled,
     lastCheckedAt: source.lastCheckedAt?.toISOString() ?? null,
+  }));
+  const savedSearchItems = savedSearches.map((search) => ({
+    id: search.id,
+    name: search.name,
+    href: savedSearchFiltersToHref(search.filters),
+    summary: describeSavedSearchFilters(search.filters),
+    createdAt: search.createdAt.toISOString(),
   }));
 
   return (
@@ -315,14 +319,8 @@ export default async function WorkflowsPage() {
                 Saved searches
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {savedSearches.map((search) => (
-                <Link key={search.id} href="/opportunities" className="block rounded-md border border-border bg-surface/40 p-3 hover:border-primary/50">
-                  <p className="truncate text-sm font-medium">{search.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Created {formatDate(search.createdAt)}</p>
-                </Link>
-              ))}
-              {savedSearches.length === 0 ? <EmptyLine>No saved searches.</EmptyLine> : null}
+            <CardContent>
+              <WorkflowSavedSearchQueue searches={savedSearchItems} />
             </CardContent>
           </Card>
 
