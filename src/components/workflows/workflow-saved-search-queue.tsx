@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Loader2, PlayCircle, Trash2 } from "lucide-react";
+import { ExternalLink, Loader2, PlayCircle, SearchCheck, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -20,15 +20,26 @@ export type WorkflowSavedSearchItem = {
   discoveryPayload: SavedSearchDiscoveryPayload | null;
 };
 
+type QueuedSearchResult = {
+  searchId: string;
+  missionId: string;
+};
+
 export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSavedSearchItem[] }) {
   const router = useRouter();
   const [items, setItems] = React.useState(searches);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [runningId, setRunningId] = React.useState<string | null>(null);
+  const [runningAll, setRunningAll] = React.useState(false);
+  const [queuedResults, setQueuedResults] = React.useState<QueuedSearchResult[]>([]);
+  const [failedCount, setFailedCount] = React.useState(0);
 
   React.useEffect(() => {
     setItems(searches);
   }, [searches]);
+
+  const queueableItems = React.useMemo(() => items.filter((search) => search.discoveryPayload), [items]);
+  const latestQueuedResult = queuedResults.at(-1) ?? null;
 
   async function deleteSearch(search: WorkflowSavedSearchItem) {
     const previous = items;
@@ -53,24 +64,64 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
     }
   }
 
-  async function runSearch(search: WorkflowSavedSearchItem) {
+  async function queueSearch(search: WorkflowSavedSearchItem) {
     if (!search.discoveryPayload) return;
+    const res = await fetch("/api/discovery/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(search.discoveryPayload),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.mission?.id) throw new Error(data?.error || "Could not queue discovery");
+    return String(data.mission.id);
+  }
+
+  async function runSearch(search: WorkflowSavedSearchItem) {
     setRunningId(search.id);
+    setQueuedResults([]);
+    setFailedCount(0);
     try {
-      const res = await fetch("/api/discovery/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(search.discoveryPayload),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.mission?.id) throw new Error(data?.error || "Could not queue discovery");
+      const missionId = await queueSearch(search);
+      if (!missionId) return;
       toast.success("Discovery mission queued", search.name);
-      router.push(discoveryMissionHref(data.mission.id));
+      router.push(discoveryMissionHref(missionId));
       router.refresh();
     } catch (err) {
       toast.error("Could not queue discovery", err instanceof Error ? err.message : "Try again");
     } finally {
       setRunningId(null);
+    }
+  }
+
+  async function runAllSearches() {
+    setRunningAll(true);
+    setQueuedResults([]);
+    setFailedCount(0);
+    const queued: QueuedSearchResult[] = [];
+    let failed = 0;
+
+    try {
+      for (const search of queueableItems) {
+        try {
+          const missionId = await queueSearch(search);
+          if (missionId) queued.push({ searchId: search.id, missionId });
+        } catch {
+          failed += 1;
+        }
+      }
+
+      setQueuedResults(queued);
+      setFailedCount(failed);
+      if (queued.length && failed) {
+        toast.error("Some saved searches failed", `${queued.length} queued - ${failed} failed`);
+      } else if (queued.length) {
+        toast.success("Saved searches queued", `${queued.length} discovery missions queued`);
+      } else {
+        toast.error("No saved searches queued", failed ? `${failed} failed` : "No queueable saved searches");
+      }
+      router.refresh();
+    } finally {
+      setRunningAll(false);
     }
   }
 
@@ -80,10 +131,35 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
 
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {queuedResults.length || failedCount ? (
+          <p className={failedCount ? "mr-auto text-xs text-warning" : "mr-auto text-xs text-success"}>
+            {queuedResults.length} queued{failedCount ? ` - ${failedCount} failed` : ""}
+            {latestQueuedResult ? (
+              <>
+                {" - "}
+                <Link href={discoveryMissionHref(latestQueuedResult.missionId)} className="underline-offset-4 hover:underline">
+                  Open latest
+                </Link>
+              </>
+            ) : null}
+          </p>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={runningAll || Boolean(runningId) || Boolean(deletingId) || queueableItems.length === 0}
+          onClick={runAllSearches}
+        >
+          {runningAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <SearchCheck className="h-4 w-4" />}
+          Queue all
+        </Button>
+      </div>
       {items.map((search) => {
         const deleting = deletingId === search.id;
         const running = runningId === search.id;
-        const busy = deleting || running;
+        const busy = deleting || running || runningAll;
         return (
           <div
             key={search.id}
