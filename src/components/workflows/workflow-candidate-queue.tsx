@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, CopyX, ExternalLink, Loader2, MoreHorizontal, XCircle } from "lucide-react";
+import { CheckCheck, CheckCircle2, CopyX, ExternalLink, Loader2, MoreHorizontal, XCircle } from "lucide-react";
 
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { Button } from "@/components/ui/button";
@@ -74,12 +74,64 @@ export function WorkflowCandidateQueue({ candidates }: { candidates: WorkflowCan
     }
   }
 
+  async function bulkAct(action: Extract<CandidateAction, "review" | "save">) {
+    const previous = items;
+    const ids = items.map((candidate) => candidate.id);
+    setBusyId(`bulk:${action}`);
+    setItems([]);
+
+    try {
+      const res = await fetch("/api/discovery/candidates/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, action }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Candidate update failed");
+
+      if (action === "save") {
+        const created = Number(data?.created ?? 0);
+        const existing = Number(data?.existing ?? 0);
+        toast.success("Candidates saved", `${created} new deals${existing ? ` - ${existing} existing` : ""}`);
+      } else {
+        toast.success("Candidates reviewed", `${data?.count ?? ids.length} candidates cleared`);
+      }
+      router.refresh();
+    } catch (err) {
+      setItems(previous);
+      toast.error("Candidate update failed", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (items.length === 0) {
     return <p className="py-4 text-center text-sm text-muted-foreground">No hot candidates waiting.</p>;
   }
 
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={Boolean(busyId)}
+          onClick={() => bulkAct("review")}
+        >
+          {busyId === "bulk:review" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4" />}
+          Review all
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          disabled={Boolean(busyId)}
+          onClick={() => bulkAct("save")}
+        >
+          {busyId === "bulk:save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          Save all
+        </Button>
+      </div>
       {items.map((candidate) => {
         const busy = busyId === candidate.id;
         const href = discoveryCandidateHref(candidate.missionId, candidate.id);
