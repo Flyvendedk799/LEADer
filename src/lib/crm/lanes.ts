@@ -382,6 +382,59 @@ function isJobOrRecruitingResult(text: string, host: string, path: string) {
     );
 }
 
+function isConcreteSupplierOpportunityUrl(host: string, path: string) {
+  return (
+    (host.endsWith("ehsys.dk") && /\/indkoeb\/tilbud\/indsend\//.test(path)) ||
+    /\/opportunit(?:y|ies)\/|\/rfp\/\d+|\/request-for-proposal\//.test(path)
+  );
+}
+
+function hasStartupOpportunityIntent(candidate: CandidateLike, text: string, host: string, path: string) {
+  const concreteSupplierRoute = isConcreteSupplierOpportunityUrl(host, path);
+  const intentText = candidate.rawContent
+    ? [
+        candidate.title,
+        candidate.rawContent,
+        candidate.organization,
+        candidate.sourceName,
+        candidate.category,
+        candidate.url,
+      ].filter(Boolean).join(" ").toLowerCase()
+    : text;
+  const commentaryText = `${candidate.description ?? ""} ${intentText}`.toLowerCase();
+
+  if (
+    /ikke (?:en )?konkret opgave|ikke et konkret lead|ikke en konkret leverance|ingen konkret (?:frist|opgave|leverance|budget)|not (?:a )?concrete (?:opportunity|task|assignment|lead)|no concrete (?:opportunity|task|assignment|deadline|budget)/.test(
+      commentaryText,
+    )
+  ) {
+    return false;
+  }
+
+  if (/looking for \d+ startups|søger \d+ startups|applications from startups|receive applications from startups|startup programme|startup program|championship in entrepreneurship/.test(intentText)) {
+    return false;
+  }
+
+  const hasDeadline = hasActiveDeadlineValue(candidate.deadline) || hasDatedDeadlineCue(intentText);
+  const technicalNeed =
+    /mvp|prototype|proof.?of.?concept|poc|product roadmap|technical roadmap|teknisk roadmap|software|webapp|\bapp\b|platform|automation|automatisering|\bai\b|kunstig intelligens|fullstack|developer|udvikler|udvikling|technical partner|teknisk partner/.test(
+      intentText,
+    );
+  const buyerIntent =
+    /looking for|seeking|needs?|wants?|requires?|request(?:ing)?|søger|leder efter|mangler|brug for|hjælp til|help with|skal bruge|leverandør til|supplier opportunity|partner til|tilbud|indsend tilbud|submission|deadline|frist/.test(
+      intentText,
+    );
+  const fundedOrCommercial =
+    /funded|grant|voucher|tilskud|innobooster|beyond beta|ehsys|budget|paid|betalt|purchase|procurement|supplier lead/.test(
+      intentText,
+    );
+
+  return (
+    (concreteSupplierRoute && (technicalNeed || fundedOrCommercial || hasDeadline)) ||
+    (technicalNeed && (buyerIntent || fundedOrCommercial || hasDeadline))
+  );
+}
+
 function isGenericTenderSource(text: string, host: string, path: string) {
   return /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen|info\.mercell/.test(host) ||
     /\/$|\/alle\/?$|\/sources?\/?$|\/kilder?\/?$|\/udbud\/?$|\/indkoeb\/alle\/?$|\/indkøb\/alle\/?$/.test(path) ||
@@ -413,6 +466,10 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
 
   if (lane.slug === "direct-startup-mvp" && isJobOrRecruitingResult(text, host, path)) {
     return { allowed: false, reason: "job/recruiting result" };
+  }
+
+  if (lane.slug === "direct-startup-mvp" && !hasStartupOpportunityIntent(candidate, text, host, path)) {
+    return { allowed: false, reason: "missing explicit startup opportunity" };
   }
 
   if (lane.slug !== "tenders-procurement") return { allowed: true };

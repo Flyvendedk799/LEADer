@@ -145,7 +145,7 @@ export async function PATCH(req: Request) {
         include: missionListInclude,
       });
       return NextResponse.json({
-        missions,
+        missions: missions.map(visibleMissionListRow),
         queue: await visibleDiscoveryQueueSnapshotForOwner(ownerId),
         canceled: liveMissions.length,
       });
@@ -178,7 +178,12 @@ export async function PATCH(req: Request) {
         where: { id: source.id, ownerId },
         include: missionListInclude,
       });
-      return NextResponse.json({ mission, queue: moved.queue, moved: moved.moved, reason: moved.reason });
+      return NextResponse.json({
+        mission: mission ? visibleMissionListRow(mission) : mission,
+        queue: moved.queue,
+        moved: moved.moved,
+        reason: moved.reason,
+      });
     }
 
     if (parsed.data.action === "CANCEL") {
@@ -202,7 +207,10 @@ export async function PATCH(req: Request) {
           },
         },
       });
-      return NextResponse.json({ mission, queue: await visibleDiscoveryQueueSnapshotForOwner(ownerId) });
+      return NextResponse.json({
+        mission: visibleMissionListRow(mission),
+        queue: await visibleDiscoveryQueueSnapshotForOwner(ownerId),
+      });
     }
 
     const input = discoveryRunCreateSchema.safeParse(source.input ?? {
@@ -231,7 +239,7 @@ export async function PATCH(req: Request) {
       include: missionListInclude,
     });
     return NextResponse.json(
-      { mission: queued ?? mission, queued: true, queue },
+      { mission: queued ? visibleMissionListRow(queued) : mission, queued: true, queue },
       { status: 202 },
     );
   } catch (err) {

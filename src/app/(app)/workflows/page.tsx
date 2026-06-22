@@ -36,7 +36,13 @@ import { WorkflowUsecaseLauncher } from "@/components/workflows/workflow-usecase
 import { PageHeader } from "@/components/shared/page-header";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ensureDefaultDiscoveryLanes, filterVisibleLaneCandidates } from "@/lib/crm/lanes";
+import {
+  ensureDefaultDiscoveryLanes,
+  filterLaneCandidates,
+  filterVisibleLaneCandidates,
+  type CandidateLike,
+  type LaneLike,
+} from "@/lib/crm/lanes";
 import { recoverDiscoveryQueue } from "@/lib/crm/discovery-queue";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
@@ -54,9 +60,41 @@ export const dynamic = "force-dynamic";
 
 const OPEN_DEAL_STATUSES = ["DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION"] as const;
 const AUTOMATABLE_SOURCE_TYPES = new Set(["RSS", "NEWSLETTER", "PUBLIC_WEB", "PROCUREMENT", "ACCELERATOR", "API"]);
+const missionCandidateGateSelect = {
+  title: true,
+  description: true,
+  rawContent: true,
+  url: true,
+  organization: true,
+  sourceName: true,
+  sourceKind: true,
+  category: true,
+  budgetMin: true,
+  budgetMax: true,
+  deadline: true,
+  applicationRoute: true,
+} satisfies Partial<Record<keyof CandidateLike, true>>;
 
 function firstQuery(value = "") {
   return value.split("\n").map((item) => item.trim()).filter(Boolean)[0] || "Discovery mission";
+}
+
+function visibleMissionCandidateMeta(mission: {
+  lane: LaneLike | null;
+  candidates: CandidateLike[];
+  warnings: string[];
+  _count: { candidates: number };
+}) {
+  if (!mission.lane) {
+    return { candidateCount: mission._count.candidates, warnings: mission.warnings };
+  }
+  const visible = filterLaneCandidates(mission.lane, mission.candidates);
+  return {
+    candidateCount: visible.candidates.length,
+    warnings: visible.removed > 0
+      ? [...mission.warnings, `${visible.removed} stale or off-lane candidates hidden from this mission.`]
+      : mission.warnings,
+  };
 }
 
 function alertPayload(raw: unknown) {
@@ -115,7 +153,11 @@ export default async function WorkflowsPage() {
     }),
     db.discoveryMission.findMany({
       where: { ownerId },
-      include: { lane: true, _count: { select: { candidates: true } } },
+      include: {
+        lane: true,
+        candidates: { select: missionCandidateGateSelect },
+        _count: { select: { candidates: true } },
+      },
       orderBy: { startedAt: "desc" },
       take: 8,
     }),
@@ -392,18 +434,21 @@ export default async function WorkflowsPage() {
       presetName: run.preset?.name ?? null,
     };
   });
-  const discoveryMissionItems: WorkflowDiscoveryMissionItem[] = missions.map((mission) => ({
-    id: mission.id,
-    status: mission.status,
-    provider: mission.provider,
-    startedAt: mission.startedAt.toISOString(),
-    finishedAt: mission.finishedAt?.toISOString() ?? null,
-    query: mission.query,
-    laneName: mission.lane.name,
-    warnings: mission.warnings,
-    log: mission.log,
-    candidateCount: mission._count.candidates,
-  }));
+  const discoveryMissionItems: WorkflowDiscoveryMissionItem[] = missions.map((mission) => {
+    const visible = visibleMissionCandidateMeta(mission);
+    return {
+      id: mission.id,
+      status: mission.status,
+      provider: mission.provider,
+      startedAt: mission.startedAt.toISOString(),
+      finishedAt: mission.finishedAt?.toISOString() ?? null,
+      query: mission.query,
+      laneName: mission.lane.name,
+      warnings: visible.warnings,
+      log: mission.log,
+      candidateCount: visible.candidateCount,
+    };
+  });
   const workflowPresetItems: WorkflowPresetPanelItem[] = await Promise.all(
     workflowPresets.map(async (preset) => {
       const input = presetToWorkflowInput(preset);

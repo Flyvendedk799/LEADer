@@ -203,6 +203,24 @@ describe("CRM discovery lanes", () => {
 
     expect(
       laneCandidateGate(lane, {
+        title: "Founder needs MVP prototype and fullstack technical partner",
+        description: "Pre-seed startup wants a product roadmap and prototype sprint this month.",
+        organization: "Nordic Founder Studio",
+        url: "https://example.com/founder-mvp-build",
+      }),
+    ).toEqual({ allowed: true });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "Rådgivningsforløb om produktstrategi, teknisk roadmap og international skalering af EpiLink",
+        description: "Beyond Beta supplier opportunity with active deadline and submission route.",
+        url: "https://beyondbeta.ehsys.dk/indkoeb/tilbud/indsend/18f601fe-0dd6-4867-c004-08deb65a1f9f",
+        deadline: new Date(Date.now() + 10 * 86400000).toISOString(),
+      }),
+    ).toEqual({ allowed: true });
+
+    expect(
+      laneCandidateGate(lane, {
         title: "Tech & Startup Jobs in Denmark | The Hub, June 2026",
         description: "Full-time, part-time and cofounder startup jobs.",
         url: "https://thehub.io/jobs/location/denmark/copenhagen",
@@ -216,6 +234,24 @@ describe("CRM discovery lanes", () => {
         url: "https://www.linkedin.com/posts/denmark-startup-jobs_how-to-get-full-stack-developer-job",
       }),
     ).toEqual({ allowed: false, reason: "job/recruiting result" });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "Toke Lund på LinkedIn: It-startup henter investering på 6,5 mio. kr.",
+        description: "Investment announcement with comments and public profile activity.",
+        rawContent:
+          "Startup-virksomheden Enterspeed har landet en investering på 6,5 mio. kr. fra PreSeed Ventures. Enterspeed er stiftet af tre Novicell-konsulenter og har bygget en SaaS-løsning.",
+        url: "https://dk.linkedin.com/posts/toke-lund-007_it-startup-henter-investering-p%C3%A5-65-mio",
+      }),
+    ).toEqual({ allowed: false, reason: "missing explicit startup opportunity" });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "Jens Funder Berg på LinkedIn: Man bliver lidt høj efter en inspirerende dag",
+        description: "General conference reflection and network update.",
+        url: "https://dk.linkedin.com/posts/jensfunderberg_man-bliver-lidt-hoej",
+      }),
+    ).toEqual({ allowed: false, reason: "missing explicit startup opportunity" });
   });
 
   it("filters hot candidate queues through the same lane guard as mission detail", () => {
