@@ -4,13 +4,24 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { workflowRunInputSchema, workflowRunOptionsSchema, type WorkflowRunInput, type WorkflowRunOptions } from "./types";
 
-const workflowPresetBaseSchema = z.object({
+const workflowPresetFieldsSchema = z.object({
   name: z.string().trim().min(2).max(80),
   description: z.string().trim().max(500).optional().nullable(),
   playbook: z.enum(["daily-sweep", "pipeline-rescue", "candidate-harvest", "operating-day"]),
-  workspace: z.enum(["DK", "GLOBAL"]).default("DK"),
+  workspace: z.enum(["DK", "GLOBAL"]),
+  options: workflowRunOptionsSchema,
+  pinned: z.boolean(),
+  scheduleEnabled: z.boolean(),
+  scheduleIntervalHours: z.coerce.number().int().min(1).max(720),
+  scheduleNextRunAt: z.coerce.date().optional().nullable(),
+});
+
+const workflowPresetBaseSchema = workflowPresetFieldsSchema.extend({
+  workspace: workflowPresetFieldsSchema.shape.workspace.default("DK"),
   options: workflowRunOptionsSchema.default({}),
-  pinned: z.boolean().optional().default(false),
+  pinned: workflowPresetFieldsSchema.shape.pinned.optional().default(false),
+  scheduleEnabled: workflowPresetFieldsSchema.shape.scheduleEnabled.optional().default(false),
+  scheduleIntervalHours: workflowPresetFieldsSchema.shape.scheduleIntervalHours.optional().default(24),
 });
 
 export const workflowPresetFormSchema = workflowPresetBaseSchema.superRefine((preset, ctx) => {
@@ -28,7 +39,7 @@ export const workflowPresetFormSchema = workflowPresetBaseSchema.superRefine((pr
   }
 });
 
-export const workflowPresetUpdateSchema = workflowPresetBaseSchema.partial().superRefine((preset, ctx) => {
+export const workflowPresetUpdateSchema = workflowPresetFieldsSchema.partial().superRefine((preset, ctx) => {
   if (Object.keys(preset).length > 0) return;
   ctx.addIssue({
     code: z.ZodIssueCode.custom,
@@ -37,8 +48,17 @@ export const workflowPresetUpdateSchema = workflowPresetBaseSchema.partial().sup
 });
 
 export type WorkflowPresetFormInput = z.infer<typeof workflowPresetFormSchema>;
+type WorkflowPresetScheduleFields = {
+  scheduleEnabled?: boolean;
+  scheduleIntervalHours?: number;
+  scheduleNextRunAt?: Date | null;
+};
+type WorkflowPresetDataInput = Omit<
+  WorkflowPresetFormInput,
+  "scheduleEnabled" | "scheduleIntervalHours" | "scheduleNextRunAt"
+> & WorkflowPresetScheduleFields;
 
-type DefaultWorkflowPreset = WorkflowPresetFormInput & {
+type DefaultWorkflowPreset = WorkflowPresetDataInput & {
   description: string;
   pinned: boolean;
 };
@@ -121,7 +141,7 @@ export function presetToWorkflowInput(preset: Pick<WorkflowPreset, "playbook" | 
   });
 }
 
-export function workflowPresetData(input: WorkflowPresetFormInput) {
+export function workflowPresetData(input: WorkflowPresetDataInput) {
   return {
     name: input.name.trim(),
     description: input.description?.trim() || null,
@@ -129,6 +149,9 @@ export function workflowPresetData(input: WorkflowPresetFormInput) {
     workspace: input.workspace,
     options: JSON.parse(JSON.stringify(input.options ?? {})) as Prisma.InputJsonValue,
     pinned: input.pinned ?? false,
+    scheduleEnabled: input.scheduleEnabled ?? false,
+    scheduleIntervalHours: input.scheduleIntervalHours ?? 24,
+    scheduleNextRunAt: input.scheduleEnabled ? input.scheduleNextRunAt ?? new Date() : input.scheduleNextRunAt ?? null,
   };
 }
 
@@ -162,4 +185,28 @@ export function workflowPresetOptionSummary(options?: WorkflowRunOptions) {
   if (options?.dailySweep?.includeSources === false) parts.push("sources off");
   if (options?.dailySweep?.includeAlerts === false) parts.push("alerts off");
   return parts.join(" · ");
+}
+
+export function nextWorkflowPresetRunAt(from: Date, intervalHours: number) {
+  const hours = Number.isFinite(intervalHours) ? Math.max(1, Math.min(720, Math.round(intervalHours))) : 24;
+  return new Date(from.getTime() + hours * 60 * 60 * 1000);
+}
+
+export function isWorkflowPresetDue(
+  preset: Pick<WorkflowPreset, "scheduleEnabled" | "scheduleNextRunAt">,
+  now = new Date(),
+) {
+  return preset.scheduleEnabled && (!preset.scheduleNextRunAt || preset.scheduleNextRunAt.getTime() <= now.getTime());
+}
+
+export function workflowPresetScheduleSummary(
+  preset: Pick<WorkflowPreset, "scheduleEnabled" | "scheduleIntervalHours" | "scheduleNextRunAt">,
+) {
+  if (!preset.scheduleEnabled) return "Manual";
+  const cadence = preset.scheduleIntervalHours === 24
+    ? "Daily"
+    : preset.scheduleIntervalHours % 24 === 0
+      ? `Every ${preset.scheduleIntervalHours / 24}d`
+      : `Every ${preset.scheduleIntervalHours}h`;
+  return preset.scheduleNextRunAt ? `${cadence} · next ${preset.scheduleNextRunAt.toISOString()}` : `${cadence} · due now`;
 }

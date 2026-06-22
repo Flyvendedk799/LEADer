@@ -40,7 +40,7 @@ import { discoveryMissionHref } from "@/lib/discovery-links";
 import { isSourceDue } from "@/lib/ingestion";
 import { describeSavedSearchFilters, savedSearchFiltersToHref } from "@/lib/saved-searches";
 import { cn, formatBudget } from "@/lib/utils";
-import { ensureDefaultWorkflowPresets, presetToWorkflowInput, workflowPresetOptionSummary } from "@/lib/workflows/presets";
+import { ensureDefaultWorkflowPresets, presetToWorkflowInput, workflowPresetOptionSummary, workflowPresetScheduleSummary } from "@/lib/workflows/presets";
 import { previewWorkflowRun } from "@/lib/workflows/preview";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
@@ -313,6 +313,11 @@ export default async function WorkflowsPage() {
         options: input.options ?? {},
         optionSummary: workflowPresetOptionSummary(input.options),
         pinned: preset.pinned,
+        scheduleEnabled: preset.scheduleEnabled,
+        scheduleIntervalHours: preset.scheduleIntervalHours,
+        scheduleNextRunAt: preset.scheduleNextRunAt?.toISOString() ?? null,
+        scheduleSummary: workflowPresetScheduleSummary(preset),
+        lastScheduledAt: preset.lastScheduledAt?.toISOString() ?? null,
         lastQueuedAt: preset.lastQueuedAt?.toISOString() ?? null,
         updatedAt: preset.updatedAt.toISOString(),
         preview: await previewWorkflowRun(ownerId, input, now),

@@ -743,12 +743,17 @@ model WorkflowPreset {
   workspace    Workspace @default(DK)
   options      Json?
   pinned       Boolean   @default(false)
+  scheduleEnabled       Boolean   @default(false)
+  scheduleIntervalHours Int       @default(24)
+  scheduleNextRunAt     DateTime?
+  lastScheduledAt       DateTime?
   lastQueuedAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   @@unique([ownerId, name])
   @@index([ownerId, pinned])
+  @@index([ownerId, scheduleEnabled, scheduleNextRunAt])
   @@index([ownerId, updatedAt])
 }
 

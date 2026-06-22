@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Database, Edit3, Loader2, Plus, PlayCircle, Save, Sparkles, Target, TimerReset, Trash2 } from "lucide-react";
+import { CalendarClock, Database, Edit3, Loader2, Plus, PlayCircle, Save, Sparkles, Target, TimerReset, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,11 @@ export type WorkflowPresetPanelItem = {
   options: WorkflowRunOptions;
   optionSummary: string;
   pinned: boolean;
+  scheduleEnabled: boolean;
+  scheduleIntervalHours: number;
+  scheduleNextRunAt: string | null;
+  scheduleSummary: string;
+  lastScheduledAt: string | null;
   lastQueuedAt: string | null;
   updatedAt: string;
   preview: WorkflowRunPreview;
@@ -86,6 +91,9 @@ type FormState = {
   playbook: WorkflowPlaybook;
   workspace: Workspace;
   pinned: boolean;
+  scheduleEnabled: boolean;
+  scheduleIntervalHours: number;
+  scheduleNextRunAt: string;
   daySweep: boolean;
   dayHarvest: boolean;
   dayRescue: boolean;
@@ -112,6 +120,9 @@ const defaultForm: FormState = {
   playbook: "operating-day",
   workspace: "DK",
   pinned: false,
+  scheduleEnabled: false,
+  scheduleIntervalHours: 24,
+  scheduleNextRunAt: "",
   daySweep: true,
   dayHarvest: true,
   dayRescue: true,
@@ -131,6 +142,20 @@ function playbookLabel(playbook: WorkflowPlaybook) {
     .join(" ");
 }
 
+function toDateTimeLocal(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function defaultNextRunLocal() {
+  const date = new Date();
+  date.setHours(date.getHours() + 1, 0, 0, 0);
+  return toDateTimeLocal(date.toISOString());
+}
+
 function formFromPreset(preset?: WorkflowPresetPanelItem | null): FormState {
   if (!preset) return defaultForm;
   return {
@@ -139,6 +164,9 @@ function formFromPreset(preset?: WorkflowPresetPanelItem | null): FormState {
     playbook: preset.playbook,
     workspace: preset.workspace,
     pinned: preset.pinned,
+    scheduleEnabled: preset.scheduleEnabled,
+    scheduleIntervalHours: preset.scheduleIntervalHours,
+    scheduleNextRunAt: toDateTimeLocal(preset.scheduleNextRunAt),
     daySweep: preset.options.operatingDay?.dailySweep !== false,
     dayHarvest: preset.options.operatingDay?.candidateHarvest !== false,
     dayRescue: preset.options.operatingDay?.pipelineRescue !== false,
@@ -187,6 +215,11 @@ function payloadFromForm(form: FormState) {
     playbook: form.playbook,
     workspace: form.workspace,
     pinned: form.pinned,
+    scheduleEnabled: form.scheduleEnabled,
+    scheduleIntervalHours: form.scheduleIntervalHours,
+    scheduleNextRunAt: form.scheduleEnabled && form.scheduleNextRunAt
+      ? new Date(form.scheduleNextRunAt).toISOString()
+      : null,
     options,
   };
 }
@@ -197,6 +230,16 @@ function iconForPlaybook(playbook: WorkflowPlaybook) {
   if (playbook === "candidate-harvest") return <Target className={className} />;
   if (playbook === "pipeline-rescue") return <TimerReset className={className} />;
   return <Sparkles className={className} />;
+}
+
+function scheduleLabel(preset: WorkflowPresetPanelItem) {
+  if (!preset.scheduleEnabled) return "Manual";
+  const cadence = preset.scheduleIntervalHours === 24
+    ? "Daily"
+    : preset.scheduleIntervalHours % 24 === 0
+      ? `Every ${preset.scheduleIntervalHours / 24}d`
+      : `Every ${preset.scheduleIntervalHours}h`;
+  return preset.scheduleNextRunAt ? `${cadence} · next ${formatDate(preset.scheduleNextRunAt)}` : `${cadence} · due now`;
 }
 
 export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelItem[] }) {
@@ -213,7 +256,7 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
 
   function openCreate() {
     setEditing(null);
-    setForm({ ...defaultForm, name: "New operating mode" });
+    setForm({ ...defaultForm, name: "New operating mode", scheduleNextRunAt: defaultNextRunLocal() });
     setOpen(true);
   }
 
@@ -310,10 +353,12 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
                     <Badge variant="outline">{playbookLabel(preset.playbook)}</Badge>
                     <Badge variant="outline">{preset.workspace}</Badge>
                     {preset.pinned ? <Badge variant="secondary">pinned</Badge> : null}
+                    {preset.scheduleEnabled ? <Badge variant="secondary">scheduled</Badge> : null}
                   </div>
                   {preset.description ? <p className="text-xs text-muted-foreground">{preset.description}</p> : null}
                   <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                     {preset.optionSummary ? <span>{preset.optionSummary}</span> : null}
+                    <span>{scheduleLabel(preset)}</span>
                     <span>{preset.lastQueuedAt ? `Queued ${formatDate(preset.lastQueuedAt)}` : `Updated ${formatDate(preset.updatedAt)}`}</span>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-4">
@@ -409,6 +454,7 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
 
             <div className="grid gap-2 sm:grid-cols-4">
               <SwitchControl id="preset-pinned" label="Pinned" checked={form.pinned} onCheckedChange={(value) => update("pinned", value)} />
+              <SwitchControl id="preset-schedule" label="Schedule" checked={form.scheduleEnabled} onCheckedChange={(value) => update("scheduleEnabled", value)} />
               {form.playbook === "operating-day" ? (
                 <>
                   <SwitchControl id="preset-sweep" label="Sweep" checked={form.daySweep} onCheckedChange={(value) => update("daySweep", value)} />
@@ -417,6 +463,23 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
                 </>
               ) : null}
             </div>
+
+            {form.scheduleEnabled ? (
+              <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                <NumberField label="Every hours" value={form.scheduleIntervalHours} min={1} max={720} onChange={(value) => update("scheduleIntervalHours", value)} />
+                <Field label="Next run">
+                  <div className="relative">
+                    <CalendarClock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="datetime-local"
+                      value={form.scheduleNextRunAt}
+                      onChange={(event) => update("scheduleNextRunAt", event.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                </Field>
+              </div>
+            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {showDaily ? (

@@ -10,6 +10,7 @@ import {
   workflowPresetData,
   workflowPresetFormSchema,
   workflowPresetOptionSummary,
+  workflowPresetScheduleSummary,
 } from "@/lib/workflows/presets";
 
 function presetPayload(preset: Awaited<ReturnType<typeof db.workflowPreset.findMany>>[number]) {
@@ -18,6 +19,7 @@ function presetPayload(preset: Awaited<ReturnType<typeof db.workflowPreset.findM
     ...preset,
     options: input.options ?? {},
     optionSummary: workflowPresetOptionSummary(input.options),
+    scheduleSummary: workflowPresetScheduleSummary(preset),
   };
 }
 

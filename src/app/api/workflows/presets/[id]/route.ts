@@ -8,6 +8,7 @@ import {
   presetToWorkflowInput,
   workflowPresetData,
   workflowPresetOptionSummary,
+  workflowPresetScheduleSummary,
   workflowPresetUpdateSchema,
 } from "@/lib/workflows/presets";
 import { workflowRunInputSchema } from "@/lib/workflows/types";
@@ -18,6 +19,7 @@ function presetPayload(preset: Awaited<ReturnType<typeof db.workflowPreset.findF
     ...preset,
     options: input.options ?? {},
     optionSummary: workflowPresetOptionSummary(input.options),
+    scheduleSummary: workflowPresetScheduleSummary(preset),
   };
 }
 
@@ -44,6 +46,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       workspace: parsed.data.workspace ?? existing.workspace,
       options: parsed.data.options === undefined ? existing.options ?? {} : parsed.data.options,
       pinned: parsed.data.pinned ?? existing.pinned,
+      scheduleEnabled: parsed.data.scheduleEnabled ?? existing.scheduleEnabled,
+      scheduleIntervalHours: parsed.data.scheduleIntervalHours ?? existing.scheduleIntervalHours,
+      scheduleNextRunAt:
+        parsed.data.scheduleNextRunAt === undefined ? existing.scheduleNextRunAt : parsed.data.scheduleNextRunAt,
     };
     const runInput = workflowRunInputSchema.safeParse({
       playbook: merged.playbook,
