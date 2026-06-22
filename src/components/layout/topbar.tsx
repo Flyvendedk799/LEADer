@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { AlertsBell } from "@/components/layout/alerts-bell";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { openCommandPalette } from "@/components/layout/command-palette";
+import { workspaceFromRoute } from "@/lib/workspace-context";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,7 +29,7 @@ export function Topbar({ user }: TopbarProps) {
   const params = useSearchParams();
   const { theme, setTheme } = useTheme();
 
-  const onGlobal = pathname.startsWith("/global");
+  const onGlobal = workspaceFromRoute(pathname, params) === "GLOBAL";
 
   function submitSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

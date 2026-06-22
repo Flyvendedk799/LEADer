@@ -15,7 +15,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <CommandPalette />
+      <Suspense fallback={null}>
+        <CommandPalette />
+      </Suspense>
       <PlatformAgent />
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">

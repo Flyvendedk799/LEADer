@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bell,
   BookmarkPlus,
@@ -27,6 +27,8 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { operatingDayPresetPayload } from "@/lib/workflows/usecase-actions";
+import type { Workspace } from "@/lib/types";
+import { workspaceFromRoute, workspaceLabel } from "@/lib/workspace-context";
 import { ResearchBriefLauncher } from "./research-brief-launcher";
 
 type SearchMode = "focused" | "balanced" | "wide";
@@ -156,6 +158,10 @@ function dailySweepSummary(result: DailySweepResult) {
 
 export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const routeWorkspace = workspaceFromRoute(pathname, searchParams);
+  const [workspace, setWorkspace] = React.useState<Workspace>(routeWorkspace);
   const [laneId, setLaneId] = React.useState(() => pickDefaultLane(lanes));
   const [focus, setFocus] = React.useState("");
   const [searchMode, setSearchMode] = React.useState<SearchMode>("balanced");
@@ -180,6 +186,10 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
     setLaneId((current) => current || pickDefaultLane(lanes));
   }, [lanes]);
 
+  React.useEffect(() => {
+    setWorkspace(routeWorkspace);
+  }, [routeWorkspace]);
+
   async function queueDiscovery() {
     if (!laneId) return;
     setBusy("discovery");
@@ -197,6 +207,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
           includeSources: true,
           maxResults: searchMode === "wide" ? 18 : searchMode === "focused" ? 8 : 12,
           provider: "auto",
+          workspace,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -217,7 +228,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
       const res = await fetch("/api/alerts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({ type, workspace }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "Could not run alert action");
@@ -318,7 +329,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
           signal: controller.signal,
           body: JSON.stringify({
             playbook: "operating-day",
-            workspace: "DK",
+            workspace,
             options: currentOperatingDayOptions,
           }),
         });
@@ -335,7 +346,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [currentOperatingDayOptions, dayHarvest, dayRescue, daySweep]);
+  }, [currentOperatingDayOptions, dayHarvest, dayRescue, daySweep, workspace]);
 
   async function runDailySweep() {
     setBusy("daily-sweep");
@@ -345,12 +356,12 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
       const res = await fetch("/api/workflows/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playbook: "daily-sweep", workspace: "DK" }),
+        body: JSON.stringify({ playbook: "daily-sweep", workspace }),
       });
       const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
       if (!res.ok || !data?.run) throw new Error(String(data?.error || "Could not queue daily sweep"));
       setSweepRun(data.run);
-      toast.success("Daily sweep queued", "It will keep running in the background.");
+      toast.success("Daily sweep queued", `${workspaceLabel(workspace)} workspace. It will keep running in the background.`);
       router.refresh();
     } catch (err) {
       toast.error("Could not queue daily sweep", err instanceof Error ? err.message : "Try again");
@@ -370,11 +381,11 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
       const res = await fetch("/api/workflows/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playbook, workspace: "DK", options }),
+        body: JSON.stringify({ playbook, workspace, options }),
       });
       const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
       if (!res.ok || !data?.run) throw new Error(String(data?.error || `Could not queue ${label.toLowerCase()}`));
-      toast.success(`${label} queued`, "It will keep running in the background.");
+      toast.success(`${label} queued`, `${workspaceLabel(workspace)} workspace. It will keep running in the background.`);
       router.refresh();
     } catch (err) {
       toast.error(`Could not queue ${label.toLowerCase()}`, err instanceof Error ? err.message : "Try again");
@@ -389,7 +400,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
       const res = await fetch("/api/workflows/presets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(operatingDayPresetPayload(currentOperatingDayOptions)),
+        body: JSON.stringify(operatingDayPresetPayload(currentOperatingDayOptions, undefined, workspace)),
       });
       const data = (await res.json().catch(() => null)) as WorkflowPresetResponse | null;
       if (!res.ok || !data?.preset) throw new Error(String(data?.error || "Could not save operating mode"));
@@ -465,6 +476,15 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
               Operating day
             </div>
             <div className="grid gap-2 sm:flex sm:items-center sm:justify-end">
+              <Select value={workspace} onValueChange={(value) => setWorkspace(value as Workspace)}>
+                <SelectTrigger className="w-full sm:w-40" aria-label="Workspace">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DK">Denmark</SelectItem>
+                  <SelectItem value="GLOBAL">International</SelectItem>
+                </SelectContent>
+              </Select>
               <Button
                 type="button"
                 variant="outline"
@@ -687,7 +707,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
             Generate digest
           </Button>
           <Button asChild variant="outline">
-            <Link href="/opportunities?new=1">
+            <Link href={`/opportunities?new=1&workspace=${workspace}`}>
               <Plus className="h-4 w-4" />
               New opportunity
             </Link>

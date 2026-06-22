@@ -30,6 +30,20 @@ describe("workflow usecase actions", () => {
     });
   });
 
+  it("preserves an international workspace on saved operating day presets", () => {
+    expect(
+      operatingDayPresetPayload(
+        { operatingDay: { dailySweep: true, candidateHarvest: true, pipelineRescue: false } },
+        new Date(2026, 5, 22, 9, 30),
+        "GLOBAL",
+      ),
+    ).toMatchObject({
+      name: "Operating day mode 2026-06-22 09:30",
+      playbook: "operating-day",
+      workspace: "GLOBAL",
+    });
+  });
+
   it("builds a linked research brief run payload", () => {
     expect(
       researchBriefRunPayload({

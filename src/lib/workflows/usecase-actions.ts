@@ -1,4 +1,5 @@
 import type { WorkflowRunOptions } from "./types";
+import type { Workspace } from "@/lib/types";
 
 function stamp(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -9,12 +10,16 @@ function stamp(date: Date) {
   ].join("-") + ` ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function operatingDayPresetPayload(options: WorkflowRunOptions, now = new Date()) {
+export function operatingDayPresetPayload(
+  options: WorkflowRunOptions,
+  now = new Date(),
+  workspace: Workspace = "DK",
+) {
   return {
     name: `Operating day mode ${stamp(now)}`,
     description: "Saved operating day configuration from Workflow Command.",
     playbook: "operating-day",
-    workspace: "DK",
+    workspace,
     pinned: true,
     scheduleEnabled: false,
     scheduleIntervalHours: 24,

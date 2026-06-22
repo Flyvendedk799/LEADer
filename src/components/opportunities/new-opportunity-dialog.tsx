@@ -25,24 +25,15 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import type { ApplicationRoute, Workspace } from "@/lib/types";
+import { workspaceFromRoute } from "@/lib/workspace-context";
 
 export function NewOpportunityDialog() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [open, setOpen] = React.useState(false);
+  const routeWorkspace = workspaceFromRoute(pathname, searchParams);
 
-  // Open automatically when arriving with ?new=1 (e.g. from the command palette),
-  // then strip the param so a refresh doesn't reopen the dialog.
-  React.useEffect(() => {
-    if (searchParams.get("new") === "1") {
-      setOpen(true);
-      const next = new URLSearchParams(searchParams.toString());
-      next.delete("new");
-      const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    }
-  }, [searchParams, pathname, router]);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -55,7 +46,24 @@ export function NewOpportunityDialog() {
   const [deadline, setDeadline] = React.useState("");
   const [category, setCategory] = React.useState("");
   const [applicationRoute, setApplicationRoute] = React.useState<ApplicationRoute>("UNKNOWN");
-  const [workspace, setWorkspace] = React.useState<Workspace>("DK");
+  const [workspace, setWorkspace] = React.useState<Workspace>(routeWorkspace);
+
+  // Open automatically when arriving with ?new=1 (e.g. from the command palette),
+  // then strip the param so a refresh doesn't reopen the dialog.
+  React.useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setWorkspace(routeWorkspace);
+      setOpen(true);
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("new");
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }
+  }, [routeWorkspace, searchParams, pathname, router]);
+
+  React.useEffect(() => {
+    if (!open) setWorkspace(routeWorkspace);
+  }, [open, routeWorkspace]);
 
   function reset() {
     setTitle("");
@@ -67,7 +75,7 @@ export function NewOpportunityDialog() {
     setDeadline("");
     setCategory("");
     setApplicationRoute("UNKNOWN");
-    setWorkspace("DK");
+    setWorkspace(routeWorkspace);
     setError(null);
   }
 

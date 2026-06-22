@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useTheme } from "next-themes";
 import {
@@ -23,6 +23,7 @@ import {
   TimerReset,
 } from "lucide-react";
 import { cn, formatBudget } from "@/lib/utils";
+import { workspaceFromRoute, workspaceLabel } from "@/lib/workspace-context";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { toast } from "@/hooks/use-toast";
 import { openPlatformAgent } from "@/components/agent/platform-agent";
@@ -68,6 +69,8 @@ type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" 
 
 export function CommandPalette() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -76,6 +79,8 @@ export function CommandPalette() {
   const [actionId, setActionId] = React.useState<string | null>(null);
   const [active, setActive] = React.useState(0);
   const listRef = React.useRef<HTMLDivElement>(null);
+  const activeWorkspace = workspaceFromRoute(pathname, searchParams);
+  const activeWorkspaceLabel = workspaceLabel(activeWorkspace);
 
   // Open via ⌘K / Ctrl+K, or a dispatched COMMAND_EVENT (e.g. topbar button).
   React.useEffect(() => {
@@ -144,7 +149,7 @@ export function CommandPalette() {
       const res = await fetch("/api/alerts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({ type, workspace: activeWorkspace }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "Could not run workflow action");
@@ -161,7 +166,7 @@ export function CommandPalette() {
     } finally {
       setActionId(null);
     }
-  }, [close, router]);
+  }, [activeWorkspace, close, router]);
 
   const runDailySweep = React.useCallback(async () => {
     const id = "act-daily-sweep";
@@ -170,11 +175,11 @@ export function CommandPalette() {
       const res = await fetch("/api/workflows/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playbook: "daily-sweep", workspace: "DK" }),
+        body: JSON.stringify({ playbook: "daily-sweep", workspace: activeWorkspace }),
       });
       const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
       if (!res.ok || !data?.run) throw new Error(String(data?.error || "Could not queue daily sweep"));
-      toast.success("Daily sweep queued", "It will keep running in the background.");
+      toast.success("Daily sweep queued", `${activeWorkspaceLabel} workspace. It will keep running in the background.`);
       router.refresh();
       close();
     } catch (err) {
@@ -182,7 +187,7 @@ export function CommandPalette() {
     } finally {
       setActionId(null);
     }
-  }, [close, router]);
+  }, [activeWorkspace, activeWorkspaceLabel, close, router]);
 
   const queueWorkflowPlaybook = React.useCallback(async (playbook: WorkflowPlaybook, id: string, label: string) => {
     setActionId(id);
@@ -190,11 +195,11 @@ export function CommandPalette() {
       const res = await fetch("/api/workflows/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playbook, workspace: "DK" }),
+        body: JSON.stringify({ playbook, workspace: activeWorkspace }),
       });
       const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
       if (!res.ok || !data?.run) throw new Error(String(data?.error || `Could not queue ${label.toLowerCase()}`));
-      toast.success(`${label} queued`, "It will keep running in the background.");
+      toast.success(`${label} queued`, `${activeWorkspaceLabel} workspace. It will keep running in the background.`);
       router.refresh();
       close();
     } catch (err) {
@@ -202,7 +207,7 @@ export function CommandPalette() {
     } finally {
       setActionId(null);
     }
-  }, [close, router]);
+  }, [activeWorkspace, activeWorkspaceLabel, close, router]);
 
   const results = React.useMemo<Result[]>(() => {
     const term = query.trim().toLowerCase();
@@ -246,10 +251,10 @@ export function CommandPalette() {
         id: "act-new-opportunity",
         group: "Actions",
         label: "New opportunity",
-        hint: "Open the creation dialog",
+        hint: activeWorkspaceLabel,
         icon: <Plus className="h-4 w-4 text-muted-foreground" />,
         perform: () => {
-          router.push("/opportunities?new=1");
+          router.push(`/opportunities?new=1&workspace=${activeWorkspace}`);
           close();
         },
       },
@@ -279,7 +284,7 @@ export function CommandPalette() {
         id: "act-operating-day",
         group: "Workflow actions",
         label: "Run operating day",
-        hint: "Sweep, harvest, rescue",
+        hint: `${activeWorkspaceLabel}: sweep, harvest, rescue`,
         icon: <Sparkles className="h-4 w-4 text-muted-foreground" />,
         perform: () => queueWorkflowPlaybook("operating-day", "act-operating-day", "Operating day"),
       },
@@ -287,7 +292,7 @@ export function CommandPalette() {
         id: "act-candidate-harvest",
         group: "Workflow actions",
         label: "Harvest hot candidates",
-        hint: "Save top candidates as deals",
+        hint: `${activeWorkspaceLabel}: save top candidates`,
         icon: <Target className="h-4 w-4 text-muted-foreground" />,
         perform: () => queueWorkflowPlaybook("candidate-harvest", "act-candidate-harvest", "Candidate harvest"),
       },
@@ -295,7 +300,7 @@ export function CommandPalette() {
         id: "act-pipeline-rescue",
         group: "Workflow actions",
         label: "Run pipeline rescue",
-        hint: "Stale deals, deadline prep",
+        hint: `${activeWorkspaceLabel}: stale deals, deadline prep`,
         icon: <TimerReset className="h-4 w-4 text-muted-foreground" />,
         perform: () => queueWorkflowPlaybook("pipeline-rescue", "act-pipeline-rescue", "Pipeline rescue"),
       },
@@ -303,7 +308,7 @@ export function CommandPalette() {
         id: "act-daily-sweep",
         group: "Workflow actions",
         label: "Run daily sweep",
-        hint: "Sources, reminders, digest",
+        hint: `${activeWorkspaceLabel}: sources, reminders, digest`,
         icon: <RefreshCw className="h-4 w-4 text-muted-foreground" />,
         perform: runDailySweep,
       },
@@ -311,7 +316,7 @@ export function CommandPalette() {
         id: "act-deadlines",
         group: "Workflow actions",
         label: "Check deadline reminders",
-        hint: "Generate unread alerts",
+        hint: `${activeWorkspaceLabel}: generate unread alerts`,
         icon: <CalendarClock className="h-4 w-4 text-muted-foreground" />,
         perform: () => generateAlerts("REMINDERS", "act-deadlines"),
       },
@@ -319,7 +324,7 @@ export function CommandPalette() {
         id: "act-digest",
         group: "Workflow actions",
         label: "Generate pipeline digest",
-        hint: "Create a fresh inbox digest",
+        hint: `${activeWorkspaceLabel}: fresh inbox digest`,
         icon: <Mail className="h-4 w-4 text-muted-foreground" />,
         perform: () => generateAlerts("DIGEST", "act-digest"),
       },
@@ -391,7 +396,19 @@ export function CommandPalette() {
     }
 
     return out;
-  }, [close, generateAlerts, hits, query, queueWorkflowPlaybook, router, runDailySweep, setTheme, theme]);
+  }, [
+    activeWorkspace,
+    activeWorkspaceLabel,
+    close,
+    generateAlerts,
+    hits,
+    query,
+    queueWorkflowPlaybook,
+    router,
+    runDailySweep,
+    setTheme,
+    theme,
+  ]);
 
   // Keep the active index in range whenever the result set changes.
   React.useEffect(() => {
