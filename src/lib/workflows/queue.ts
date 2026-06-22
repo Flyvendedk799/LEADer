@@ -41,6 +41,17 @@ export function enqueueWorkflowRun(ownerId: string, runId: string, input: Workfl
   return true;
 }
 
+export function isActiveWorkflowRun(ownerId: string, runId: string) {
+  return active?.ownerId === ownerId && active.runId === runId;
+}
+
+export function removeQueuedWorkflowRun(ownerId: string, runId: string) {
+  const index = queue.findIndex((item) => item.ownerId === ownerId && item.runId === runId);
+  if (index === -1) return false;
+  queue.splice(index, 1);
+  return true;
+}
+
 export function workflowQueueSnapshot(ownerId?: string) {
   const visibleQueue = ownerId ? queue.filter((item) => item.ownerId === ownerId) : queue;
   return {

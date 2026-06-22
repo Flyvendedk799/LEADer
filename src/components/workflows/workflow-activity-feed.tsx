@@ -39,6 +39,7 @@ function statusVariant(status: string | null): ComponentProps<typeof Badge>["var
   if (!status) return "outline";
   if (["SUCCESS", "DONE", "WON"].includes(status)) return "success";
   if (["ERROR", "DEADLINE", "NEEDS_ACTION"].includes(status)) return "warning";
+  if (status === "CANCELED") return "muted";
   if (["RUNNING", "QUEUED"].includes(status)) return "secondary";
   return "outline";
 }

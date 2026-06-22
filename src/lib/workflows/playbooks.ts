@@ -49,8 +49,8 @@ export async function createWorkflowRun(ownerId: string, input: WorkflowRunInput
 
 export async function executeWorkflowRun(ownerId: string, runId: string, input: WorkflowRunInput) {
   try {
-    await db.workflowRun.update({
-      where: { id: runId },
+    const started = await db.workflowRun.updateMany({
+      where: { id: runId, ownerId, status: { not: "CANCELED" } },
       data: {
         status: "RUNNING",
         startedAt: new Date(),
@@ -58,15 +58,22 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
         log: { push: workflowLogEntry("Worker started playbook.") },
       },
     });
+    if (started.count === 0) {
+      return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
+    }
 
     const result = await runDailySweep(ownerId, input.workspace);
+    const current = await db.workflowRun.findFirst({ where: { id: runId, ownerId }, select: { status: true } });
+    if (current?.status === "CANCELED") {
+      return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
+    }
 
     for (const entry of result.log) {
       await db.workflowRun.update({ where: { id: runId }, data: { log: { push: entry } } });
     }
 
-    return db.workflowRun.update({
-      where: { id: runId },
+    const finished = await db.workflowRun.updateMany({
+      where: { id: runId, ownerId, status: { not: "CANCELED" } },
       data: {
         status: "SUCCESS",
         result: JSON.parse(JSON.stringify(result)) as Prisma.InputJsonValue,
@@ -74,9 +81,13 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
         log: { push: workflowLogEntry(`Playbook complete: ${workflowRunSummary(result)}`) },
       },
     });
+    if (finished.count === 0) {
+      return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
+    }
+    return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
   } catch (error) {
-    await db.workflowRun.update({
-      where: { id: runId },
+    await db.workflowRun.updateMany({
+      where: { id: runId, ownerId, status: { not: "CANCELED" } },
       data: {
         status: "ERROR",
         result: {

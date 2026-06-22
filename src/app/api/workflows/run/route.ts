@@ -1,11 +1,27 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createWorkflowRun } from "@/lib/workflows/playbooks";
-import { enqueueWorkflowRun, recoverWorkflowQueue, workflowQueueSnapshot } from "@/lib/workflows/queue";
+import {
+  enqueueWorkflowRun,
+  isActiveWorkflowRun,
+  recoverWorkflowQueue,
+  removeQueuedWorkflowRun,
+  workflowQueueSnapshot,
+} from "@/lib/workflows/queue";
 import { workflowRunInputSchema } from "@/lib/workflows/types";
+
+const workflowRunActionSchema = z.object({
+  id: z.string().min(1),
+  action: z.enum(["CANCEL", "RERUN"]),
+});
+
+function workflowLogEntry(message: string) {
+  return `${new Date().toISOString()} ${message}`;
+}
 
 export async function GET() {
   try {
@@ -35,6 +51,62 @@ export async function POST(req: Request) {
     const run = await createWorkflowRun(ownerId, parsed.data, "QUEUED");
     enqueueWorkflowRun(ownerId, run.id, parsed.data);
     return NextResponse.json({ run, queued: true, queue: workflowQueueSnapshot(ownerId) }, { status: 202 });
+  } catch (err) {
+    return apiError(err);
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const ownerId = await requireOwnerId();
+    const json = await req.json().catch(() => ({}));
+    const parsed = workflowRunActionSchema.safeParse(json ?? {});
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    }
+
+    const source = await db.workflowRun.findFirst({ where: { id: parsed.data.id, ownerId } });
+    if (!source) return NextResponse.json({ error: "Workflow run not found" }, { status: 404 });
+
+    if (parsed.data.action === "CANCEL") {
+      if (!["QUEUED", "RUNNING"].includes(source.status)) {
+        return NextResponse.json({ error: "Only queued or running workflow runs can be canceled" }, { status: 409 });
+      }
+      const removed = removeQueuedWorkflowRun(ownerId, source.id);
+      const active = isActiveWorkflowRun(ownerId, source.id);
+      const run = await db.workflowRun.update({
+        where: { id: source.id },
+        data: {
+          status: "CANCELED",
+          finishedAt: new Date(),
+          log: {
+            push: workflowLogEntry(
+              active && !removed
+                ? "Cancel requested while worker was running; preserving canceled status when the current step returns."
+                : "Canceled before worker started.",
+            ),
+          },
+        },
+      });
+      return NextResponse.json({ run, queue: workflowQueueSnapshot(ownerId) });
+    }
+
+    const input = workflowRunInputSchema.safeParse(source.input ?? {
+      playbook: source.playbook,
+      workspace: source.workspace,
+    });
+    if (!input.success) {
+      return NextResponse.json({ error: "Workflow run input is missing or invalid" }, { status: 400 });
+    }
+
+    const run = await createWorkflowRun(ownerId, input.data, "QUEUED");
+    await db.workflowRun.update({
+      where: { id: run.id },
+      data: { log: { push: workflowLogEntry(`Rerun requested from ${source.id}.`) } },
+    });
+    enqueueWorkflowRun(ownerId, run.id, input.data);
+    const queued = await db.workflowRun.findUnique({ where: { id: run.id } });
+    return NextResponse.json({ run: queued ?? run, queued: true, queue: workflowQueueSnapshot(ownerId) }, { status: 202 });
   } catch (err) {
     return apiError(err);
   }
