@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
+  Activity,
   Bell,
   BriefcaseBusiness,
   CalendarClock,
@@ -19,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkflowActionQueue } from "@/components/workflows/workflow-action-queue";
+import { WorkflowActivityFeed } from "@/components/workflows/workflow-activity-feed";
 import { WorkflowAlertQueue } from "@/components/workflows/workflow-alert-queue";
 import { WorkflowCandidateQueue } from "@/components/workflows/workflow-candidate-queue";
 import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
@@ -66,6 +68,11 @@ function alertPayload(raw: unknown) {
   };
 }
 
+function alertHref(raw: unknown) {
+  const payload = alertPayload(raw);
+  return payload?.opportunityId ? `/opportunities/${payload.opportunityId}` : "/workflows";
+}
+
 export default async function WorkflowsPage() {
   const ownerId = await requireOwnerId();
   const now = new Date();
@@ -84,6 +91,10 @@ export default async function WorkflowsPage() {
     activeSources,
     savedSearches,
     unreadAlerts,
+    recentAlerts,
+    recentSourceRuns,
+    recentAssets,
+    recentOpportunityActivities,
     statusGroups,
     pipelineValue,
   ] = await Promise.all([
@@ -142,6 +153,32 @@ export default async function WorkflowsPage() {
       where: { ownerId, read: false },
       orderBy: { createdAt: "desc" },
       take: 8,
+    }),
+    db.alert.findMany({
+      where: { ownerId },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+    }),
+    db.discoveryRun.findMany({
+      where: { source: { is: { ownerId } } },
+      include: { source: { select: { name: true } } },
+      orderBy: { startedAt: "desc" },
+      take: 6,
+    }),
+    db.conversionAsset.findMany({
+      where: { ownerId },
+      include: {
+        deal: { select: { id: true, title: true } },
+        account: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+    }),
+    db.activity.findMany({
+      where: { opportunity: { ownerId } },
+      include: { opportunity: { select: { id: true, title: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 6,
     }),
     db.deal.groupBy({
       by: ["status"],
@@ -218,6 +255,55 @@ export default async function WorkflowsPage() {
     name: lane.name,
     description: lane.description,
   }));
+  const workflowActivityItems = [
+    ...missions.map((mission) => ({
+      id: `mission-${mission.id}`,
+      kind: "mission" as const,
+      title: `${mission.lane.name} mission`,
+      description: firstQuery(mission.query),
+      status: mission.status,
+      href: discoveryMissionHref(mission.id),
+      createdAt: (mission.finishedAt ?? mission.startedAt).toISOString(),
+    })),
+    ...recentSourceRuns.map((run) => ({
+      id: `source-run-${run.id}`,
+      kind: "source" as const,
+      title: run.source?.name ? `Source run: ${run.source.name}` : "Source run",
+      description: run.log ?? `Found ${run.foundCount} - ${run.newCount} new - ${run.updatedCount} updated`,
+      status: run.status,
+      href: "/sources",
+      createdAt: (run.finishedAt ?? run.startedAt).toISOString(),
+    })),
+    ...recentAlerts.map((alert) => ({
+      id: `alert-${alert.id}`,
+      kind: "alert" as const,
+      title: alert.title,
+      description: alert.body ?? null,
+      status: alert.type,
+      href: alertHref(alert.payload),
+      createdAt: alert.createdAt.toISOString(),
+    })),
+    ...recentAssets.map((asset) => ({
+      id: `asset-${asset.id}`,
+      kind: "asset" as const,
+      title: asset.title ?? `${asset.kind.toLowerCase()} asset`,
+      description: asset.deal?.title ?? asset.account?.name ?? null,
+      status: asset.kind,
+      href: asset.deal?.id ? `/deals/${asset.deal.id}` : asset.account?.id ? `/accounts/${asset.account.id}` : "/deals",
+      createdAt: asset.createdAt.toISOString(),
+    })),
+    ...recentOpportunityActivities.map((activity) => ({
+      id: `opportunity-activity-${activity.id}`,
+      kind: "opportunity" as const,
+      title: activity.message,
+      description: activity.opportunity.title,
+      status: activity.type,
+      href: `/opportunities/${activity.opportunity.id}`,
+      createdAt: activity.createdAt.toISOString(),
+    })),
+  ]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 12);
 
   return (
     <div className="space-y-6">
@@ -409,6 +495,18 @@ export default async function WorkflowsPage() {
           </CardContent>
         </Card>
       </section>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Activity className="h-4 w-4 text-primary" />
+            Recent workflow activity
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <WorkflowActivityFeed items={workflowActivityItems} />
+        </CardContent>
+      </Card>
     </div>
   );
 }
