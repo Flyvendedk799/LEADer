@@ -12,6 +12,7 @@ import {
   PlayCircle,
   Radar,
   Search,
+  Sparkles,
   Target,
   TimerReset,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
 import { WorkflowRunQueue } from "@/components/workflows/workflow-run-queue";
 import { WorkflowSavedSearchQueue } from "@/components/workflows/workflow-saved-search-queue";
 import { WorkflowSourceQueue } from "@/components/workflows/workflow-source-queue";
+import { WorkflowRecommendationPanel, type WorkflowRecommendationItem } from "@/components/workflows/workflow-recommendation-panel";
 import { WorkflowUsecaseLauncher } from "@/components/workflows/workflow-usecase-launcher";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireOwnerId } from "@/lib/auth";
@@ -34,6 +36,7 @@ import { db } from "@/lib/db";
 import { ensureDefaultDiscoveryLanes } from "@/lib/crm/lanes";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
+import { isSourceDue } from "@/lib/ingestion";
 import { describeSavedSearchFilters, savedSearchFiltersToHref } from "@/lib/saved-searches";
 import { cn, formatBudget } from "@/lib/utils";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
@@ -42,6 +45,7 @@ import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 export const dynamic = "force-dynamic";
 
 const OPEN_DEAL_STATUSES = ["DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION"] as const;
+const AUTOMATABLE_SOURCE_TYPES = new Set(["RSS", "NEWSLETTER", "PUBLIC_WEB", "PROCUREMENT", "ACCELERATOR", "API"]);
 
 function missionVariant(status: string) {
   if (status === "SUCCESS") return "success";
@@ -94,6 +98,7 @@ export default async function WorkflowsPage() {
     staleDeals,
     upcomingDeadlines,
     activeSources,
+    sourceSchedules,
     savedSearches,
     unreadAlerts,
     recentAlerts,
@@ -154,6 +159,10 @@ export default async function WorkflowsPage() {
       orderBy: [{ lastCheckedAt: "asc" }, { createdAt: "desc" }],
       take: 10,
     }),
+    db.source.findMany({
+      where: { ownerId, enabled: true },
+      select: { id: true, type: true, frequency: true, lastCheckedAt: true },
+    }),
     db.savedSearch.findMany({
       where: { ownerId },
       orderBy: { createdAt: "desc" },
@@ -205,6 +214,9 @@ export default async function WorkflowsPage() {
   const runningWorkflowRuns = workflowRuns.filter((run) => run.status === "QUEUED" || run.status === "RUNNING");
   const openTaskCount = overdueTasks.length + dueTasks.length;
   const openPipelineValue = pipelineValue._sum.valueMax ?? pipelineValue._sum.valueMin ?? 0;
+  const dueSourceCount = sourceSchedules.filter(
+    (source) => AUTOMATABLE_SOURCE_TYPES.has(source.type) && isSourceDue(source, now),
+  ).length;
   const actionTasks = [...overdueTasks, ...dueTasks].map((task) => ({
     id: task.id,
     title: task.title,
@@ -279,6 +291,91 @@ export default async function WorkflowsPage() {
       summary: workflowRunResultSummary(run.playbook, run.result),
     };
   });
+  const workflowRecommendations: WorkflowRecommendationItem[] = [];
+  const pipelineSignalCount = staleDeals.length + upcomingDeadlines.length;
+  if (hotCandidates.length && (pipelineSignalCount || dueSourceCount)) {
+    workflowRecommendations.push({
+      id: "recommended-operating-day",
+      title: "Run operating day",
+      reason: `${hotCandidates.length} hot candidates, ${pipelineSignalCount} pipeline signals, ${dueSourceCount} due sources.`,
+      metric: "best next",
+      playbook: "operating-day",
+      tone: "primary",
+      icon: "sparkles",
+      options: {
+        operatingDay: {
+          dailySweep: dueSourceCount > 0 || openTaskCount > 0,
+          candidateHarvest: hotCandidates.length > 0,
+          pipelineRescue: pipelineSignalCount > 0,
+        },
+        dailySweep: {
+          includeSources: dueSourceCount > 0,
+          includeAlerts: openTaskCount > 0,
+        },
+        candidateHarvest: {
+          minScore: 70,
+          limit: Math.min(8, Math.max(1, hotCandidates.length)),
+        },
+        pipelineRescue: {
+          staleDays: 14,
+          deadlineDays: 7,
+          limit: Math.min(12, Math.max(1, pipelineSignalCount)),
+        },
+      },
+    });
+  }
+  if (hotCandidates.length) {
+    workflowRecommendations.push({
+      id: "recommended-candidate-harvest",
+      title: "Harvest hot candidates",
+      reason: `${hotCandidates.length} new candidates are at or above 70 pursuit score.`,
+      metric: `${hotCandidates.length} hot`,
+      playbook: "candidate-harvest",
+      tone: "warning",
+      icon: "target",
+      options: {
+        candidateHarvest: {
+          minScore: 70,
+          limit: Math.min(8, Math.max(1, hotCandidates.length)),
+        },
+      },
+    });
+  }
+  if (pipelineSignalCount) {
+    workflowRecommendations.push({
+      id: "recommended-pipeline-rescue",
+      title: "Rescue pipeline",
+      reason: `${staleDeals.length} stale deals and ${upcomingDeadlines.length} upcoming deadlines need next actions.`,
+      metric: `${pipelineSignalCount} signals`,
+      playbook: "pipeline-rescue",
+      tone: "warning",
+      icon: "timer",
+      options: {
+        pipelineRescue: {
+          staleDays: 14,
+          deadlineDays: 7,
+          limit: Math.min(12, Math.max(1, pipelineSignalCount)),
+        },
+      },
+    });
+  }
+  if (dueSourceCount) {
+    workflowRecommendations.push({
+      id: "recommended-source-sweep",
+      title: "Sweep due sources",
+      reason: `${dueSourceCount} enabled automatable sources are due for discovery.`,
+      metric: `${dueSourceCount} due`,
+      playbook: "daily-sweep",
+      tone: "default",
+      icon: "database",
+      options: {
+        dailySweep: {
+          includeSources: true,
+          includeAlerts: false,
+        },
+      },
+    });
+  }
   const workflowActivityItems = [
     ...workflowRuns.map((run) => ({
       id: `workflow-run-${run.id}`,
@@ -365,6 +462,18 @@ export default async function WorkflowsPage() {
         <ControlMetric label="Stale deals" value={staleDeals.length} icon={<TimerReset />} tone="default" />
         <ControlMetric label="Open value" value={formatBudget(null, openPipelineValue, "DKK")} icon={<BriefcaseBusiness />} tone="success" />
       </section>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Sparkles className="h-4 w-4 text-primary" />
+            Recommended moves
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <WorkflowRecommendationPanel recommendations={workflowRecommendations.slice(0, 4)} />
+        </CardContent>
+      </Card>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
         <div className="space-y-4">
