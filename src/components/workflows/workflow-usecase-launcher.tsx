@@ -590,7 +590,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
       </div>
 
       <div className="rounded-md border border-border bg-surface/40 p-3 md:col-span-3">
-        <ResearchBriefLauncher />
+        <ResearchBriefLauncher workspace={workspace} />
       </div>
 
       <div className="rounded-md border border-border bg-surface/40 p-3 md:col-span-3">

@@ -16,7 +16,12 @@ describe("research brief workflow helpers", () => {
     expect(checklist.length).toBeGreaterThanOrEqual(6);
     expect(checklist.some((step) => step.stage === "contact" && step.priority === "URGENT")).toBe(true);
     expect(checklist.find((step) => step.stage === "contact")?.description).toContain("official switchboard");
+    expect(checklist.map((step) => step.stage)).toContain("route-validation");
+    expect(checklist.find((step) => step.stage === "route-validation")?.acceptanceCriteria.join(" ")).toContain(
+      "primary route and fallback route",
+    );
     expect(checklist.flatMap((step) => step.searchPrompts)).toContain('"Mette Jensen" CVR');
+    expect(checklist.find((step) => step.stage === "contact")?.description).toContain("Do not use private leaked");
   });
 
   it("adds deeper investigation steps for opportunity mapping", () => {
@@ -32,7 +37,11 @@ describe("research brief workflow helpers", () => {
     expect(stages).toContain("timeline");
     expect(stages).toContain("network");
     expect(stages).toContain("procurement");
+    expect(stages).toContain("source-log");
     expect(checklist.flatMap((step) => step.searchPrompts).join(" ")).toContain("udbud");
+    expect(checklist.find((step) => step.stage === "procurement")?.acceptanceCriteria.join(" ")).toContain(
+      "expired archives",
+    );
   });
 
   it("keeps quick research brief short", () => {
@@ -41,6 +50,8 @@ describe("research brief workflow helpers", () => {
       depth: "quick",
     });
 
-    expect(buildResearchChecklist(options, "GLOBAL")).toHaveLength(4);
+    const checklist = buildResearchChecklist(options, "GLOBAL");
+    expect(checklist).toHaveLength(4);
+    expect(checklist.map((step) => step.stage)).toEqual(["identity", "sources", "contact", "route-validation"]);
   });
 });

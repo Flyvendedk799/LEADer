@@ -26,6 +26,7 @@ export type ResearchChecklistItem = {
   priority: TaskPriority;
   dueInDays: number;
   searchPrompts: string[];
+  acceptanceCriteria: string[];
 };
 
 type ResearchStepTemplate = [
@@ -85,6 +86,8 @@ function contactPrompts(subject: string, workspace: Workspace) {
     `${quoted(subject)} email`,
     `${quoted(subject)} phone`,
     `${quoted(subject)} telefon`,
+    `${quoted(subject)} contact form`,
+    `${quoted(subject)} switchboard`,
     workspace === "DK" ? `${quoted(subject)} CVR telefon` : `${quoted(subject)} company switchboard`,
   ];
 }
@@ -105,23 +108,95 @@ function dueInDays(index: number, depth: ResearchDepth) {
   return Math.min(2, Math.floor(index / 3));
 }
 
+function acceptanceCriteria(stage: string, objective: ResearchObjective, workspace: Workspace): string[] {
+  const common = [
+    "Record every useful source URL, date checked, and why the source belongs to this subject.",
+    "Mark weak, uncertain, or conflicting evidence instead of silently treating it as true.",
+  ];
+  const byStage: Record<string, string[]> = {
+    identity: [
+      "At least two independent public signals point to the same person or organization.",
+      "Known false matches or same-name lookalikes are noted.",
+    ],
+    sources: [
+      "Official website, registry/profile, or authoritative public page is saved.",
+      workspace === "DK"
+        ? "CVR/virk/proff-style registry evidence is checked when the subject is a Danish company."
+        : "Country, legal entity, and official domain are checked when available.",
+    ],
+    contact: [
+      "Contact route is public and compliant: switchboard, contact form, role inbox, official page, or public professional profile.",
+      "Direct phone/email is only used when it appears on an official or intentionally public professional source.",
+    ],
+    "route-validation": [
+      "Each candidate phone/email/profile is tied back to the right organization or role.",
+      "A primary route and fallback route are chosen, with confidence noted.",
+    ],
+    context: [
+      "Buying responsibility, likely trigger, and relevant recent activity are summarized separately from guesses.",
+      "If no buying signal exists, the next action says so plainly.",
+    ],
+    fit: [
+      "Opportunity hypothesis names problem, trigger, buyer, route, confidence, and missing evidence.",
+      "The hypothesis distinguishes source-backed facts from assumptions.",
+    ],
+    outreach: [
+      "First message references one verified source-backed reason for contact.",
+      "Channel, fallback channel, and next best action are clear.",
+    ],
+    "source-log": [
+      "Useful clues and dead ends are both listed so the work can be resumed later.",
+      "Screenshots or copied snippets are summarized without storing sensitive private data.",
+    ],
+    aliases: [
+      "Spelling variants, former organizations, and same-name false positives are listed.",
+      "At least one rule-out signal is captured for confusing matches.",
+    ],
+    procurement: [
+      "Active tenders/grants/buying signals are separated from expired archives and generic portals.",
+      "Submission route and deadline are checked before treating anything as an opportunity.",
+    ],
+    timeline: [
+      "Recent dated events are ordered newest-first with source links.",
+      "Signals older than 12 months are marked as background, not current intent.",
+    ],
+    network: [
+      "Adjacent contacts are public, role-relevant, and linked to the same organization.",
+      "Fallback contact route does not rely on private or leaked personal data.",
+    ],
+  };
+  const objectiveSpecific =
+    objective === "find-contact"
+      ? ["The final answer includes the safest usable contact route, not just raw search hits."]
+      : objective === "map-opportunity"
+        ? ["The final answer says whether there is a concrete opportunity, a weak signal, or no opportunity yet."]
+        : objective === "verify-identity"
+          ? ["The final answer states what would change your confidence up or down."]
+          : [];
+  return [...(byStage[stage] ?? common), ...objectiveSpecific].slice(0, 4);
+}
+
 function item(
   subject: string,
   index: number,
   depth: ResearchDepth,
+  objective: ResearchObjective,
+  workspace: Workspace,
   stage: string,
   title: string,
   description: string,
   priority: TaskPriority,
   searchPrompts: string[],
 ): ResearchChecklistItem {
+  const criteria = acceptanceCriteria(stage, objective, workspace);
   return {
     stage,
     title: `Research ${stage.toLowerCase()}: ${subject}`,
-    description: `${title}\n\n${description}\n\nSearch prompts:\n${searchPrompts.map((prompt) => `- ${prompt}`).join("\n")}`,
+    description: `${title}\n\n${description}\n\nDone when:\n${criteria.map((criterion) => `- ${criterion}`).join("\n")}\n\nSearch prompts:\n${searchPrompts.map((prompt) => `- ${prompt}`).join("\n")}`,
     priority,
     dueInDays: dueInDays(index, depth),
     searchPrompts,
+    acceptanceCriteria: criteria,
   };
 }
 
@@ -169,9 +244,16 @@ export function buildResearchChecklist(
     [
       "contact",
       "Find compliant contact routes",
-      "Prefer official switchboard, contact form, role email, public professional profile, or explicitly published direct phone/email. Do not use private leaked or scraped-only personal data.",
+      "Build a route ladder: official switchboard or form first, then role inbox, public professional profile, and only then intentionally published direct phone/email. Do not use private leaked or scraped-only personal data.",
       objective === "find-contact" ? "URGENT" : "HIGH",
       prompts.contact,
+    ],
+    [
+      "route-validation",
+      "Validate contact ownership",
+      "Check that each possible email, phone number, profile, or department route belongs to the exact subject and current organization before using it.",
+      objective === "find-contact" ? "URGENT" : "HIGH",
+      [...prompts.contact, `${quoted(subject)} role`, `${quoted(subject)} department`],
     ],
     [
       "context",
@@ -179,6 +261,13 @@ export function buildResearchChecklist(
       "Capture role, current organization, likely responsibility, recent projects, hiring/procurement signals, and why this person or account could plausibly buy.",
       "MEDIUM",
       [...prompts.opportunity, `${quoted(subject)} news`, `${quoted(subject)} case study`],
+    ],
+    [
+      "source-log",
+      "Keep an evidence ledger",
+      "Track useful clues, dead ends, source dates, confidence, and what each source proves. This makes the research resumable after tab close or handoff.",
+      "MEDIUM",
+      [`${quoted(subject)} official`, `${quoted(subject)} profile`, `${quoted(subject)} news`],
     ],
     [
       "fit",
@@ -234,5 +323,5 @@ export function buildResearchChecklist(
   }
 
   const selected = depth === "quick" ? steps.slice(0, 4) : steps;
-  return selected.map((step, index) => item(subject, index, depth, ...step));
+  return selected.map((step, index) => item(subject, index, depth, objective, workspace, ...step));
 }

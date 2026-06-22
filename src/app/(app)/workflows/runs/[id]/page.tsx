@@ -185,6 +185,8 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                 const prompts = Array.isArray(step.searchPrompts)
                   ? step.searchPrompts.filter((prompt): prompt is string => typeof prompt === "string")
                   : [];
+                const criteria = stringList(step.acceptanceCriteria);
+                const description = typeof step.description === "string" ? step.description : "";
                 return (
                   <div key={`${stage}-${index}`} className="rounded-md border border-border bg-surface/40 p-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -194,6 +196,21 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                       </Badge>
                     </div>
                     <p className="mt-2 text-sm font-medium">{title}</p>
+                    {description ? (
+                      <p className="mt-1 line-clamp-3 text-xs leading-5 text-muted-foreground">
+                        {truncate(description.replace(/\n+/g, " "), 260)}
+                      </p>
+                    ) : null}
+                    {criteria.length ? (
+                      <ul className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
+                        {criteria.slice(0, 3).map((criterion) => (
+                          <li key={criterion} className="flex gap-2">
+                            <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-primary" />
+                            <span>{criterion}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                     {prompts.length ? (
                       <p className="mt-1 text-xs text-muted-foreground">{truncate(prompts.slice(0, 3).join(" · "), 140)}</p>
                     ) : null}
