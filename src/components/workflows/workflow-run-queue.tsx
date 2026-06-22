@@ -3,7 +3,18 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Clock3, ExternalLink, Loader2, PlayCircle, RotateCw, XCircle } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpToLine,
+  CheckCircle2,
+  Clock3,
+  ExternalLink,
+  Loader2,
+  PlayCircle,
+  RotateCw,
+  XCircle,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +45,8 @@ type WorkflowRunQueueResponse = {
   runs?: Array<Partial<WorkflowRunQueueItem> & { id: string }>;
   queue?: Partial<WorkflowQueueSnapshot>;
 };
+
+type WorkflowRunAction = "CANCEL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
 
 function statusVariant(status: string) {
   if (status === "SUCCESS") return "success";
@@ -89,6 +102,21 @@ function triggerLabel(run: WorkflowRunQueueItem) {
   return "manual";
 }
 
+function sortRunsWithQueue(items: WorkflowRunQueueItem[], queue: WorkflowQueueSnapshot) {
+  const queueIndex = new Map(queue.queuedRunIds.map((id, index) => [id, index]));
+  const rank = (run: WorkflowRunQueueItem) => {
+    if (queue.activeRunId === run.id) return -1;
+    const index = queueIndex.get(run.id);
+    return index == null ? Number.MAX_SAFE_INTEGER : index;
+  };
+  return [...items].sort((a, b) => {
+    const rankA = rank(a);
+    const rankB = rank(b);
+    if (rankA !== rankB) return rankA - rankB;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+}
+
 export function WorkflowRunQueue({
   runs,
   queue = { activeRunId: null, queuedRunIds: [] },
@@ -101,6 +129,7 @@ export function WorkflowRunQueue({
   const [queueState, setQueueState] = React.useState(() => normalizeQueue(queue));
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
+  const orderedItems = React.useMemo(() => sortRunsWithQueue(items, queueState), [items, queueState]);
 
   React.useEffect(() => {
     setItems(runs);
@@ -146,7 +175,7 @@ export function WorkflowRunQueue({
     };
   }, [live]);
 
-  async function controlRun(run: WorkflowRunQueueItem, action: "CANCEL" | "RERUN") {
+  async function controlRun(run: WorkflowRunQueueItem, action: WorkflowRunAction) {
     setBusyId(`${action}-${run.id}`);
     try {
       const res = await fetch("/api/workflows/run", {
@@ -162,11 +191,16 @@ export function WorkflowRunQueue({
         if (data.queue) setQueueState(normalizeQueue(data.queue));
         setItems((current) => current.map((item) => (item.id === run.id ? { ...item, ...updated } : item)));
         toast.success("Workflow run canceled", playbookLabel(run.playbook));
-      } else {
+      } else if (action === "RERUN") {
         const rerun = apiRunToItem(data.run);
         if (data.queue) setQueueState(normalizeQueue(data.queue));
         setItems((current) => [rerun, ...current]);
         toast.success("Workflow run queued", playbookLabel(run.playbook));
+      } else {
+        const updated = apiRunToItem(data.run);
+        if (data.queue) setQueueState(normalizeQueue(data.queue));
+        setItems((current) => current.map((item) => (item.id === run.id ? { ...item, ...updated } : item)));
+        toast.success("Workflow priority updated", playbookLabel(run.playbook));
       }
       router.refresh();
     } catch (err) {
@@ -192,12 +226,14 @@ export function WorkflowRunQueue({
           <span>Updated {formatDate(lastUpdatedAt.toISOString())}</span>
         ) : null}
       </div>
-      {items.map((run) => {
+      {orderedItems.map((run) => {
         const latestLog = run.log.at(-1) ?? run.summary;
         const cancelable = ["QUEUED", "RUNNING"].includes(run.status);
         const cancelBusy = busyId === `CANCEL-${run.id}`;
         const rerunBusy = busyId === `RERUN-${run.id}`;
         const queuedIndex = queueState.queuedRunIds.indexOf(run.id);
+        const moveable = run.status === "QUEUED" && queuedIndex >= 0;
+        const lastQueuedIndex = queueState.queuedRunIds.length - 1;
         const queueLabel =
           queueState.activeRunId === run.id ? "active" : queuedIndex >= 0 ? `queued #${queuedIndex + 1}` : null;
         return (
@@ -223,6 +259,58 @@ export function WorkflowRunQueue({
                 <PlayCircle className="h-3.5 w-3.5" />
                 <span className="whitespace-nowrap">{formatDate(run.finishedAt ?? run.startedAt ?? run.createdAt)}</span>
               </div>
+              {moveable ? (
+                <>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    disabled={Boolean(busyId) || queuedIndex === 0}
+                    onClick={() => controlRun(run, "MOVE_TOP")}
+                    aria-label="Move workflow to top"
+                    title="Move workflow to top"
+                  >
+                    {busyId === `MOVE_TOP-${run.id}` ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ArrowUpToLine className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    disabled={Boolean(busyId) || queuedIndex === 0}
+                    onClick={() => controlRun(run, "MOVE_UP")}
+                    aria-label="Move workflow up"
+                    title="Move workflow up"
+                  >
+                    {busyId === `MOVE_UP-${run.id}` ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    disabled={Boolean(busyId) || queuedIndex === lastQueuedIndex}
+                    onClick={() => controlRun(run, "MOVE_DOWN")}
+                    aria-label="Move workflow down"
+                    title="Move workflow down"
+                  >
+                    {busyId === `MOVE_DOWN-${run.id}` ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ArrowDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </>
+              ) : null}
               <Button
                 asChild
                 type="button"

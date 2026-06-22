@@ -11,7 +11,9 @@ import {
   isActiveWorkflowRun,
   recoverWorkflowQueue,
   removeQueuedWorkflowRun,
+  reorderQueuedWorkflowRun,
   workflowQueueSnapshot,
+  type WorkflowQueueMoveAction,
 } from "@/lib/workflows/queue";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 import { workflowRunInputSchema } from "@/lib/workflows/types";
@@ -24,7 +26,7 @@ type WorkflowRunPayload = WorkflowRun & {
 
 const workflowRunActionSchema = z.object({
   id: z.string().min(1),
-  action: z.enum(["CANCEL", "RERUN"]),
+  action: z.enum(["CANCEL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
 });
 
 function workflowLogEntry(message: string) {
@@ -83,8 +85,26 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
+    await recoverWorkflowQueue(ownerId);
     const source = await db.workflowRun.findFirst({ where: { id: parsed.data.id, ownerId } });
     if (!source) return NextResponse.json({ error: "Workflow run not found" }, { status: 404 });
+
+    if (parsed.data.action.startsWith("MOVE_")) {
+      if (source.status !== "QUEUED" || isActiveWorkflowRun(ownerId, source.id)) {
+        return NextResponse.json({ error: "Only waiting queued workflow runs can be moved" }, { status: 409 });
+      }
+
+      const moved = await reorderQueuedWorkflowRun(ownerId, source.id, parsed.data.action as WorkflowQueueMoveAction);
+      if (moved.reason === "not_queued") {
+        return NextResponse.json({ error: "Workflow run is not waiting in the queue" }, { status: 409 });
+      }
+
+      const run = await db.workflowRun.findFirst({
+        where: { id: source.id, ownerId },
+        include: { preset: { select: { name: true } } },
+      });
+      return NextResponse.json({ run: workflowRunPayload(run), queue: moved.queue, moved: moved.moved, reason: moved.reason });
+    }
 
     if (parsed.data.action === "CANCEL") {
       if (!["QUEUED", "RUNNING"].includes(source.status)) {

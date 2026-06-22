@@ -8,6 +8,8 @@ type QueuedWorkflowRun = {
   input: WorkflowRunInput;
 };
 
+export type WorkflowQueueMoveAction = "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
+
 const queue: QueuedWorkflowRun[] = [];
 let active: QueuedWorkflowRun | null = null;
 
@@ -41,6 +43,62 @@ export function enqueueWorkflowRun(ownerId: string, runId: string, input: Workfl
   return true;
 }
 
+export function reorderWorkflowQueueIds(ids: string[], runId: string, action: WorkflowQueueMoveAction) {
+  const currentIndex = ids.indexOf(runId);
+  if (currentIndex === -1) return { ids: [...ids], moved: false, reason: "not_queued" as const };
+  if ((action === "MOVE_UP" || action === "MOVE_TOP") && currentIndex === 0) {
+    return { ids: [...ids], moved: false, reason: "already_first" as const };
+  }
+  if (action === "MOVE_DOWN" && currentIndex === ids.length - 1) {
+    return { ids: [...ids], moved: false, reason: "already_last" as const };
+  }
+
+  const nextIds = [...ids];
+  const [run] = nextIds.splice(currentIndex, 1);
+  if (action === "MOVE_TOP") {
+    nextIds.unshift(run);
+  } else if (action === "MOVE_UP") {
+    nextIds.splice(currentIndex - 1, 0, run);
+  } else {
+    nextIds.splice(currentIndex + 1, 0, run);
+  }
+
+  return { ids: nextIds, moved: true, reason: null };
+}
+
+async function persistOwnerQueueOrder(ownerId: string) {
+  const ownerQueue = queue.filter((item) => item.ownerId === ownerId);
+  await Promise.all(
+    ownerQueue.map((item, index) =>
+      db.workflowRun.updateMany({
+        where: { id: item.runId, ownerId, status: "QUEUED" },
+        data: { queuePriority: ownerQueue.length - index },
+      }),
+    ),
+  );
+}
+
+export async function reorderQueuedWorkflowRun(ownerId: string, runId: string, action: WorkflowQueueMoveAction) {
+  const ownerIndexes = queue
+    .map((item, index) => (item.ownerId === ownerId ? index : null))
+    .filter((index): index is number => index !== null);
+  const ownerRunIds = ownerIndexes.map((index) => queue[index].runId);
+  const reordered = reorderWorkflowQueueIds(ownerRunIds, runId, action);
+
+  if (!reordered.moved) {
+    return { moved: false, reason: reordered.reason, queue: workflowQueueSnapshot(ownerId) };
+  }
+
+  const byRunId = new Map(ownerIndexes.map((index) => [queue[index].runId, queue[index]]));
+  reordered.ids.forEach((nextRunId, ownerIndex) => {
+    const item = byRunId.get(nextRunId);
+    if (item) queue[ownerIndexes[ownerIndex]] = item;
+  });
+
+  await persistOwnerQueueOrder(ownerId);
+  return { moved: true, reason: null, queue: workflowQueueSnapshot(ownerId) };
+}
+
 export function isActiveWorkflowRun(ownerId: string, runId: string) {
   return active?.ownerId === ownerId && active.runId === runId;
 }
@@ -67,7 +125,7 @@ export async function recoverWorkflowQueue(ownerId: string) {
       status: { in: ["QUEUED", "RUNNING"] },
       finishedAt: null,
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ queuePriority: "desc" }, { createdAt: "asc" }],
     select: { id: true, status: true, input: true },
   });
 

@@ -6,7 +6,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { formatDate, truncate } from "@/lib/utils";
-import { CheckCircle2, Clock3, Loader2, PlayCircle, RotateCw, XCircle } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpToLine,
+  CheckCircle2,
+  Clock3,
+  Loader2,
+  PlayCircle,
+  RotateCw,
+  XCircle,
+} from "lucide-react";
 
 type WorkflowRunControlItem = {
   id: string;
@@ -34,6 +44,8 @@ type WorkflowRunResponse = {
   queue?: Partial<WorkflowQueueSnapshot>;
   error?: unknown;
 };
+
+type WorkflowRunAction = "CANCEL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
 
 function normalizeQueue(queue?: Partial<WorkflowQueueSnapshot> | null): WorkflowQueueSnapshot {
   return {
@@ -101,7 +113,7 @@ export function WorkflowRunControls({
   const router = useRouter();
   const [item, setItem] = React.useState(run);
   const [queueState, setQueueState] = React.useState(() => normalizeQueue(queue));
-  const [busyAction, setBusyAction] = React.useState<"CANCEL" | "RERUN" | null>(null);
+  const [busyAction, setBusyAction] = React.useState<WorkflowRunAction | null>(null);
   const refreshedTerminal = React.useRef(false);
 
   React.useEffect(() => {
@@ -150,7 +162,7 @@ export function WorkflowRunControls({
     };
   }, [item.id, live, router]);
 
-  async function controlRun(action: "CANCEL" | "RERUN") {
+  async function controlRun(action: WorkflowRunAction) {
     setBusyAction(action);
     try {
       const res = await fetch("/api/workflows/run", {
@@ -168,9 +180,13 @@ export function WorkflowRunControls({
         const next = normalizeRun(data.run);
         toast.success("Workflow run queued", playbookLabel(item.playbook));
         router.push(`/workflows/runs/${next.id}`);
-      } else {
+      } else if (action === "CANCEL") {
         setItem(normalizeRun(data.run));
         toast.success("Workflow run canceled", playbookLabel(item.playbook));
+        router.refresh();
+      } else {
+        setItem(normalizeRun(data.run));
+        toast.success("Workflow priority updated", playbookLabel(item.playbook));
         router.refresh();
       }
     } catch (err) {
@@ -184,6 +200,8 @@ export function WorkflowRunControls({
   const queuedIndex = queueState.queuedRunIds.indexOf(item.id);
   const queueLabel = queueState.activeRunId === item.id ? "active" : queuedIndex >= 0 ? `queued #${queuedIndex + 1}` : null;
   const cancelable = item.status === "QUEUED" || item.status === "RUNNING";
+  const moveable = item.status === "QUEUED" && queuedIndex >= 0;
+  const lastQueuedIndex = queueState.queuedRunIds.length - 1;
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -210,6 +228,55 @@ export function WorkflowRunControls({
           </div>
         </div>
         <div className="flex items-center justify-end gap-2">
+          {moveable ? (
+            <>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                disabled={Boolean(busyAction) || queuedIndex === 0}
+                onClick={() => controlRun("MOVE_TOP")}
+                aria-label="Move workflow to top"
+                title="Move workflow to top"
+              >
+                {busyAction === "MOVE_TOP" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowUpToLine className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                disabled={Boolean(busyAction) || queuedIndex === 0}
+                onClick={() => controlRun("MOVE_UP")}
+                aria-label="Move workflow up"
+                title="Move workflow up"
+              >
+                {busyAction === "MOVE_UP" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowUp className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                disabled={Boolean(busyAction) || queuedIndex === lastQueuedIndex}
+                onClick={() => controlRun("MOVE_DOWN")}
+                aria-label="Move workflow down"
+                title="Move workflow down"
+              >
+                {busyAction === "MOVE_DOWN" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowDown className="h-4 w-4" />
+                )}
+              </Button>
+            </>
+          ) : null}
           <Button
             type="button"
             variant="outline"

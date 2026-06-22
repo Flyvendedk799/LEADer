@@ -725,6 +725,7 @@ model WorkflowRun {
   playbook   String
   workspace  Workspace @default(DK)
   status     String    @default("QUEUED")
+  queuePriority Int       @default(0)
   input      Json?
   result     Json?
   log        String[]  @default([])
@@ -737,6 +738,7 @@ model WorkflowRun {
 
   @@index([ownerId, createdAt])
   @@index([ownerId, status])
+  @@index([ownerId, status, queuePriority, createdAt])
   @@index([ownerId, trigger])
   @@index([presetId])
 }
