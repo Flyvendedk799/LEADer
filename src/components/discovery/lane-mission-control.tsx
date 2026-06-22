@@ -38,6 +38,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { discoveryMissionHref } from "@/lib/discovery-links";
+import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
 import { cn, formatBudget, formatDate, truncate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 
@@ -123,6 +124,7 @@ type DiscoveryQueueSnapshot = {
 type MissionListResponse = {
   missions?: MissionSummary[];
   queue?: Partial<DiscoveryQueueSnapshot>;
+  canceled?: number;
   error?: string;
 };
 
@@ -498,6 +500,49 @@ export function LaneMissionControl({
     }
   }
 
+  async function cancelLiveMissions() {
+    setBusyMissionAction("CANCEL_ALL");
+    try {
+      const res = await fetch("/api/discovery/runs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "CANCEL_ALL" }),
+      });
+      const data = (await res.json().catch(() => null)) as MissionListResponse | null;
+      if (!res.ok || !data) throw new Error(data?.error || "Discovery control failed");
+
+      const nextMissions = data.missions ?? [];
+      setMissions(nextMissions);
+      if (data.queue) setQueueState(normalizeQueue(data.queue));
+      setLastUpdatedAt(new Date());
+      if (activeMissionId) {
+        const updatedActive = nextMissions.find((mission) => mission.id === activeMissionId);
+        if (updatedActive) {
+          setResult((current) =>
+            current?.mission.id === updatedActive.id
+              ? {
+                  ...current,
+                  mission: {
+                    ...current.mission,
+                    status: updatedActive.status,
+                    finishedAt: updatedActive.finishedAt,
+                    warnings: updatedActive.warnings ?? current.mission.warnings,
+                    log: updatedActive.log ?? current.mission.log,
+                  },
+                }
+              : current,
+          );
+        }
+      }
+      toast.success("Live discovery queue canceled", discoveryLiveQueueCancelMessage(data.canceled ?? 0));
+      router.refresh();
+    } catch (err) {
+      toast.error("Discovery control failed", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyMissionAction(null);
+    }
+  }
+
   async function candidateAction(id: string, action: CandidateAction) {
     try {
       const res = await fetch(`/api/discovery/candidates/${id}`, {
@@ -739,6 +784,22 @@ export function LaneMissionControl({
                 </span>
               ) : lastUpdatedAt ? (
                 <span className="text-xs font-normal text-muted-foreground">{missionTime(lastUpdatedAt)}</span>
+              ) : null}
+              {liveQueue ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={Boolean(busyMissionAction)}
+                  onClick={cancelLiveMissions}
+                >
+                  {busyMissionAction === "CANCEL_ALL" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
+                  Cancel live
+                </Button>
               ) : null}
               <Button
                 type="button"

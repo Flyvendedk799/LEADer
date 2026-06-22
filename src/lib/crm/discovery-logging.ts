@@ -17,6 +17,10 @@ export function discoveryCountLabel(count: number, singular: string, plural = `$
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+export function discoveryLiveQueueCancelMessage(count: number) {
+  return `${discoveryCountLabel(count, "mission")} stopped`;
+}
+
 export function discoveryQueueLogMessage(missionId: string, queue: DiscoveryQueueSnapshot) {
   if (queue.activeMissionId === missionId) {
     return "Background worker accepted mission; it will keep running if this tab is closed.";

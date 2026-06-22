@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   discoveryCountLabel,
+  discoveryLiveQueueCancelMessage,
   discoveryLogEntry,
   discoveryQueueLogMessage,
   formatDiscoveryElapsed,
@@ -29,5 +30,10 @@ describe("discovery logging helpers", () => {
     );
     expect(discoveryCountLabel(1, "candidate")).toBe("1 candidate");
     expect(discoveryCountLabel(3, "candidate")).toBe("3 candidates");
+  });
+
+  it("summarizes live queue cancellation", () => {
+    expect(discoveryLiveQueueCancelMessage(1)).toBe("1 mission stopped");
+    expect(discoveryLiveQueueCancelMessage(3)).toBe("3 missions stopped");
   });
 });

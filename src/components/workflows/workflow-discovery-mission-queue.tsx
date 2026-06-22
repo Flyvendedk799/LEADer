@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { discoveryMissionHref } from "@/lib/discovery-links";
+import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
 import { formatDate, truncate } from "@/lib/utils";
 
 export type WorkflowDiscoveryMissionItem = {
@@ -238,7 +239,7 @@ export function WorkflowDiscoveryMissionQueue({
       if (Array.isArray(data.missions)) setItems(data.missions.map(apiMissionToItem));
       if (data.queue) setQueueState(normalizeQueue(data.queue));
       setLastUpdatedAt(new Date());
-      toast.success("Live discovery queue canceled", `${data.canceled ?? 0} missions stopped`);
+      toast.success("Live discovery queue canceled", discoveryLiveQueueCancelMessage(data.canceled ?? 0));
       router.refresh();
     } catch (err) {
       toast.error("Discovery control failed", err instanceof Error ? err.message : "Try again");
