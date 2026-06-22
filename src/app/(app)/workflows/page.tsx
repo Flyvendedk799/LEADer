@@ -280,6 +280,8 @@ export default async function WorkflowsPage() {
     frequency: source.frequency,
     enabled: source.enabled,
     lastCheckedAt: source.lastCheckedAt?.toISOString() ?? null,
+    automatable: AUTOMATABLE_SOURCE_TYPES.has(source.type),
+    due: AUTOMATABLE_SOURCE_TYPES.has(source.type) && isSourceDue(source, now),
   }));
   const defaultLaneId = lanes.find((lane) => lane.slug === "sme-ai-automation")?.id ?? lanes[0]?.id ?? null;
   const savedSearchItems = savedSearches.map((search) => ({

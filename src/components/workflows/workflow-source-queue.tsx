@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, ExternalLink, Loader2, Play, ShieldOff, XCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, Loader2, PauseCircle, Play, ShieldOff, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,8 @@ export type WorkflowSourceItem = {
   frequency: MonitorFrequency;
   enabled: boolean;
   lastCheckedAt: string | null;
+  automatable: boolean;
+  due: boolean;
 };
 
 type RunResult = {
@@ -39,7 +41,10 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
   const [runningId, setRunningId] = React.useState<string | null>(null);
   const [disablingId, setDisablingId] = React.useState<string | null>(null);
   const [runningDue, setRunningDue] = React.useState(false);
+  const [bulkAction, setBulkAction] = React.useState<"SKIP_DUE" | "DISABLE" | null>(null);
   const [results, setResults] = React.useState<Record<string, RunResult>>({});
+  const dueItems = React.useMemo(() => items.filter((source) => source.automatable && source.due), [items]);
+  const busy = runningDue || Boolean(runningId) || Boolean(disablingId) || Boolean(bulkAction);
 
   React.useEffect(() => {
     setItems(sources);
@@ -140,22 +145,71 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
     }
   }
 
+  async function controlSources(action: "SKIP_DUE" | "DISABLE") {
+    const previous = items;
+    const targets = action === "SKIP_DUE" ? dueItems : items;
+    const nowIso = new Date().toISOString();
+    setBulkAction(action);
+    setItems((current) =>
+      action === "DISABLE"
+        ? []
+        : current.map((source) => (targets.some((target) => target.id === source.id) ? { ...source, due: false, lastCheckedAt: nowIso } : source)),
+    );
+
+    try {
+      const res = await fetch("/api/sources/workflow-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: targets.map((source) => source.id), action }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Source control failed");
+      toast.success(action === "DISABLE" ? "Sources disabled" : "Due sources skipped", `${data?.count ?? 0} updated`);
+      router.refresh();
+    } catch (err) {
+      setItems(previous);
+      toast.error("Source control failed", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBulkAction(null);
+    }
+  }
+
   if (items.length === 0) {
     return <p className="py-4 text-center text-sm text-muted-foreground">No active sources.</p>;
   }
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <Button
           type="button"
           size="sm"
           variant="outline"
-          disabled={runningDue || Boolean(runningId) || Boolean(disablingId)}
+          disabled={busy}
           onClick={runDueSources}
         >
           {runningDue ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           Run due
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy || dueItems.length === 0}
+          onClick={() => controlSources("SKIP_DUE")}
+        >
+          {bulkAction === "SKIP_DUE" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PauseCircle className="h-4 w-4" />}
+          Skip due
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => controlSources("DISABLE")}
+        >
+          {bulkAction === "DISABLE" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+          Disable visible
         </Button>
       </div>
       {items.map((source) => {
@@ -170,6 +224,7 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
                 <p className="truncate text-sm font-medium">{source.name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {source.lastCheckedAt ? `checked ${relativeDeadline(source.lastCheckedAt)}` : "Never checked"} - {source.frequency.toLowerCase()}
+                  {source.due ? " - due" : ""}
                 </p>
                 {source.url ? (
                   <span className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-xs text-muted-foreground">
@@ -199,7 +254,7 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={!meta.automatable || running || disabling || runningDue}
+                disabled={!meta.automatable || running || disabling || busy}
                 onClick={() => runSource(source)}
                 title={meta.automatable ? "Run source now" : "Manual-only sources cannot be run automatically"}
               >
@@ -210,7 +265,7 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
                 type="button"
                 size="sm"
                 variant="ghost"
-                disabled={running || disabling || runningDue}
+                disabled={running || disabling || busy}
                 onClick={() => disableSource(source)}
               >
                 {disabling ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
