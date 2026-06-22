@@ -19,6 +19,7 @@ import {
   Search,
   Sparkles,
   Sun,
+  TimerReset,
 } from "lucide-react";
 import { cn, formatBudget } from "@/lib/utils";
 import { ScoreBadge } from "@/components/shared/score-badge";
@@ -61,6 +62,8 @@ type WorkflowRunResponse = {
   };
   error?: unknown;
 };
+
+type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue";
 
 export function CommandPalette() {
   const router = useRouter();
@@ -180,6 +183,26 @@ export function CommandPalette() {
     }
   }, [close, router]);
 
+  const queueWorkflowPlaybook = React.useCallback(async (playbook: WorkflowPlaybook, id: string, label: string) => {
+    setActionId(id);
+    try {
+      const res = await fetch("/api/workflows/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playbook, workspace: "DK" }),
+      });
+      const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
+      if (!res.ok || !data?.run) throw new Error(String(data?.error || `Could not queue ${label.toLowerCase()}`));
+      toast.success(`${label} queued`, "It will keep running in the background.");
+      router.refresh();
+      close();
+    } catch (err) {
+      toast.error(`${label} failed`, err instanceof Error ? err.message : "Try again");
+    } finally {
+      setActionId(null);
+    }
+  }, [close, router]);
+
   const results = React.useMemo<Result[]>(() => {
     const term = query.trim().toLowerCase();
     const out: Result[] = [];
@@ -250,6 +273,14 @@ export function CommandPalette() {
           router.push("/import");
           close();
         },
+      },
+      {
+        id: "act-pipeline-rescue",
+        group: "Workflow actions",
+        label: "Run pipeline rescue",
+        hint: "Stale deals, deadline prep",
+        icon: <TimerReset className="h-4 w-4 text-muted-foreground" />,
+        perform: () => queueWorkflowPlaybook("pipeline-rescue", "act-pipeline-rescue", "Pipeline rescue"),
       },
       {
         id: "act-daily-sweep",
@@ -343,7 +374,7 @@ export function CommandPalette() {
     }
 
     return out;
-  }, [close, generateAlerts, hits, query, router, runDailySweep, setTheme, theme]);
+  }, [close, generateAlerts, hits, query, queueWorkflowPlaybook, router, runDailySweep, setTheme, theme]);
 
   // Keep the active index in range whenever the result set changes.
   React.useEffect(() => {

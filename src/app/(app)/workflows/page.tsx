@@ -278,8 +278,16 @@ export default async function WorkflowsPage() {
     const reminders = result?.reminders && typeof result.reminders === "object" && !Array.isArray(result.reminders)
       ? (result.reminders as Record<string, unknown>)
       : null;
+    const staleDeals = result?.staleDeals && typeof result.staleDeals === "object" && !Array.isArray(result.staleDeals)
+      ? (result.staleDeals as Record<string, unknown>)
+      : null;
+    const deadlines = result?.deadlines && typeof result.deadlines === "object" && !Array.isArray(result.deadlines)
+      ? (result.deadlines as Record<string, unknown>)
+      : null;
     const summary = result
-      ? `${Number(sources?.ran ?? 0)} sources - ${Number(sources?.created ?? 0)} new - ${Number(sources?.updated ?? 0)} updated - ${Number(reminders?.created ?? 0)} reminders - ${Number(digest?.created ?? 0)} digest`
+      ? run.playbook === "pipeline-rescue"
+        ? `${Number(staleDeals?.tasksCreated ?? 0)} stale tasks - ${Number(deadlines?.tasksCreated ?? 0)} deadline tasks - ${Number(result.nextActionsUpdated ?? 0)} next actions`
+        : `${Number(sources?.ran ?? 0)} sources - ${Number(sources?.created ?? 0)} new - ${Number(sources?.updated ?? 0)} updated - ${Number(reminders?.created ?? 0)} reminders - ${Number(digest?.created ?? 0)} digest`
       : null;
     return {
       id: run.id,

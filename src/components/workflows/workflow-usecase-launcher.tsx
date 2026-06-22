@@ -55,6 +55,8 @@ type WorkflowRunResponse = {
   error?: unknown;
 };
 
+type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue";
+
 export type WorkflowLaneItem = {
   id: string;
   slug: string;
@@ -180,6 +182,25 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
       router.refresh();
     } catch (err) {
       toast.error("Could not queue daily sweep", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function queueWorkflowPlaybook(playbook: WorkflowPlaybook, busyKey: string, label: string) {
+    setBusy(busyKey);
+    try {
+      const res = await fetch("/api/workflows/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playbook, workspace: "DK" }),
+      });
+      const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
+      if (!res.ok || !data?.run) throw new Error(String(data?.error || `Could not queue ${label.toLowerCase()}`));
+      toast.success(`${label} queued`, "It will keep running in the background.");
+      router.refresh();
+    } catch (err) {
+      toast.error(`Could not queue ${label.toLowerCase()}`, err instanceof Error ? err.message : "Try again");
     } finally {
       setBusy(null);
     }
@@ -327,6 +348,15 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
           Advance deals
         </div>
         <div className="mt-3 grid gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => queueWorkflowPlaybook("pipeline-rescue", "pipeline-rescue", "Pipeline rescue")}
+            disabled={Boolean(busy)}
+          >
+            {busy === "pipeline-rescue" ? <Loader2 className="h-4 w-4 animate-spin" /> : <BriefcaseBusiness className="h-4 w-4" />}
+            Rescue pipeline
+          </Button>
           <Button type="button" variant="outline" onClick={() => generateAlerts("REMINDERS")} disabled={Boolean(busy)}>
             {busy === "REMINDERS" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
             Check deadlines

@@ -7,7 +7,10 @@ import type { Workspace } from "@/lib/types";
 import { summarizeSourceRuns, type SourceRunSummary } from "./summary";
 import type { WorkflowRunInput } from "./types";
 
-export type WorkflowPlaybook = "daily-sweep";
+export type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue";
+
+const OPEN_DEAL_STATUSES = ["DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION"] as const;
+const DAY = 24 * 60 * 60 * 1000;
 
 export type DailySweepResult = {
   playbook: "daily-sweep";
@@ -20,11 +23,55 @@ export type DailySweepResult = {
   log: string[];
 };
 
+export type PipelineRescueResult = {
+  playbook: "pipeline-rescue";
+  workspace: Workspace;
+  ranAt: string;
+  durationMs: number;
+  staleDeals: {
+    reviewed: number;
+    tasksCreated: number;
+  };
+  deadlines: {
+    reviewed: number;
+    tasksCreated: number;
+  };
+  nextActionsUpdated: number;
+  skippedExistingTasks: number;
+  taskIds: string[];
+  log: string[];
+};
+
+export type WorkflowPlaybookResult = DailySweepResult | PipelineRescueResult;
+
 function workflowLogEntry(message: string) {
   return `${new Date().toISOString()} ${message}`;
 }
 
-export function workflowRunSummary(result: DailySweepResult) {
+function atNine(date: Date) {
+  date.setHours(9, 0, 0, 0);
+  return date;
+}
+
+function tomorrow() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return atNine(date);
+}
+
+function prepDueDate(deadline: Date | null) {
+  const fallback = tomorrow();
+  if (!deadline) return fallback;
+  const beforeDeadline = new Date(deadline);
+  beforeDeadline.setDate(beforeDeadline.getDate() - 1);
+  atNine(beforeDeadline);
+  return beforeDeadline.getTime() > Date.now() ? beforeDeadline : fallback;
+}
+
+export function workflowRunSummary(result: WorkflowPlaybookResult) {
+  if (result.playbook === "pipeline-rescue") {
+    return `${result.staleDeals.tasksCreated} stale follow-up tasks, ${result.deadlines.tasksCreated} deadline prep tasks, ${result.nextActionsUpdated} next actions updated.`;
+  }
   const failed = result.sources.failed ? `, ${result.sources.failed} failed` : "";
   return `${result.sources.ran} sources, ${result.sources.created} new, ${result.sources.updated} updated${failed}; ${result.reminders.created} reminders; ${result.digest.created} digest.`;
 }
@@ -62,7 +109,7 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
       return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
     }
 
-    const result = await runDailySweep(ownerId, input.workspace);
+    const result = await runWorkflowPlaybook(ownerId, input);
     const current = await db.workflowRun.findFirst({ where: { id: runId, ownerId }, select: { status: true } });
     if (current?.status === "CANCELED") {
       return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
@@ -137,4 +184,168 @@ export async function runDailySweep(ownerId: string, workspace: Workspace = "DK"
     digest: alerts.digest ?? { created: 0, emailed: 0, provider: "none" },
     log,
   };
+}
+
+export async function runPipelineRescue(ownerId: string, workspace: Workspace = "DK"): Promise<PipelineRescueResult> {
+  const startedAt = Date.now();
+  const now = new Date();
+  const staleCutoff = new Date(now.getTime() - 14 * DAY);
+  const deadlineHorizon = new Date(now.getTime() + 7 * DAY);
+  const log = [workflowLogEntry(`Started pipeline rescue for ${workspace}.`)];
+
+  const [staleDeals, deadlineDeals] = await Promise.all([
+    db.deal.findMany({
+      where: {
+        ownerId,
+        workspace,
+        status: { in: [...OPEN_DEAL_STATUSES] },
+        updatedAt: { lt: staleCutoff },
+      },
+      orderBy: { updatedAt: "asc" },
+      take: 12,
+      select: { id: true, title: true, accountId: true, nextAction: true },
+    }),
+    db.deal.findMany({
+      where: {
+        ownerId,
+        workspace,
+        status: { in: [...OPEN_DEAL_STATUSES] },
+        deadline: { gte: now, lte: deadlineHorizon },
+      },
+      orderBy: { deadline: "asc" },
+      take: 12,
+      select: { id: true, title: true, accountId: true, deadline: true, nextAction: true },
+    }),
+  ]);
+
+  const targetDealIds = [...new Set([...staleDeals.map((deal) => deal.id), ...deadlineDeals.map((deal) => deal.id)])];
+  const existingTasks = targetDealIds.length
+    ? await db.task.findMany({
+        where: { ownerId, dealId: { in: targetDealIds }, status: "OPEN" },
+        select: { dealId: true, title: true },
+      })
+    : [];
+  const existingTaskKeys = new Set(existingTasks.map((task) => `${task.dealId}:${task.title}`));
+
+  let staleTasksCreated = 0;
+  let deadlineTasksCreated = 0;
+  let skippedExistingTasks = 0;
+  let nextActionsUpdated = 0;
+  const taskIds: string[] = [];
+
+  async function ensureTask({
+    dealId,
+    accountId,
+    title,
+    description,
+    dueAt,
+    priority,
+    nextAction,
+    kind,
+  }: {
+    dealId: string;
+    accountId: string | null;
+    title: string;
+    description: string;
+    dueAt: Date;
+    priority: "HIGH" | "URGENT";
+    nextAction: string;
+    kind: "stale" | "deadline";
+  }) {
+    const taskKey = `${dealId}:${title}`;
+    if (existingTaskKeys.has(taskKey)) {
+      skippedExistingTasks++;
+    } else {
+      const task = await db.task.create({
+        data: {
+          ownerId,
+          dealId,
+          accountId,
+          title,
+          description,
+          dueAt,
+          priority,
+        },
+        select: { id: true },
+      });
+      taskIds.push(task.id);
+      existingTaskKeys.add(taskKey);
+      if (kind === "stale") staleTasksCreated++;
+      if (kind === "deadline") deadlineTasksCreated++;
+    }
+
+    const updated = await db.deal.updateMany({
+      where: { id: dealId, ownerId, OR: [{ nextAction: null }, { nextAction: { not: nextAction } }] },
+      data: { nextAction },
+    });
+    nextActionsUpdated += updated.count;
+  }
+
+  for (const deal of staleDeals) {
+    await ensureTask({
+      dealId: deal.id,
+      accountId: deal.accountId,
+      title: `Follow up: ${deal.title}`,
+      description: "Pipeline rescue created this because the deal has been stale for at least 14 days.",
+      dueAt: tomorrow(),
+      priority: "HIGH",
+      nextAction: "Follow up and confirm buyer, budget, decision process, and next step.",
+      kind: "stale",
+    });
+  }
+
+  for (const deal of deadlineDeals) {
+    await ensureTask({
+      dealId: deal.id,
+      accountId: deal.accountId,
+      title: `Prepare submission: ${deal.title}`,
+      description: "Pipeline rescue created this because the deadline is within 7 days.",
+      dueAt: prepDueDate(deal.deadline),
+      priority: "URGENT",
+      nextAction: "Prepare submission package and confirm route before the deadline.",
+      kind: "deadline",
+    });
+  }
+
+  log.push(
+    workflowLogEntry(
+      `Reviewed ${staleDeals.length} stale deals and ${deadlineDeals.length} deadline deals; created ${staleTasksCreated + deadlineTasksCreated} tasks.`,
+    ),
+  );
+  if (skippedExistingTasks) {
+    log.push(workflowLogEntry(`Skipped ${skippedExistingTasks} tasks that already existed.`));
+  }
+  log.push(workflowLogEntry(`Updated ${nextActionsUpdated} deal next actions.`));
+
+  const durationMs = Date.now() - startedAt;
+  log.push(workflowLogEntry(`Finished pipeline rescue in ${Math.round(durationMs / 1000)}s.`));
+
+  return {
+    playbook: "pipeline-rescue",
+    workspace,
+    ranAt: new Date().toISOString(),
+    durationMs,
+    staleDeals: {
+      reviewed: staleDeals.length,
+      tasksCreated: staleTasksCreated,
+    },
+    deadlines: {
+      reviewed: deadlineDeals.length,
+      tasksCreated: deadlineTasksCreated,
+    },
+    nextActionsUpdated,
+    skippedExistingTasks,
+    taskIds,
+    log,
+  };
+}
+
+export async function runWorkflowPlaybook(ownerId: string, input: WorkflowRunInput): Promise<WorkflowPlaybookResult> {
+  switch (input.playbook) {
+    case "pipeline-rescue":
+      return runPipelineRescue(ownerId, input.workspace);
+    case "daily-sweep":
+    default:
+      return runDailySweep(ownerId, input.workspace);
+  }
 }
