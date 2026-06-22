@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reorderDiscoveryQueueIds } from "./discovery-queue";
+import { filterVisibleDiscoveryQueueSnapshot, reorderDiscoveryQueueIds } from "./discovery-queue";
 
 describe("discovery queue ordering", () => {
   it("moves waiting missions up, down, and to the top without mutating the source order", () => {
@@ -39,6 +39,18 @@ describe("discovery queue ordering", () => {
       ids: ["mission-1", "mission-2"],
       moved: false,
       reason: "not_queued",
+    });
+  });
+
+  it("hides active or queued missions that are no longer live", () => {
+    expect(
+      filterVisibleDiscoveryQueueSnapshot(
+        { activeMissionId: "mission-1", queuedMissionIds: ["mission-2", "mission-3"] },
+        ["mission-2"],
+      ),
+    ).toEqual({
+      activeMissionId: null,
+      queuedMissionIds: ["mission-2"],
     });
   });
 });

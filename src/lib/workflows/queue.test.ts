@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reorderWorkflowQueueIds } from "./queue";
+import { filterVisibleWorkflowQueueSnapshot, reorderWorkflowQueueIds } from "./queue";
 
 describe("workflow queue ordering", () => {
   it("moves waiting runs up, down, and to the top without mutating the source order", () => {
@@ -39,6 +39,18 @@ describe("workflow queue ordering", () => {
       ids: ["run-1", "run-2"],
       moved: false,
       reason: "not_queued",
+    });
+  });
+
+  it("hides active or queued runs that are no longer live", () => {
+    expect(
+      filterVisibleWorkflowQueueSnapshot(
+        { activeRunId: "run-1", queuedRunIds: ["run-2", "run-3"] },
+        ["run-2"],
+      ),
+    ).toEqual({
+      activeRunId: null,
+      queuedRunIds: ["run-2"],
     });
   });
 });

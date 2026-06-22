@@ -115,6 +115,32 @@ export function workflowQueueSnapshot(ownerId?: string) {
   };
 }
 
+export function filterVisibleWorkflowQueueSnapshot(
+  snapshot: ReturnType<typeof workflowQueueSnapshot>,
+  liveRunIds: Iterable<string>,
+) {
+  const live = new Set(liveRunIds);
+  return {
+    activeRunId: snapshot.activeRunId && live.has(snapshot.activeRunId) ? snapshot.activeRunId : null,
+    queuedRunIds: snapshot.queuedRunIds.filter((id) => live.has(id)),
+  };
+}
+
+export async function visibleWorkflowQueueSnapshotForOwner(ownerId: string) {
+  const liveRuns = await db.workflowRun.findMany({
+    where: {
+      ownerId,
+      status: { in: ["QUEUED", "RUNNING"] },
+      finishedAt: null,
+    },
+    select: { id: true },
+  });
+  return filterVisibleWorkflowQueueSnapshot(
+    workflowQueueSnapshot(ownerId),
+    liveRuns.map((run) => run.id),
+  );
+}
+
 export async function recoverWorkflowQueue(ownerId: string) {
   const runs = await db.workflowRun.findMany({
     where: {
@@ -156,5 +182,5 @@ export async function recoverWorkflowQueue(ownerId: string) {
     enqueueWorkflowRun(ownerId, run.id, parsed.data);
   }
 
-  return workflowQueueSnapshot(ownerId);
+  return visibleWorkflowQueueSnapshotForOwner(ownerId);
 }

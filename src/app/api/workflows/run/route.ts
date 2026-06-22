@@ -13,6 +13,7 @@ import {
   recoverWorkflowQueue,
   removeQueuedWorkflowRun,
   reorderQueuedWorkflowRun,
+  visibleWorkflowQueueSnapshotForOwner,
   workflowQueueSnapshot,
   type WorkflowQueueMoveAction,
 } from "@/lib/workflows/queue";
@@ -127,7 +128,7 @@ export async function PATCH(req: Request) {
       });
       return NextResponse.json({
         runs: runs.map(workflowRunPayload),
-        queue: workflowQueueSnapshot(ownerId),
+        queue: await visibleWorkflowQueueSnapshotForOwner(ownerId),
         canceled: liveRuns.length,
       });
     }
@@ -177,7 +178,7 @@ export async function PATCH(req: Request) {
           },
         },
       });
-      return NextResponse.json({ run: workflowRunPayload(run), queue: workflowQueueSnapshot(ownerId) });
+      return NextResponse.json({ run: workflowRunPayload(run), queue: await visibleWorkflowQueueSnapshotForOwner(ownerId) });
     }
 
     const input = workflowRunInputSchema.safeParse(source.input ?? {

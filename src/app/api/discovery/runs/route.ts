@@ -13,6 +13,7 @@ import {
   recoverDiscoveryQueue,
   removeQueuedDiscoveryMission,
   reorderQueuedDiscoveryMission,
+  visibleDiscoveryQueueSnapshotForOwner,
   type DiscoveryQueueMoveAction,
 } from "@/lib/crm/discovery-queue";
 import { discoveryRunCreateSchema } from "@/lib/validators";
@@ -105,7 +106,7 @@ export async function PATCH(req: Request) {
       });
       return NextResponse.json({
         missions,
-        queue: discoveryQueueSnapshot(ownerId),
+        queue: await visibleDiscoveryQueueSnapshotForOwner(ownerId),
         canceled: liveMissions.length,
       });
     }
@@ -161,7 +162,7 @@ export async function PATCH(req: Request) {
           },
         },
       });
-      return NextResponse.json({ mission, queue: discoveryQueueSnapshot(ownerId) });
+      return NextResponse.json({ mission, queue: await visibleDiscoveryQueueSnapshotForOwner(ownerId) });
     }
 
     const input = discoveryRunCreateSchema.safeParse(source.input ?? {

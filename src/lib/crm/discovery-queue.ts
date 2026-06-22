@@ -102,6 +102,32 @@ export function discoveryQueueSnapshot(ownerId?: string) {
   };
 }
 
+export function filterVisibleDiscoveryQueueSnapshot(
+  snapshot: ReturnType<typeof discoveryQueueSnapshot>,
+  liveMissionIds: Iterable<string>,
+) {
+  const live = new Set(liveMissionIds);
+  return {
+    activeMissionId: snapshot.activeMissionId && live.has(snapshot.activeMissionId) ? snapshot.activeMissionId : null,
+    queuedMissionIds: snapshot.queuedMissionIds.filter((id) => live.has(id)),
+  };
+}
+
+export async function visibleDiscoveryQueueSnapshotForOwner(ownerId: string) {
+  const liveMissions = await db.discoveryMission.findMany({
+    where: {
+      ownerId,
+      status: { in: ["QUEUED", "RUNNING"] },
+      finishedAt: null,
+    },
+    select: { id: true },
+  });
+  return filterVisibleDiscoveryQueueSnapshot(
+    discoveryQueueSnapshot(ownerId),
+    liveMissions.map((mission) => mission.id),
+  );
+}
+
 export async function recoverDiscoveryQueue(ownerId: string) {
   const missions = await db.discoveryMission.findMany({
     where: {
@@ -144,5 +170,5 @@ export async function recoverDiscoveryQueue(ownerId: string) {
     enqueueDiscoveryMission(ownerId, mission.id, parsed.data);
   }
 
-  return discoveryQueueSnapshot(ownerId);
+  return visibleDiscoveryQueueSnapshotForOwner(ownerId);
 }
