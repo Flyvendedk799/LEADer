@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Bell,
+  BookmarkPlus,
   BriefcaseBusiness,
   CalendarClock,
   ClipboardPaste,
@@ -25,6 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { discoveryMissionHref } from "@/lib/discovery-links";
+import { operatingDayPresetPayload } from "@/lib/workflows/usecase-actions";
 
 type SearchMode = "focused" | "balanced" | "wide";
 type AlertAction = "REMINDERS" | "DIGEST";
@@ -54,6 +56,14 @@ type WorkflowRunResponse = {
     status: string;
     log: string[];
     result?: DailySweepResult | null;
+  };
+  error?: unknown;
+};
+
+type WorkflowPresetResponse = {
+  preset?: {
+    id: string;
+    name: string;
   };
   error?: unknown;
 };
@@ -372,6 +382,25 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
     }
   }
 
+  async function saveOperatingDayMode() {
+    setBusy("save-operating-day");
+    try {
+      const res = await fetch("/api/workflows/presets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(operatingDayPresetPayload(currentOperatingDayOptions)),
+      });
+      const data = (await res.json().catch(() => null)) as WorkflowPresetResponse | null;
+      if (!res.ok || !data?.preset) throw new Error(String(data?.error || "Could not save operating mode"));
+      toast.success("Operating mode saved", data.preset.name);
+      router.refresh();
+    } catch (err) {
+      toast.error("Could not save operating mode", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   React.useEffect(() => {
     if (!sweepRun?.id || !["QUEUED", "RUNNING"].includes(sweepRun.status)) return;
     let stopped = false;
@@ -434,15 +463,27 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
               <Sparkles className="h-4 w-4 text-primary" />
               Operating day
             </div>
-            <Button
-              type="button"
-              onClick={() => queueWorkflowPlaybook("operating-day", "operating-day", "Operating day", operatingDayOptions())}
-              disabled={Boolean(busy) || (!daySweep && !dayHarvest && !dayRescue)}
-              className="w-full sm:w-auto"
-            >
-              {busy === "operating-day" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Run day
-            </Button>
+            <div className="grid gap-2 sm:flex sm:items-center sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={saveOperatingDayMode}
+                disabled={Boolean(busy) || (!daySweep && !dayHarvest && !dayRescue)}
+                className="w-full sm:w-auto"
+              >
+                {busy === "save-operating-day" ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookmarkPlus className="h-4 w-4" />}
+                Save mode
+              </Button>
+              <Button
+                type="button"
+                onClick={() => queueWorkflowPlaybook("operating-day", "operating-day", "Operating day", operatingDayOptions())}
+                disabled={Boolean(busy) || (!daySweep && !dayHarvest && !dayRescue)}
+                className="w-full sm:w-auto"
+              >
+                {busy === "operating-day" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Run day
+              </Button>
+            </div>
           </div>
           <div className="grid gap-3 md:grid-cols-5">
             <SwitchControl id="day-sweep" label="Sweep" checked={daySweep} onCheckedChange={setDaySweep} />
