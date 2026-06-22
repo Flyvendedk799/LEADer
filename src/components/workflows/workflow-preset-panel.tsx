@@ -49,6 +49,8 @@ import { cn, formatDate } from "@/lib/utils";
 import {
   workflowPresetScheduleControlLabel,
   workflowPresetScheduleControlPayload,
+  workflowPresetBulkScheduleLabel,
+  type WorkflowPresetBulkScheduleAction,
   type WorkflowPresetScheduleControlAction,
 } from "@/lib/workflows/schedule-controls";
 
@@ -386,6 +388,25 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
     }
   }
 
+  async function controlSchedules(action: WorkflowPresetBulkScheduleAction) {
+    setBusyId(`bulk-schedule-${action}`);
+    try {
+      const res = await fetch("/api/workflows/presets/schedule-controls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(String(data?.error || "Could not update schedules"));
+      toast.success(workflowPresetBulkScheduleLabel(action), `${data?.count ?? 0} presets updated`);
+      router.refresh();
+    } catch (err) {
+      toast.error("Could not update schedules", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const saveDisabled =
     saving ||
     form.name.trim().length < 2 ||
@@ -393,11 +414,61 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
   const showDaily = form.playbook === "daily-sweep" || form.playbook === "operating-day";
   const showHarvest = form.playbook === "candidate-harvest" || form.playbook === "operating-day";
   const showRescue = form.playbook === "pipeline-rescue" || form.playbook === "operating-day";
+  const bulkScheduleBusy = busyId?.startsWith("bulk-schedule-");
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end">
-        <Button type="button" variant="outline" size="sm" onClick={openCreate}>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={Boolean(busyId)}
+          onClick={() => controlSchedules("PAUSE_ALL")}
+        >
+          {busyId === "bulk-schedule-PAUSE_ALL" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PauseCircle className="h-4 w-4" />}
+          Pause all
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={Boolean(busyId)}
+          onClick={() => controlSchedules("RESUME_PINNED")}
+        >
+          {busyId === "bulk-schedule-RESUME_PINNED" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+          Resume pinned
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              disabled={Boolean(busyId)}
+              aria-label="Bulk schedule controls"
+              title="Bulk schedule controls"
+            >
+              {bulkScheduleBusy && !["bulk-schedule-PAUSE_ALL", "bulk-schedule-RESUME_PINNED"].includes(busyId ?? "") ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MoreHorizontal className="h-4 w-4" />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => controlSchedules("SNOOZE_ALL_1H")}>
+              <Clock3 className="h-4 w-4" />
+              {workflowPresetBulkScheduleLabel("SNOOZE_ALL_1H")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => controlSchedules("SNOOZE_ALL_24H")}>
+              <Clock3 className="h-4 w-4" />
+              {workflowPresetBulkScheduleLabel("SNOOZE_ALL_24H")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button type="button" variant="outline" size="sm" disabled={Boolean(busyId)} onClick={openCreate}>
           <Plus className="h-4 w-4" />
           New preset
         </Button>
