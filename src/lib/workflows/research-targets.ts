@@ -11,6 +11,18 @@ export type ContactResearchTargetStats = {
   latestDealTitle?: string | null;
 };
 
+export type ResearchBriefIdentity = {
+  accountId?: string | null;
+  personId?: string | null;
+  dealId?: string | null;
+};
+
+export type ResearchBriefRunLike = {
+  id: string;
+  status: string;
+  input?: unknown;
+};
+
 function hasValue(value?: string | null) {
   return Boolean(value?.trim());
 }
@@ -40,4 +52,39 @@ export function contactResearchReason(stats: ContactResearchTargetStats) {
       : "Open account has no people attached yet.";
   }
   return `${stats.peopleCount} ${stats.peopleCount === 1 ? "person" : "people"} saved, but none has email, phone, or LinkedIn.`;
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIdentity {
+  const root = objectValue(input);
+  const options = objectValue(root?.options);
+  const brief = objectValue(options?.researchBrief);
+  return {
+    accountId: stringValue(brief?.accountId),
+    personId: stringValue(brief?.personId),
+    dealId: stringValue(brief?.dealId),
+  };
+}
+
+export function researchBriefMatchesIdentity(run: ResearchBriefRunLike, identity: ResearchBriefIdentity) {
+  const runIdentity = researchBriefIdentityFromInput(run.input);
+  if (identity.dealId && runIdentity.dealId === identity.dealId) return true;
+  if (identity.personId && runIdentity.personId === identity.personId) return true;
+  if (identity.accountId && runIdentity.accountId === identity.accountId) return true;
+  return false;
+}
+
+export function findActiveResearchBriefRun<T extends ResearchBriefRunLike>(
+  runs: T[],
+  identity: ResearchBriefIdentity,
+): T | null {
+  if (!identity.accountId && !identity.personId && !identity.dealId) return null;
+  return runs.find((run) => researchBriefMatchesIdentity(run, identity)) ?? null;
 }

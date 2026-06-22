@@ -47,7 +47,7 @@ import { ensureDefaultWorkflowPresets, presetToWorkflowInput, workflowPresetOpti
 import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
 import { previewWorkflowRun } from "@/lib/workflows/preview";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
-import { contactResearchReason, countReachablePeople, needsContactResearch } from "@/lib/workflows/research-targets";
+import { contactResearchReason, countReachablePeople, findActiveResearchBriefRun, needsContactResearch } from "@/lib/workflows/research-targets";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 
 export const dynamic = "force-dynamic";
@@ -92,6 +92,7 @@ export default async function WorkflowsPage() {
     workflowPresetEvents,
     hotCandidatesRaw,
     contactGapAccounts,
+    activeResearchBriefRuns,
     overdueTasks,
     dueTasks,
     staleDeals,
@@ -174,6 +175,17 @@ export default async function WorkflowsPage() {
       },
       orderBy: { updatedAt: "desc" },
       take: 24,
+    }),
+    db.workflowRun.findMany({
+      where: {
+        ownerId,
+        playbook: "research-brief",
+        status: { in: [...ACTIVE_WORKFLOW_RUN_STATUSES] },
+        finishedAt: null,
+      },
+      orderBy: [{ queuePriority: "desc" }, { createdAt: "asc" }],
+      select: { id: true, status: true, input: true },
+      take: 50,
     }),
     db.task.findMany({
       where: { ownerId, status: "OPEN", dueAt: { lt: now } },
@@ -275,6 +287,10 @@ export default async function WorkflowsPage() {
         openDealCount,
         latestDealTitle: latestDeal?.title ?? null,
       };
+      const activeRun = findActiveResearchBriefRun(activeResearchBriefRuns, {
+        accountId: account.id,
+        dealId: latestDeal?.id ?? null,
+      });
       return [{
         id: account.id,
         accountId: account.id,
@@ -287,6 +303,8 @@ export default async function WorkflowsPage() {
         latestDealId: latestDeal?.id ?? null,
         latestDealTitle: latestDeal?.title ?? null,
         reason: contactResearchReason(stats),
+        activeRunId: activeRun?.id ?? null,
+        activeRunStatus: activeRun?.status ?? null,
       }];
     })
     .slice(0, 6);

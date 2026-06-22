@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   contactResearchReason,
   countReachablePeople,
+  findActiveResearchBriefRun,
   needsContactResearch,
   personHasContactRoute,
+  researchBriefIdentityFromInput,
 } from "./research-targets";
 
 describe("workflow research targets", () => {
@@ -38,5 +40,40 @@ describe("workflow research targets", () => {
         openDealCount: 1,
       }),
     ).toContain("none has email");
+  });
+
+  it("extracts linked research brief identity from workflow input", () => {
+    expect(
+      researchBriefIdentityFromInput({
+        playbook: "research-brief",
+        options: {
+          researchBrief: {
+            subject: "Acme",
+            accountId: "account-1",
+            dealId: "deal-1",
+          },
+        },
+      }),
+    ).toEqual({ accountId: "account-1", personId: null, dealId: "deal-1" });
+  });
+
+  it("finds active linked research briefs by deal, person, or account", () => {
+    const runs = [
+      {
+        id: "run-account",
+        status: "QUEUED",
+        input: { options: { researchBrief: { accountId: "account-1" } } },
+      },
+      {
+        id: "run-deal",
+        status: "RUNNING",
+        input: { options: { researchBrief: { accountId: "account-2", dealId: "deal-2" } } },
+      },
+    ];
+
+    expect(findActiveResearchBriefRun(runs, { accountId: "account-1" })?.id).toBe("run-account");
+    expect(findActiveResearchBriefRun(runs, { accountId: "account-2", dealId: "deal-2" })?.id).toBe("run-deal");
+    expect(findActiveResearchBriefRun(runs, { accountId: "missing" })).toBeNull();
+    expect(findActiveResearchBriefRun(runs, {})).toBeNull();
   });
 });

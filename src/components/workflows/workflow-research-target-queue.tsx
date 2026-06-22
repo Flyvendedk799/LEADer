@@ -23,6 +23,8 @@ export type WorkflowResearchTargetItem = {
   latestDealId: string | null;
   latestDealTitle: string | null;
   reason: string;
+  activeRunId: string | null;
+  activeRunStatus: string | null;
 };
 
 type WorkflowRunResponse = {
@@ -30,6 +32,7 @@ type WorkflowRunResponse = {
     id: string;
     status: string;
   };
+  existing?: boolean;
   error?: unknown;
 };
 
@@ -63,7 +66,10 @@ export function WorkflowResearchTargetQueue({
       const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
       if (!res.ok || !data?.run) throw new Error(String(data?.error || "Could not queue research brief"));
       setQueuedRuns((current) => ({ ...current, [target.id]: data.run!.id }));
-      toast.success("Research brief queued", `${target.name} will run in the workflow queue.`);
+      toast.success(
+        data.existing ? "Research brief already active" : "Research brief queued",
+        data.existing ? `${target.name} already has an active workflow run.` : `${target.name} will run in the workflow queue.`,
+      );
     } catch (err) {
       toast.error("Could not queue research brief", err instanceof Error ? err.message : "Try again");
     } finally {
@@ -79,7 +85,7 @@ export function WorkflowResearchTargetQueue({
     <div className="space-y-2">
       {targets.map((target) => {
         const busy = busyId === target.id;
-        const queuedRunId = queuedRuns[target.id];
+        const queuedRunId = queuedRuns[target.id] ?? target.activeRunId;
         return (
           <div key={target.id} className="rounded-md border border-border bg-surface/40 p-3">
             <div className="flex items-start justify-between gap-3">
@@ -93,7 +99,10 @@ export function WorkflowResearchTargetQueue({
                 </p>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{target.reason}</p>
               </Link>
-              <Badge variant={target.workspace === "DK" ? "secondary" : "outline"}>{target.workspace === "DK" ? "DK" : "Global"}</Badge>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <Badge variant={target.workspace === "DK" ? "secondary" : "outline"}>{target.workspace === "DK" ? "DK" : "Global"}</Badge>
+                {target.activeRunStatus ? <Badge variant="outline">{target.activeRunStatus.toLowerCase()}</Badge> : null}
+              </div>
             </div>
 
             {target.latestDealTitle ? (
