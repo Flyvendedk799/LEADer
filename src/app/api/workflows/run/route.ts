@@ -16,6 +16,12 @@ import {
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 import { workflowRunInputSchema } from "@/lib/workflows/types";
 
+type WorkflowRunPayload = WorkflowRun & {
+  preset?: {
+    name: string;
+  } | null;
+};
+
 const workflowRunActionSchema = z.object({
   id: z.string().min(1),
   action: z.enum(["CANCEL", "RERUN"]),
@@ -25,10 +31,11 @@ function workflowLogEntry(message: string) {
   return `${new Date().toISOString()} ${message}`;
 }
 
-function workflowRunPayload(run: WorkflowRun | null) {
+function workflowRunPayload(run: WorkflowRunPayload | null) {
   if (!run) return null;
   return {
     ...run,
+    presetName: run.preset?.name ?? null,
     summary: workflowRunResultSummary(run.playbook, run.result),
   };
 }
@@ -39,6 +46,7 @@ export async function GET() {
     const queue = await recoverWorkflowQueue(ownerId);
     const runs = await db.workflowRun.findMany({
       where: { ownerId },
+      include: { preset: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
       take: 20,
     });
@@ -86,6 +94,7 @@ export async function PATCH(req: Request) {
       const active = isActiveWorkflowRun(ownerId, source.id);
       const run = await db.workflowRun.update({
         where: { id: source.id },
+        include: { preset: { select: { name: true } } },
         data: {
           status: "CANCELED",
           finishedAt: new Date(),
@@ -109,13 +118,23 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Workflow run input is missing or invalid" }, { status: 400 });
     }
 
-    const run = await createWorkflowRun(ownerId, input.data, "QUEUED");
+    const preset = source.presetId
+      ? await db.workflowPreset.findFirst({ where: { id: source.presetId, ownerId }, select: { name: true } })
+      : null;
+    const run = await createWorkflowRun(ownerId, input.data, "QUEUED", {
+      trigger: "rerun",
+      presetId: source.presetId,
+      presetName: preset?.name ?? null,
+    });
     await db.workflowRun.update({
       where: { id: run.id },
       data: { log: { push: workflowLogEntry(`Rerun requested from ${source.id}.`) } },
     });
     enqueueWorkflowRun(ownerId, run.id, input.data);
-    const queued = await db.workflowRun.findUnique({ where: { id: run.id } });
+    const queued = await db.workflowRun.findUnique({
+      where: { id: run.id },
+      include: { preset: { select: { name: true } } },
+    });
     return NextResponse.json(
       { run: workflowRunPayload(queued ?? run), queued: true, queue: workflowQueueSnapshot(ownerId) },
       { status: 202 },

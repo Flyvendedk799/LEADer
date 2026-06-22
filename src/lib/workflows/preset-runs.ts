@@ -11,9 +11,10 @@ type QueuePresetOptions = {
   now?: Date;
 };
 
-function workflowRunPayload(run: Awaited<ReturnType<typeof createWorkflowRun>>) {
+function workflowRunPayload(run: Awaited<ReturnType<typeof createWorkflowRun>>, presetName?: string | null) {
   return {
     ...run,
+    presetName: presetName ?? null,
     summary: workflowRunResultSummary(run.playbook, run.result),
   };
 }
@@ -22,7 +23,7 @@ export async function queueWorkflowPresetRun(
   ownerId: string,
   preset: Pick<
     WorkflowPreset,
-    "id" | "ownerId" | "playbook" | "workspace" | "options" | "scheduleIntervalHours"
+    "id" | "ownerId" | "name" | "playbook" | "workspace" | "options" | "scheduleIntervalHours"
   >,
   options: QueuePresetOptions = {},
 ) {
@@ -30,7 +31,11 @@ export async function queueWorkflowPresetRun(
 
   const now = options.now ?? new Date();
   const input = presetToWorkflowInput(preset);
-  const run = await createWorkflowRun(ownerId, input, "QUEUED");
+  const run = await createWorkflowRun(ownerId, input, "QUEUED", {
+    trigger: options.scheduled ? "schedule" : "preset",
+    presetId: preset.id,
+    presetName: preset.name,
+  });
   await db.workflowPreset.update({
     where: { id: preset.id },
     data: {
@@ -42,7 +47,7 @@ export async function queueWorkflowPresetRun(
   enqueueWorkflowRun(ownerId, run.id, input);
 
   return {
-    run: workflowRunPayload(run),
+    run: workflowRunPayload(run, preset.name),
     queued: true,
     queue: workflowQueueSnapshot(ownerId),
   };

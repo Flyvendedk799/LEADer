@@ -53,6 +53,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
 
   const run = await db.workflowRun.findFirst({
     where: { id: params.id, ownerId },
+    include: { preset: { select: { name: true } } },
   });
   if (!run) notFound();
 
@@ -116,6 +117,9 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           finishedAt: run.finishedAt?.toISOString() ?? null,
           log: run.log,
           summary: workflowRunResultSummary(run.playbook, run.result),
+          trigger: run.trigger,
+          presetId: run.presetId,
+          presetName: run.preset?.name ?? null,
         }}
         queue={queue}
       />
@@ -184,6 +188,8 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           <CardContent className="space-y-2 text-sm">
             <KeyValue label="Playbook" value={run.playbook} />
             <KeyValue label="Workspace" value={String(input?.workspace ?? run.workspace)} />
+            <KeyValue label="Trigger" value={run.trigger} />
+            <KeyValue label="Preset" value={run.preset?.name ?? "None"} />
             <KeyValue label="Options" value={compactJson(input?.options)} />
             <KeyValue label="Created" value={formatDate(run.createdAt)} />
             <KeyValue label="Updated" value={formatDate(run.updatedAt)} />

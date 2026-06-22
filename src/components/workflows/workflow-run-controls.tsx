@@ -18,6 +18,9 @@ type WorkflowRunControlItem = {
   finishedAt: string | null;
   log: string[];
   summary: string | null;
+  trigger: string;
+  presetId: string | null;
+  presetName: string | null;
 };
 
 type WorkflowQueueSnapshot = {
@@ -52,6 +55,9 @@ function normalizeRun(run: Partial<WorkflowRunControlItem> & { id: string }): Wo
     finishedAt: run.finishedAt ? new Date(run.finishedAt).toISOString() : null,
     log: Array.isArray(run.log) ? run.log.map(String) : [],
     summary: typeof run.summary === "string" ? run.summary : null,
+    trigger: typeof run.trigger === "string" ? run.trigger : "manual",
+    presetId: typeof run.presetId === "string" ? run.presetId : null,
+    presetName: typeof run.presetName === "string" ? run.presetName : null,
   };
 }
 
@@ -76,6 +82,13 @@ function playbookLabel(playbook: string) {
     .split("-")
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ");
+}
+
+function triggerLabel(run: WorkflowRunControlItem) {
+  if (run.trigger === "schedule") return run.presetName ? `schedule: ${run.presetName}` : "schedule";
+  if (run.trigger === "preset") return run.presetName ? `preset: ${run.presetName}` : "preset";
+  if (run.trigger === "rerun") return run.presetName ? `rerun: ${run.presetName}` : "rerun";
+  return "manual";
 }
 
 export function WorkflowRunControls({
@@ -181,6 +194,7 @@ export function WorkflowRunControls({
             <p className="truncate text-sm font-medium">{playbookLabel(item.playbook)}</p>
             <Badge variant={statusVariant(item.status)}>{item.status.toLowerCase()}</Badge>
             <Badge variant="outline">{item.workspace}</Badge>
+            <Badge variant={item.trigger === "manual" ? "outline" : "secondary"}>{triggerLabel(item)}</Badge>
             {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
             {live ? <Badge variant="secondary">live</Badge> : null}
           </div>

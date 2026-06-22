@@ -718,6 +718,9 @@ model WorkflowRun {
   id         String    @id @default(cuid())
   ownerId    String
   owner      User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  presetId   String?
+  preset     WorkflowPreset? @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  trigger    String    @default("manual")
   playbook   String
   workspace  Workspace @default(DK)
   status     String    @default("QUEUED")
@@ -731,6 +734,8 @@ model WorkflowRun {
 
   @@index([ownerId, createdAt])
   @@index([ownerId, status])
+  @@index([ownerId, trigger])
+  @@index([presetId])
 }
 
 model WorkflowPreset {
@@ -750,6 +755,8 @@ model WorkflowPreset {
   lastQueuedAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  workflowRuns WorkflowRun[]
 
   @@unique([ownerId, name])
   @@index([ownerId, pinned])

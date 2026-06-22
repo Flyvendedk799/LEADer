@@ -80,6 +80,13 @@ export type OperatingDayResult = {
 
 export type WorkflowPlaybookResult = DailySweepResult | PipelineRescueResult | CandidateHarvestResult | OperatingDayResult;
 type WorkflowLogSink = (entry: string) => void | Promise<void>;
+export type WorkflowRunTrigger = "manual" | "preset" | "schedule" | "rerun";
+
+type WorkflowRunMetadata = {
+  trigger?: WorkflowRunTrigger;
+  presetId?: string | null;
+  presetName?: string | null;
+};
 
 function workflowLogEntry(message: string) {
   return `${new Date().toISOString()} ${message}`;
@@ -121,19 +128,35 @@ export function workflowRunSummary(result: WorkflowPlaybookResult) {
   return `${result.sources.ran} sources, ${result.sources.created} new, ${result.sources.updated} updated${failed}; ${result.reminders.created} reminders; ${result.digest.created} digest.`;
 }
 
-export async function createWorkflowRun(ownerId: string, input: WorkflowRunInput, status = "QUEUED") {
+export function workflowRunStartMessage(input: WorkflowRunInput, status: string, metadata: WorkflowRunMetadata) {
+  const verb = status === "RUNNING" ? "Started" : "Queued";
+  const origin =
+    metadata.trigger === "schedule"
+      ? ` from scheduled preset${metadata.presetName ? ` "${metadata.presetName}"` : ""}`
+      : metadata.trigger === "preset"
+        ? ` from preset${metadata.presetName ? ` "${metadata.presetName}"` : ""}`
+        : metadata.trigger === "rerun"
+          ? " as rerun"
+          : "";
+  return `${verb} ${input.playbook} playbook for ${input.workspace}${origin}.`;
+}
+
+export async function createWorkflowRun(
+  ownerId: string,
+  input: WorkflowRunInput,
+  status = "QUEUED",
+  metadata: WorkflowRunMetadata = {},
+) {
   return db.workflowRun.create({
     data: {
       ownerId,
+      presetId: metadata.presetId ?? null,
+      trigger: metadata.trigger ?? "manual",
       playbook: input.playbook,
       workspace: input.workspace,
       status,
       input: JSON.parse(JSON.stringify(input)) as Prisma.InputJsonValue,
-      log: [
-        workflowLogEntry(
-          `${status === "RUNNING" ? "Started" : "Queued"} ${input.playbook} playbook for ${input.workspace}.`,
-        ),
-      ],
+      log: [workflowLogEntry(workflowRunStartMessage(input, status, metadata))],
       startedAt: status === "RUNNING" ? new Date() : null,
     },
   });

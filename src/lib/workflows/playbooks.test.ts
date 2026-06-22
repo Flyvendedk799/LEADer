@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  workflowRunStartMessage,
   workflowRunSummary,
   type CandidateHarvestResult,
   type DailySweepResult,
@@ -9,6 +10,16 @@ import {
 } from "./playbooks";
 
 describe("workflowRunSummary", () => {
+  it("describes run provenance in start messages", () => {
+    expect(
+      workflowRunStartMessage(
+        { playbook: "daily-sweep", workspace: "DK", options: { dailySweep: { includeSources: false } } },
+        "QUEUED",
+        { trigger: "schedule", presetName: "Morning sweep", presetId: "preset-1" },
+      ),
+    ).toBe('Queued daily-sweep playbook for DK from scheduled preset "Morning sweep".');
+  });
+
   it("summarizes pipeline rescue results", () => {
     const result: PipelineRescueResult = {
       playbook: "pipeline-rescue",

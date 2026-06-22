@@ -126,6 +126,7 @@ export default async function WorkflowsPage() {
     }),
     db.workflowRun.findMany({
       where: { ownerId },
+      include: { preset: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
       take: 8,
     }),
@@ -299,6 +300,9 @@ export default async function WorkflowsPage() {
       finishedAt: run.finishedAt?.toISOString() ?? null,
       log: run.log,
       summary: workflowRunResultSummary(run.playbook, run.result),
+      trigger: run.trigger,
+      presetId: run.presetId,
+      presetName: run.preset?.name ?? null,
     };
   });
   const workflowPresetItems: WorkflowPresetPanelItem[] = await Promise.all(
@@ -414,9 +418,11 @@ export default async function WorkflowsPage() {
       id: `workflow-run-${run.id}`,
       kind: "workflow" as const,
       title: `${run.playbook.replace(/-/g, " ")} playbook`,
-      description: run.log.at(-1) ?? null,
+      description: run.preset?.name
+        ? `${run.trigger}: ${run.preset.name}`
+        : run.log.at(-1) ?? null,
       status: run.status,
-      href: "/workflows",
+      href: `/workflows/runs/${run.id}`,
       createdAt: (run.finishedAt ?? run.startedAt ?? run.createdAt).toISOString(),
     })),
     ...missions.map((mission) => ({

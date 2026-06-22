@@ -20,6 +20,9 @@ export type WorkflowRunQueueItem = {
   finishedAt: string | null;
   log: string[];
   summary: string | null;
+  trigger: string;
+  presetId: string | null;
+  presetName: string | null;
 };
 
 type WorkflowQueueSnapshot = {
@@ -73,7 +76,17 @@ function apiRunToItem(run: Partial<WorkflowRunQueueItem> & { id: string; playboo
     finishedAt: run.finishedAt ? new Date(run.finishedAt).toISOString() : null,
     log: Array.isArray(run.log) ? run.log.map(String) : [],
     summary: typeof run.summary === "string" ? run.summary : null,
+    trigger: typeof run.trigger === "string" ? run.trigger : "manual",
+    presetId: typeof run.presetId === "string" ? run.presetId : null,
+    presetName: typeof run.presetName === "string" ? run.presetName : null,
   };
+}
+
+function triggerLabel(run: WorkflowRunQueueItem) {
+  if (run.trigger === "schedule") return run.presetName ? `schedule: ${run.presetName}` : "schedule";
+  if (run.trigger === "preset") return run.presetName ? `preset: ${run.presetName}` : "preset";
+  if (run.trigger === "rerun") return run.presetName ? `rerun: ${run.presetName}` : "rerun";
+  return "manual";
 }
 
 export function WorkflowRunQueue({
@@ -198,6 +211,7 @@ export function WorkflowRunQueue({
                 <p className="truncate text-sm font-medium">{playbookLabel(run.playbook)}</p>
                 <Badge variant={statusVariant(run.status)}>{run.status.toLowerCase()}</Badge>
                 <Badge variant="outline">{run.workspace}</Badge>
+                <Badge variant={run.trigger === "manual" ? "outline" : "secondary"}>{triggerLabel(run)}</Badge>
                 {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
               </div>
               {latestLog ? (
