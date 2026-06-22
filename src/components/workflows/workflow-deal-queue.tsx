@@ -18,7 +18,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { formatDate, relativeDeadline } from "@/lib/utils";
-import type { DealStatus, TaskPriority } from "@/lib/types";
+import type { DealStatus } from "@/lib/types";
 
 export type WorkflowDealItem = {
   id: string;
@@ -31,25 +31,12 @@ export type WorkflowDealItem = {
 };
 
 const QUICK_STATUSES: DealStatus[] = ["CONTACTED", "PROPOSAL", "NEGOTIATION", "WON", "LOST", "ARCHIVED"];
+type DealWorkflowAction = "revive" | "prep";
 
-function atNine(date: Date) {
-  date.setHours(9, 0, 0, 0);
-  return date;
-}
-
-function tomorrowIso() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  return atNine(date).toISOString();
-}
-
-function prepDueIso(deadline: string | null) {
-  const tomorrow = new Date(tomorrowIso());
-  if (!deadline) return tomorrow.toISOString();
-  const beforeDeadline = new Date(deadline);
-  beforeDeadline.setDate(beforeDeadline.getDate() - 1);
-  atNine(beforeDeadline);
-  return beforeDeadline.getTime() > Date.now() ? beforeDeadline.toISOString() : tomorrow.toISOString();
+function nextActionFor(action: DealWorkflowAction) {
+  return action === "revive"
+    ? "Follow up and confirm buyer, budget, decision process, and next step."
+    : "Prepare submission package and confirm route before the deadline.";
 }
 
 export function WorkflowDealQueue({
@@ -95,31 +82,30 @@ export function WorkflowDealQueue({
     }
   }
 
-  async function createTask(deal: WorkflowDealItem, title: string, dueAt: string, priority: TaskPriority, nextAction: string) {
+  async function runWorkflowAction(targetDeals: WorkflowDealItem[], action: DealWorkflowAction) {
     const previous = items;
-    setBusyId(deal.id);
-    if (mode === "stale") {
-      setItems((current) => current.filter((item) => item.id !== deal.id));
-    }
+    const targetIds = new Set(targetDeals.map((deal) => deal.id));
+    const bulk = targetDeals.length > 1;
+    setBusyId(bulk ? `bulk:${action}` : targetDeals[0]?.id ?? `bulk:${action}`);
+    setItems((current) =>
+      action === "revive"
+        ? current.filter((item) => !targetIds.has(item.id))
+        : current.map((item) => (targetIds.has(item.id) ? { ...item, nextAction: nextActionFor(action) } : item)),
+    );
 
     try {
-      const taskRes = await fetch("/api/tasks", {
+      const res = await fetch("/api/deals/workflow-actions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dealId: deal.id, title, dueAt, priority }),
+        body: JSON.stringify({ ids: targetDeals.map((deal) => deal.id), action }),
       });
-      const taskData = await taskRes.json().catch(() => null);
-      if (!taskRes.ok) throw new Error(taskData?.error || "Task creation failed");
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Workflow action failed");
 
-      const dealRes = await fetch(`/api/deals/${deal.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nextAction }),
-      });
-      const dealData = await dealRes.json().catch(() => null);
-      if (!dealRes.ok) throw new Error(dealData?.error || "Deal update failed");
-
-      toast.success(mode === "stale" ? "Deal revived" : "Prep task created");
+      const taskSummary = `${data?.tasksCreated ?? 0} tasks created${
+        data?.skippedExistingTasks ? ` - ${data.skippedExistingTasks} already existed` : ""
+      }`;
+      toast.success(action === "revive" ? "Deals revived" : "Deadline prep queued", taskSummary);
       router.refresh();
     } catch (err) {
       setItems(previous);
@@ -139,6 +125,24 @@ export function WorkflowDealQueue({
 
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={Boolean(busyId)}
+          onClick={() => runWorkflowAction(items, mode === "stale" ? "revive" : "prep")}
+        >
+          {busyId?.startsWith("bulk:") ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : mode === "stale" ? (
+            <TimerReset className="h-4 w-4" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+          {mode === "stale" ? "Revive all" : "Prep all"}
+        </Button>
+      </div>
       {items.map((deal) => {
         const meta = DEAL_STATUS_META[deal.status];
         const busy = busyId === deal.id;
@@ -147,22 +151,8 @@ export function WorkflowDealQueue({
         const PrimaryIcon = primaryIcon;
         const primaryAction =
           mode === "stale"
-            ? () =>
-                createTask(
-                  deal,
-                  `Follow up: ${deal.title}`,
-                  tomorrowIso(),
-                  "HIGH",
-                  "Follow up and confirm buyer, budget, decision process, and next step.",
-                )
-            : () =>
-                createTask(
-                  deal,
-                  `Prepare submission: ${deal.title}`,
-                  prepDueIso(deal.deadline),
-                  "URGENT",
-                  "Prepare submission package and confirm route before the deadline.",
-                );
+            ? () => runWorkflowAction([deal], "revive")
+            : () => runWorkflowAction([deal], "prep");
 
         return (
           <div key={deal.id} className="rounded-md border border-border bg-surface/40 p-3">
@@ -178,7 +168,7 @@ export function WorkflowDealQueue({
             </div>
 
             <div className="mt-3 flex items-center justify-end gap-2">
-              <Button type="button" size="sm" variant="outline" disabled={busy} onClick={primaryAction}>
+              <Button type="button" size="sm" variant="outline" disabled={Boolean(busyId)} onClick={primaryAction}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PrimaryIcon className="h-4 w-4" />}
                 {primaryLabel}
               </Button>
@@ -189,7 +179,7 @@ export function WorkflowDealQueue({
                     size="icon"
                     variant="outline"
                     className="h-8 w-8"
-                    disabled={busy}
+                    disabled={Boolean(busyId)}
                     aria-label="Change deal status"
                     title="Change deal status"
                   >
