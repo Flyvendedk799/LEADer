@@ -77,4 +77,29 @@ describe("udbud.dk discovery source", () => {
       ),
     ).toBeNull();
   });
+
+  it("drops broad framework agreements from the official source", () => {
+    const deadline = new Date(Date.now() + 30 * 86400000).toISOString();
+
+    expect(
+      udbudDkResultToCandidate(
+        {
+          noticeId: "168a4125-b619-4401-b2a2-05ba7e218da3",
+          noticeVersion: "01",
+          noticePublicationNumber: "00370564-2099",
+          dataDa: {
+            titel: "Udbud af rammeaftale om levering af IT-konsulentydelser inden for GIS",
+            ordregiver: "Andel Holding A/S",
+            publiceringsdato: "01-06-2099",
+            cpvKode: "72260000",
+            cpvTitel: "Programmelrelaterede tjenester",
+            tidsfrister: [deadline],
+            beskrivelse: "Rammeaftale om levering af IT-konsulentydelser inden for GIS til flere fremtidige projekter.",
+            bkSubType: "Udbudsbekendtgørelse",
+          },
+        },
+        "software udvikling",
+      ),
+    ).toBeNull();
+  });
 });

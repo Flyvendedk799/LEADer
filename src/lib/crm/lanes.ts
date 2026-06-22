@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { isBroadFrameworkTender } from "@/lib/discovery/tender-quality";
 import type { SourceType, Workspace } from "@/lib/types";
 
 export interface LaneDefinition {
@@ -514,6 +515,10 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
 
   if (hasLongRunningTenderHorizon(candidate) || isPurchasingSystemOrCatalogue(text)) {
     return { allowed: false, reason: "long-running procurement system/catalogue" };
+  }
+
+  if (isBroadFrameworkTender(text)) {
+    return { allowed: false, reason: "broad framework agreement" };
   }
 
   if (!hasTenderConcreteCue(candidate, text, url, concreteTenderUrl)) {

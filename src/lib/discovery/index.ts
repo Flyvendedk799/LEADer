@@ -24,6 +24,7 @@ import { detectApplicationRoute, extractBudget, extractDeadline } from "@/lib/in
 import { assertPublicUrl, safeFetch } from "@/lib/ingestion/net";
 import { fetchRssCandidates } from "@/lib/ingestion/rss";
 import { fetchWebCandidates } from "@/lib/ingestion/web";
+import { isBroadFrameworkTender } from "./tender-quality";
 export { DISCOVERY_PRESETS } from "./presets";
 
 export interface DiscoverySearchInput {
@@ -1466,6 +1467,7 @@ function udbudDkResultToCandidate(result: UdbudDkResult, query: string): Opportu
   const structureText = `${title} ${data.beskrivelse ?? ""} ${data.bkSubType ?? ""}`.toLowerCase();
   if (
     daysUntilDeadline > 540 ||
+    isBroadFrameworkTender(structureText) ||
     /dynamisk indkøbssystem|dynamisk indkoebssystem|dynamic purchasing system|\bdis\b|standardsoftware|cirkulær it|cirkulaer it|levetidsforlængende|levetidsforlaengende/.test(
       structureText,
     )
@@ -2016,6 +2018,7 @@ export async function runDiscoverySearch(
   let candidates: DiscoveryCandidateDto[] = [];
   let sourceScanCount = 0;
   const resultKind = input.resultKind ?? "all";
+  let usedOfficialTenderIndex = false;
 
   if (
     workspace === "DK" &&
@@ -2033,6 +2036,7 @@ export async function runDiscoverySearch(
         collectionLimit,
         feedbackModel,
       );
+      usedOfficialTenderIndex = true;
       candidates.push(...officialCandidates);
       await progress(
         `udbud.dk returned ${officialCandidates.length} active tender candidates in ${Math.round((Date.now() - udbudStartedAt) / 1000)}s.`,
@@ -2138,11 +2142,16 @@ export async function runDiscoverySearch(
     warnings.push(`${feedbackHiddenCount} candidates were hidden by your discovery feedback.`);
   }
   await progress(`Ranked ${unique.length} candidates after filters and dedupe.`);
+  const provider = usedOfficialTenderIndex
+    ? providerState.provider === "none"
+      ? "udbud.dk"
+      : `udbud.dk+${providerState.provider}`
+    : providerState.provider;
   return {
     candidates: unique,
     queries,
     searchPlan: effectiveSearchPlan,
-    provider: providerState.provider,
+    provider,
     providerConfigured: providerState.configured,
     sourceScanCount,
     warnings,

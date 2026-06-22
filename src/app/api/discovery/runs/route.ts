@@ -5,6 +5,7 @@ import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createDiscoveryMission } from "@/lib/crm";
+import { discoveryMissionDisplayWarnings, discoveryMissionProviderLabel } from "@/lib/crm/discovery-display";
 import { discoveryLogEntry, discoveryQueueLogMessage } from "@/lib/crm/discovery-logging";
 import { filterLaneCandidates, type CandidateLike, type LaneLike } from "@/lib/crm/lanes";
 import {
@@ -50,17 +51,27 @@ const missionListInclude = {
 function visibleMissionListRow<T extends {
   lane: LaneLike | null;
   candidates: CandidateLike[];
+  provider?: string | null;
+  log?: string[];
   warnings: string[];
   _count: { candidates: number };
 }>(mission: T) {
   const { candidates, ...rest } = mission;
-  if (!mission.lane) return rest;
+  if (!mission.lane) {
+    return {
+      ...rest,
+      provider: discoveryMissionProviderLabel(mission),
+      warnings: discoveryMissionDisplayWarnings(mission, rest.warnings),
+    };
+  }
   const visible = filterLaneCandidates(mission.lane, candidates);
+  const baseWarnings = discoveryMissionDisplayWarnings(mission, rest.warnings);
   return {
     ...rest,
+    provider: discoveryMissionProviderLabel(mission),
     warnings: visible.removed > 0
-      ? [...rest.warnings, `${visible.removed} stale or off-lane candidates hidden from this mission.`]
-      : rest.warnings,
+      ? [...baseWarnings, `${visible.removed} stale or off-lane candidates hidden from this mission: ${visible.reasons.slice(0, 3).join("; ")}.`]
+      : baseWarnings,
     _count: {
       ...rest._count,
       candidates: visible.candidates.length,

@@ -118,6 +118,21 @@ describe("CRM discovery lanes", () => {
 
     expect(
       laneCandidateGate(lane, {
+        title: "Udbud af rammeaftale om levering af IT-konsulentydelser inden for GIS",
+        description:
+          "Andel Holding A/S udbyder en rammeaftale om IT-konsulentydelser inden for GIS til flere fremtidige projekter. Tilbudsfrist 29-06-2099.",
+        rawContent:
+          "Ordregiver: Andel Holding A/S. Rammeaftale om levering af IT-konsulentydelser inden for GIS. Tilbudsfrist 29-06-2099. CPV: 72260000.",
+        url: "https://udbud.dk/detaljevisning?noticeId=168a4125-b619-4401-b2a2-05ba7e218da3&noticeVersion=01",
+        organization: "Andel Holding A/S",
+        candidateKind: "opportunity",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+      }),
+    ).toEqual({ allowed: false, reason: "broad framework agreement" });
+
+    expect(
+      laneCandidateGate(lane, {
         title: "Udvikling og drift af moderniseret datafordeler",
         description: "Offentligt udbud om software udvikling, drift, vedligeholdelse og support. Tilbudsfrist 30-06-2099.",
         url: "https://www.mercell.com/da-dk/udbud/147043739/udvikling-og-drift-af-moderniseret-datafordeler-udbud.aspx",

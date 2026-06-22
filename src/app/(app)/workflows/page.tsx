@@ -36,6 +36,7 @@ import { WorkflowUsecaseLauncher } from "@/components/workflows/workflow-usecase
 import { PageHeader } from "@/components/shared/page-header";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { discoveryMissionDisplayWarnings, discoveryMissionProviderLabel } from "@/lib/crm/discovery-display";
 import {
   ensureDefaultDiscoveryLanes,
   filterLaneCandidates,
@@ -82,18 +83,21 @@ function firstQuery(value = "") {
 function visibleMissionCandidateMeta(mission: {
   lane: LaneLike | null;
   candidates: CandidateLike[];
+  provider?: string | null;
+  log?: string[];
   warnings: string[];
   _count: { candidates: number };
 }) {
   if (!mission.lane) {
-    return { candidateCount: mission._count.candidates, warnings: mission.warnings };
+    return { candidateCount: mission._count.candidates, warnings: discoveryMissionDisplayWarnings(mission, mission.warnings) };
   }
   const visible = filterLaneCandidates(mission.lane, mission.candidates);
+  const baseWarnings = discoveryMissionDisplayWarnings(mission, mission.warnings);
   return {
     candidateCount: visible.candidates.length,
     warnings: visible.removed > 0
-      ? [...mission.warnings, `${visible.removed} stale or off-lane candidates hidden from this mission.`]
-      : mission.warnings,
+      ? [...baseWarnings, `${visible.removed} stale or off-lane candidates hidden from this mission: ${visible.reasons.slice(0, 3).join("; ")}.`]
+      : baseWarnings,
   };
 }
 
@@ -439,7 +443,7 @@ export default async function WorkflowsPage() {
     return {
       id: mission.id,
       status: mission.status,
-      provider: mission.provider,
+      provider: discoveryMissionProviderLabel(mission),
       startedAt: mission.startedAt.toISOString(),
       finishedAt: mission.finishedAt?.toISOString() ?? null,
       query: mission.query,
