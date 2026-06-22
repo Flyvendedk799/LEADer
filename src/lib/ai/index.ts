@@ -90,16 +90,25 @@ function termsFromText(text: string, limit = 8): string[] {
 function mockDiscoveryPlan(context: string) {
   const briefMatch = context.match(/Freeform brief:\s*([\s\S]*?)(?:\n\n|$)/i);
   const brief = snippet(briefMatch?.[1] || context, 180) || "small technical client-acquisition leads";
+  const workspace = /Workspace:\s*GLOBAL\b/i.test(context) ? "GLOBAL" : "DK";
   const terms = termsFromText(brief, 6);
   const core = terms.length ? terms.join(" ") : "software AI automation MVP";
+  const queries = workspace === "GLOBAL"
+    ? [
+        `${core} international fjernarbejde remote softwareudvikling leverandør`,
+        `${core} Europe remote dansk softwareudvikler AI automation consultant`,
+        `${core} international grant voucher innovation software leverandør`,
+        `${core} startup MVP prototype international dansk fullstack konsulent`,
+      ]
+    : [
+        `${core} Denmark company needs software consultant`,
+        `${core} startup MVP prototype founder Denmark`,
+        `${core} SME AI automation workflow dashboard`,
+        `${core} grant voucher funded technical supplier`,
+      ];
   return {
     summary: `Search for ${brief}`,
-    queries: [
-      `${core} Denmark company needs software consultant`,
-      `${core} startup MVP prototype founder Denmark`,
-      `${core} SME AI automation workflow dashboard`,
-      `${core} grant voucher funded technical supplier`,
-    ],
+    queries,
     requiredTerms: terms.slice(0, 3),
     excludedTerms: ["course", "webinar", "internship", "equity only"],
     positiveKeywords: [...new Set([...terms, "software", "AI", "automation", "MVP"])].slice(0, 10),
@@ -108,8 +117,11 @@ function mockDiscoveryPlan(context: string) {
     confidence: 62,
     notes: [
       "Mock AI plan: add an AI API key in Settings for deeper query interpretation.",
+      workspace === "GLOBAL"
+        ? "International expands geography; Danish wording is still preserved for Danish intent."
+        : "",
       "Automated discovery is limited to public sources.",
-    ],
+    ].filter(Boolean),
   };
 }
 

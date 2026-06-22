@@ -103,6 +103,27 @@ describe("discovery feedback learning", () => {
     expect(plan.usedAi).toBe(false);
   });
 
+  it("keeps Danish search anchors in deterministic international plans", () => {
+    const plan = deterministicSearchPlan(
+      "AI automatisering for SaaS founders",
+      "GLOBAL",
+      "opportunities",
+      {
+        goodExamples: [],
+        savedSources: [],
+        nonLeadExamples: [],
+        goodTerms: [],
+        nonLeadTerms: ["course"],
+      },
+    );
+    const queryText = plan.queries.join(" ").toLowerCase();
+
+    expect(queryText).toContain("international");
+    expect(queryText).toMatch(/dansk|fjernarbejde|softwareudvikling|leverandør|tilskud/);
+    expect(plan.rationale).toContain("dansk søgeintention");
+    expect(plan.usedAi).toBe(false);
+  });
+
   it("ignores mock AI search plans when no real model is configured", async () => {
     const originalKey = process.env.LLM_API_KEY;
     process.env.LLM_API_KEY = "";

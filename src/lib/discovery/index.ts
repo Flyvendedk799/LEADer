@@ -712,9 +712,9 @@ function deterministicSearchPlan(
           `${q} ${country} AI automatisering proof of concept fullstack udvikler tilskud ${avoidClause}`,
         ]
       : [
-          `${q} international fjernarbejde remote software projekt startup MVP fullstack ${avoidClause}`,
-          `${q} international grant voucher innovation software supplier tilskud leverandør ${avoidClause}`,
-          `${q} Europe remote dansk softwareudvikler AI automation consultant`,
+          `${q} international fjernarbejde remote softwareudvikling projekt startup MVP fullstack ${avoidClause}`,
+          `${q} international grant voucher innovation software leverandør tilskud dansk konsulent ${avoidClause}`,
+          `${q} Europe remote dansk softwareudvikler AI automatisering consultant`,
         ];
   const sourceQueries =
     workspace === "DK"
@@ -725,8 +725,8 @@ function deterministicSearchPlan(
           savedSourceTerms ? `${q} ${savedSourceTerms}` : "",
         ]
       : [
-          `${q} software tenders startup grants source list dansk international`,
-          `${q} procurement portal innovation voucher software tilskud international`,
+          `${q} software tenders startup grants kildeliste dansk international`,
+          `${q} procurement portal innovation voucher software tilskud leverandør international`,
         ];
   const terms =
     resultKind === "sources"
@@ -742,7 +742,7 @@ function deterministicSearchPlan(
     rationale:
       workspace === "DK"
         ? "Søger bredt efter aktive danske softwareopgaver, EHSYS-lignende indkøb og relevante udbudskilder."
-        : "Searches for funded software, prototype, AI, and grant-backed supplier opportunities while preserving Danish intent.",
+        : "Søger internationalt efter software-, prototype-, AI- og tilskudsbaserede leverandøropgaver, mens dansk søgeintention bevares.",
     usedAi: false,
   };
 }
