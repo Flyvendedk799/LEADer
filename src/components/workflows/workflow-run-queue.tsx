@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Clock3, Loader2, PlayCircle, RotateCw, XCircle } from "lucide-react";
+import { CheckCircle2, Clock3, ExternalLink, Loader2, PlayCircle, RotateCw, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -111,7 +112,7 @@ export function WorkflowRunQueue({ runs }: { runs: WorkflowRunQueueItem[] }) {
             key={run.id}
             className="grid gap-3 rounded-md border border-border bg-surface/40 p-3 md:grid-cols-[minmax(0,1fr)_auto]"
           >
-            <div className="min-w-0">
+            <Link href={`/workflows/runs/${run.id}`} className="min-w-0 hover:text-primary">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusIcon status={run.status} />
                 <p className="truncate text-sm font-medium">{playbookLabel(run.playbook)}</p>
@@ -121,12 +122,25 @@ export function WorkflowRunQueue({ runs }: { runs: WorkflowRunQueueItem[] }) {
               {latestLog ? (
                 <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{truncate(latestLog, 150)}</p>
               ) : null}
-            </div>
+            </Link>
             <div className="flex items-center justify-end gap-2">
               <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
                 <PlayCircle className="h-3.5 w-3.5" />
                 <span className="whitespace-nowrap">{formatDate(run.finishedAt ?? run.startedAt ?? run.createdAt)}</span>
               </div>
+              <Button
+                asChild
+                type="button"
+                size="icon"
+                variant="outline"
+                className="h-8 w-8"
+                aria-label="Inspect workflow"
+                title="Inspect workflow"
+              >
+                <Link href={`/workflows/runs/${run.id}`}>
+                  <ExternalLink className="h-4 w-4" />
+                </Link>
+              </Button>
               <Button
                 type="button"
                 size="icon"
