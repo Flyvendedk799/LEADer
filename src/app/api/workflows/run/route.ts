@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { WorkflowRun } from "@prisma/client";
 import { z } from "zod";
 
 import { apiError } from "@/lib/api";
@@ -12,6 +13,7 @@ import {
   removeQueuedWorkflowRun,
   workflowQueueSnapshot,
 } from "@/lib/workflows/queue";
+import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 import { workflowRunInputSchema } from "@/lib/workflows/types";
 
 const workflowRunActionSchema = z.object({
@@ -23,6 +25,14 @@ function workflowLogEntry(message: string) {
   return `${new Date().toISOString()} ${message}`;
 }
 
+function workflowRunPayload(run: WorkflowRun | null) {
+  if (!run) return null;
+  return {
+    ...run,
+    summary: workflowRunResultSummary(run.playbook, run.result),
+  };
+}
+
 export async function GET() {
   try {
     const ownerId = await requireOwnerId();
@@ -32,7 +42,7 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
       take: 20,
     });
-    return NextResponse.json({ runs, queue });
+    return NextResponse.json({ runs: runs.map(workflowRunPayload), queue });
   } catch (err) {
     return apiError(err);
   }
@@ -50,7 +60,7 @@ export async function POST(req: Request) {
 
     const run = await createWorkflowRun(ownerId, parsed.data, "QUEUED");
     enqueueWorkflowRun(ownerId, run.id, parsed.data);
-    return NextResponse.json({ run, queued: true, queue: workflowQueueSnapshot(ownerId) }, { status: 202 });
+    return NextResponse.json({ run: workflowRunPayload(run), queued: true, queue: workflowQueueSnapshot(ownerId) }, { status: 202 });
   } catch (err) {
     return apiError(err);
   }
@@ -88,7 +98,7 @@ export async function PATCH(req: Request) {
           },
         },
       });
-      return NextResponse.json({ run, queue: workflowQueueSnapshot(ownerId) });
+      return NextResponse.json({ run: workflowRunPayload(run), queue: workflowQueueSnapshot(ownerId) });
     }
 
     const input = workflowRunInputSchema.safeParse(source.input ?? {
@@ -106,7 +116,10 @@ export async function PATCH(req: Request) {
     });
     enqueueWorkflowRun(ownerId, run.id, input.data);
     const queued = await db.workflowRun.findUnique({ where: { id: run.id } });
-    return NextResponse.json({ run: queued ?? run, queued: true, queue: workflowQueueSnapshot(ownerId) }, { status: 202 });
+    return NextResponse.json(
+      { run: workflowRunPayload(queued ?? run), queued: true, queue: workflowQueueSnapshot(ownerId) },
+      { status: 202 },
+    );
   } catch (err) {
     return apiError(err);
   }

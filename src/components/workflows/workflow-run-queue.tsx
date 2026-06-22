@@ -22,6 +22,16 @@ export type WorkflowRunQueueItem = {
   summary: string | null;
 };
 
+type WorkflowQueueSnapshot = {
+  activeRunId: string | null;
+  queuedRunIds: string[];
+};
+
+type WorkflowRunQueueResponse = {
+  runs?: Array<Partial<WorkflowRunQueueItem> & { id: string }>;
+  queue?: Partial<WorkflowQueueSnapshot>;
+};
+
 function statusVariant(status: string) {
   if (status === "SUCCESS") return "success";
   if (status === "ERROR") return "warning";
@@ -36,6 +46,13 @@ function StatusIcon({ status }: { status: string }) {
   if (status === "RUNNING") return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
   if (status === "CANCELED") return <XCircle className="h-4 w-4 text-muted-foreground" />;
   return <Clock3 className="h-4 w-4 text-muted-foreground" />;
+}
+
+function normalizeQueue(queue?: Partial<WorkflowQueueSnapshot> | null): WorkflowQueueSnapshot {
+  return {
+    activeRunId: typeof queue?.activeRunId === "string" ? queue.activeRunId : null,
+    queuedRunIds: Array.isArray(queue?.queuedRunIds) ? queue.queuedRunIds.filter((id): id is string => typeof id === "string") : [],
+  };
 }
 
 function playbookLabel(playbook: string) {
@@ -59,14 +76,62 @@ function apiRunToItem(run: Partial<WorkflowRunQueueItem> & { id: string; playboo
   };
 }
 
-export function WorkflowRunQueue({ runs }: { runs: WorkflowRunQueueItem[] }) {
+export function WorkflowRunQueue({
+  runs,
+  queue = { activeRunId: null, queuedRunIds: [] },
+}: {
+  runs: WorkflowRunQueueItem[];
+  queue?: WorkflowQueueSnapshot;
+}) {
   const router = useRouter();
   const [items, setItems] = React.useState(runs);
+  const [queueState, setQueueState] = React.useState(() => normalizeQueue(queue));
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
 
   React.useEffect(() => {
     setItems(runs);
   }, [runs]);
+
+  React.useEffect(() => {
+    setQueueState(normalizeQueue(queue));
+  }, [queue]);
+
+  const live = React.useMemo(
+    () =>
+      items.some((item) => item.status === "QUEUED" || item.status === "RUNNING") ||
+      Boolean(queueState.activeRunId) ||
+      queueState.queuedRunIds.length > 0,
+    [items, queueState.activeRunId, queueState.queuedRunIds.length],
+  );
+
+  React.useEffect(() => {
+    if (!live) return;
+    let stopped = false;
+
+    async function refreshRuns() {
+      try {
+        const res = await fetch("/api/workflows/run", { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as WorkflowRunQueueResponse | null;
+        if (!res.ok || !data) return;
+        if (stopped) return;
+        if (Array.isArray(data.runs)) {
+          setItems(data.runs.map(apiRunToItem));
+        }
+        setQueueState(normalizeQueue(data.queue));
+        setLastUpdatedAt(new Date());
+      } catch {
+        // Durable runs remain visible from the server snapshot; keep polling quiet.
+      }
+    }
+
+    void refreshRuns();
+    const timer = window.setInterval(refreshRuns, 2500);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [live]);
 
   async function controlRun(run: WorkflowRunQueueItem, action: "CANCEL" | "RERUN") {
     setBusyId(`${action}-${run.id}`);
@@ -81,10 +146,12 @@ export function WorkflowRunQueue({ runs }: { runs: WorkflowRunQueueItem[] }) {
 
       if (action === "CANCEL") {
         const updated = apiRunToItem(data.run);
+        if (data.queue) setQueueState(normalizeQueue(data.queue));
         setItems((current) => current.map((item) => (item.id === run.id ? { ...item, ...updated } : item)));
         toast.success("Workflow run canceled", playbookLabel(run.playbook));
       } else {
         const rerun = apiRunToItem(data.run);
+        if (data.queue) setQueueState(normalizeQueue(data.queue));
         setItems((current) => [rerun, ...current]);
         toast.success("Workflow run queued", playbookLabel(run.playbook));
       }
@@ -102,11 +169,24 @@ export function WorkflowRunQueue({ runs }: { runs: WorkflowRunQueueItem[] }) {
 
   return (
     <div className="space-y-2">
+      <div className="flex items-center justify-end text-xs text-muted-foreground">
+        {live ? (
+          <span className="inline-flex items-center gap-1">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Live queue
+          </span>
+        ) : lastUpdatedAt ? (
+          <span>Updated {formatDate(lastUpdatedAt.toISOString())}</span>
+        ) : null}
+      </div>
       {items.map((run) => {
         const latestLog = run.log.at(-1) ?? run.summary;
         const cancelable = ["QUEUED", "RUNNING"].includes(run.status);
         const cancelBusy = busyId === `CANCEL-${run.id}`;
         const rerunBusy = busyId === `RERUN-${run.id}`;
+        const queuedIndex = queueState.queuedRunIds.indexOf(run.id);
+        const queueLabel =
+          queueState.activeRunId === run.id ? "active" : queuedIndex >= 0 ? `queued #${queuedIndex + 1}` : null;
         return (
           <div
             key={run.id}
@@ -118,6 +198,7 @@ export function WorkflowRunQueue({ runs }: { runs: WorkflowRunQueueItem[] }) {
                 <p className="truncate text-sm font-medium">{playbookLabel(run.playbook)}</p>
                 <Badge variant={statusVariant(run.status)}>{run.status.toLowerCase()}</Badge>
                 <Badge variant="outline">{run.workspace}</Badge>
+                {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
               </div>
               {latestLog ? (
                 <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{truncate(latestLog, 150)}</p>

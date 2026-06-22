@@ -1,0 +1,26 @@
+import { describe, expect, it } from "vitest";
+
+import { workflowRunResultSummary } from "./result-summary";
+
+describe("workflowRunResultSummary", () => {
+  it("summarizes operating-day JSON results", () => {
+    expect(
+      workflowRunResultSummary("operating-day", {
+        dailySweep: {
+          sources: { created: 2 },
+        },
+        candidateHarvest: {
+          candidates: { saved: 3 },
+        },
+        pipelineRescue: {
+          staleDeals: { tasksCreated: 1 },
+          deadlines: { tasksCreated: 2 },
+        },
+      }),
+    ).toBe("2 source leads - 3 saved deals - 3 rescue tasks");
+  });
+
+  it("returns null before a run has a result", () => {
+    expect(workflowRunResultSummary("daily-sweep", null)).toBeNull();
+  });
+});
