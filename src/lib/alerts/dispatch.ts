@@ -9,7 +9,7 @@ import type { Workspace } from "@/lib/types";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-interface DispatchResult {
+export interface DispatchResult {
   created: number;
   emailed: number;
   provider: string;

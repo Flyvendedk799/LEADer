@@ -12,6 +12,7 @@ import {
   Loader2,
   Plus,
   Radar,
+  RefreshCw,
   Search,
 } from "lucide-react";
 
@@ -24,6 +25,24 @@ import { discoveryMissionHref } from "@/lib/discovery-links";
 
 type SearchMode = "focused" | "balanced" | "wide";
 type AlertAction = "REMINDERS" | "DIGEST";
+
+type DailySweepResult = {
+  sources?: {
+    ran: number;
+    created: number;
+    updated: number;
+    failed: number;
+  };
+  reminders?: {
+    created: number;
+    emailed: number;
+  };
+  digest?: {
+    created: number;
+    emailed: number;
+  };
+  log?: string[];
+};
 
 export type WorkflowLaneItem = {
   id: string;
@@ -52,6 +71,18 @@ function sourceSummary(results: SourceRunResult[]) {
   return `${results.length} ran - ${created} new - ${updated} updated${failed ? ` - ${failed} failed` : ""}`;
 }
 
+function dailySweepSummary(result: DailySweepResult) {
+  const sources = result.sources;
+  const reminders = result.reminders;
+  const digest = result.digest;
+  const sourcePart = sources
+    ? `${sources.ran} sources - ${sources.created} new - ${sources.updated} updated${sources.failed ? ` - ${sources.failed} failed` : ""}`
+    : "Sources checked";
+  const alertPart = `${reminders?.created ?? 0} reminders - ${digest?.created ?? 0} digest`;
+  const emailed = (reminders?.emailed ?? 0) + (digest?.emailed ?? 0);
+  return emailed ? `${sourcePart} - ${alertPart} - ${emailed} emailed` : `${sourcePart} - ${alertPart}`;
+}
+
 export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }) {
   const router = useRouter();
   const [laneId, setLaneId] = React.useState(() => pickDefaultLane(lanes));
@@ -59,6 +90,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
   const [searchMode, setSearchMode] = React.useState<SearchMode>("balanced");
   const [busy, setBusy] = React.useState<string | null>(null);
   const [sourceResult, setSourceResult] = React.useState<string | null>(null);
+  const [sweepResult, setSweepResult] = React.useState<DailySweepResult | null>(null);
 
   React.useEffect(() => {
     setLaneId((current) => current || pickDefaultLane(lanes));
@@ -119,6 +151,28 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
     }
   }
 
+  async function runDailySweep() {
+    setBusy("daily-sweep");
+    setSweepResult(null);
+    try {
+      const res = await fetch("/api/workflows/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playbook: "daily-sweep", workspace: "DK" }),
+      });
+      const data = (await res.json().catch(() => null)) as DailySweepResult & { error?: string } | null;
+      if (!res.ok || !data) throw new Error(data?.error || "Could not run daily sweep");
+      const summary = dailySweepSummary(data);
+      setSweepResult(data);
+      toast.success("Daily sweep finished", summary);
+      router.refresh();
+    } catch (err) {
+      toast.error("Could not run daily sweep", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function runDueSources() {
     setBusy("sources");
     setSourceResult(null);
@@ -144,6 +198,31 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
 
   return (
     <div className="grid gap-3 md:grid-cols-3">
+      <div className="rounded-md border border-border bg-surface/40 p-3 md:col-span-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <RefreshCw className="h-4 w-4 text-primary" />
+              Daily sweep
+            </div>
+            {sweepResult ? (
+              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                <p>{dailySweepSummary(sweepResult)}</p>
+                {sweepResult.log?.slice(-3).map((entry, index) => (
+                  <p key={`${entry}-${index}`} className="font-mono text-[11px]">
+                    {entry}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <Button type="button" onClick={runDailySweep} disabled={Boolean(busy)} className="w-full sm:w-auto">
+            {busy === "daily-sweep" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Run sweep
+          </Button>
+        </div>
+      </div>
+
       <div className="rounded-md border border-border bg-surface/40 p-3">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Radar className="h-4 w-4 text-primary" />

@@ -15,6 +15,7 @@ import {
   Moon,
   Plus,
   Radar,
+  RefreshCw,
   Search,
   Sparkles,
   Sun,
@@ -51,6 +52,31 @@ interface Result {
   icon: React.ReactNode;
   score?: number | null;
   perform: () => void | Promise<void>;
+}
+
+type DailySweepResult = {
+  sources?: {
+    ran: number;
+    created: number;
+    updated: number;
+    failed: number;
+  };
+  reminders?: {
+    created: number;
+    emailed: number;
+  };
+  digest?: {
+    created: number;
+    emailed: number;
+  };
+};
+
+function dailySweepSummary(result: DailySweepResult) {
+  const sources = result.sources;
+  const sourcePart = sources
+    ? `${sources.ran} sources - ${sources.created} new - ${sources.updated} updated${sources.failed ? ` - ${sources.failed} failed` : ""}`
+    : "Sources checked";
+  return `${sourcePart} - ${result.reminders?.created ?? 0} reminders - ${result.digest?.created ?? 0} digest`;
 }
 
 export function CommandPalette() {
@@ -150,6 +176,27 @@ export function CommandPalette() {
     }
   }, [close, router]);
 
+  const runDailySweep = React.useCallback(async () => {
+    const id = "act-daily-sweep";
+    setActionId(id);
+    try {
+      const res = await fetch("/api/workflows/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playbook: "daily-sweep", workspace: "DK" }),
+      });
+      const data = (await res.json().catch(() => null)) as DailySweepResult & { error?: string } | null;
+      if (!res.ok || !data) throw new Error(data?.error || "Could not run daily sweep");
+      toast.success("Daily sweep finished", dailySweepSummary(data));
+      router.refresh();
+      close();
+    } catch (err) {
+      toast.error("Daily sweep failed", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setActionId(null);
+    }
+  }, [close, router]);
+
   const results = React.useMemo<Result[]>(() => {
     const term = query.trim().toLowerCase();
     const out: Result[] = [];
@@ -220,6 +267,14 @@ export function CommandPalette() {
           router.push("/import");
           close();
         },
+      },
+      {
+        id: "act-daily-sweep",
+        group: "Workflow actions",
+        label: "Run daily sweep",
+        hint: "Sources, reminders, digest",
+        icon: <RefreshCw className="h-4 w-4 text-muted-foreground" />,
+        perform: runDailySweep,
       },
       {
         id: "act-deadlines",
@@ -305,7 +360,7 @@ export function CommandPalette() {
     }
 
     return out;
-  }, [close, generateAlerts, hits, query, router, setTheme, theme]);
+  }, [close, generateAlerts, hits, query, router, runDailySweep, setTheme, theme]);
 
   // Keep the active index in range whenever the result set changes.
   React.useEffect(() => {
