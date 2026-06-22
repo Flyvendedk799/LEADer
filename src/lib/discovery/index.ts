@@ -379,23 +379,43 @@ function buildFeedbackSignalModel(rows: FeedbackModelRow[]): FeedbackSignalModel
   return model;
 }
 
+function isMissingDiscoveryFeedbackTable(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const record = error as { code?: unknown; message?: unknown };
+  const message = typeof record.message === "string" ? record.message : "";
+  return record.code === "P2021" || /DiscoveryFeedback.*does not exist|table .*DiscoveryFeedback.* does not exist/i.test(message);
+}
+
+async function withOptionalDiscoveryFeedback<T>(read: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    if (isMissingDiscoveryFeedbackTable(error)) return fallback;
+    throw error;
+  }
+}
+
 async function loadFeedbackSignalModel(ownerId: string): Promise<FeedbackSignalModel> {
-  const rows = await db.discoveryFeedback.findMany({
-    where: { ownerId },
-    orderBy: { updatedAt: "desc" },
-    take: MAX_FEEDBACK_ROWS,
-    select: {
-      candidateId: true,
-      url: true,
-      title: true,
-      candidateKind: true,
-      feedback: true,
-      features: true,
-      sourceName: true,
-      provider: true,
-      query: true,
-    },
-  });
+  const rows = await withOptionalDiscoveryFeedback(
+    () =>
+      db.discoveryFeedback.findMany({
+        where: { ownerId },
+        orderBy: { updatedAt: "desc" },
+        take: MAX_FEEDBACK_ROWS,
+        select: {
+          candidateId: true,
+          url: true,
+          title: true,
+          candidateKind: true,
+          feedback: true,
+          features: true,
+          sourceName: true,
+          provider: true,
+          query: true,
+        },
+      }),
+    [],
+  );
   return buildFeedbackSignalModel(rows);
 }
 
@@ -434,12 +454,16 @@ async function loadSearchMemory(ownerId: string, feedbackModel: FeedbackSignalMo
       take: 8,
       select: { name: true, category: true, keywords: true, url: true },
     }),
-    db.discoveryFeedback.findMany({
-      where: { ownerId },
-      orderBy: { updatedAt: "desc" },
-      take: 20,
-      select: { title: true, sourceName: true, feedback: true },
-    }),
+    withOptionalDiscoveryFeedback(
+      () =>
+        db.discoveryFeedback.findMany({
+          where: { ownerId },
+          orderBy: { updatedAt: "desc" },
+          take: 20,
+          select: { title: true, sourceName: true, feedback: true },
+        }),
+      [],
+    ),
   ]);
 
   const goodExamples = uniqueStrings(
@@ -949,9 +973,22 @@ function freshnessFor(
 function isConcreteOpportunityUrl(url?: string): boolean {
   if (!url) return false;
   try {
-    const pathname = new URL(url).pathname.toLowerCase();
-    return /\/indkoeb\/tilbud\/indsend\/|\/indkøb\/tilbud\/indsend\/|\/opportunit(?:y|ies)\/|\/tender\/|\/udbud\/[^/]{8,}/.test(
-      pathname,
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.replace(/^www\./, "").toLowerCase();
+    const pathname = parsed.pathname.toLowerCase();
+    const href = parsed.toString().toLowerCase();
+    const hasNoticeId = [...parsed.searchParams.keys()].some((key) => key.toLowerCase() === "noticeid");
+    return (
+      (hostname === "udbud.dk" && pathname === "/detaljevisning" && hasNoticeId) ||
+      (hostname.endsWith("udbud.dk") && /\/pages\/tenders\/showtender/.test(pathname)) ||
+      (hostname === "eu.eu-supply.com" && /\/ctm\/supplier\/publicpurchase\/|\/app\/rfq\//.test(pathname)) ||
+      (hostname.endsWith("mercell.com") && /\/udbud\/\d+\//.test(pathname)) ||
+      (hostname.endsWith("ethics.dk") && /\/ethics\/eo#\/tender/.test(href)) ||
+      (hostname.endsWith("comdia.com") && /\/tender\//.test(pathname)) ||
+      (hostname === "ted.europa.eu" && /\/notice\//.test(pathname)) ||
+      /\/indkoeb\/tilbud\/indsend\/|\/indkøb\/tilbud\/indsend\/|\/opportunit(?:y|ies)\/|\/tender\/|\/udbud\/[^/]{8,}/.test(
+        pathname,
+      )
     );
   } catch {
     return false;
@@ -1620,10 +1657,14 @@ async function markAlreadySaved(ownerId: string, candidates: DiscoveryCandidateD
         })
       : Promise.resolve([]),
     hashes.length
-      ? db.discoveryFeedback.findMany({
-          where: { ownerId, candidateId: { in: hashes } },
-          select: { candidateId: true, feedback: true },
-        })
+      ? withOptionalDiscoveryFeedback(
+          () =>
+            db.discoveryFeedback.findMany({
+              where: { ownerId, candidateId: { in: hashes } },
+              select: { candidateId: true, feedback: true },
+            }),
+          [],
+        )
       : Promise.resolve([]),
   ]);
   return candidates.map((c) => {
@@ -1899,34 +1940,38 @@ export async function saveDiscoveryFeedback(
 ) {
   const candidateId = feedbackCandidateId(candidate);
   const features = feedbackFeaturesFromCandidate(candidate);
-  const saved = await db.discoveryFeedback.upsert({
-    where: { ownerId_candidateId: { ownerId, candidateId } },
-    update: {
-      feedback,
-      features,
-      reason,
-      title: cleanText(candidate.title, 220) || "Untitled result",
-      url: candidate.url || null,
-      candidateKind: candidate.candidateKind,
-      sourceName: candidate.sourceName,
-      provider: candidate.provider,
-      query: candidate.query,
-    },
-    create: {
-      ownerId,
-      candidateId,
-      feedback,
-      features,
-      reason,
-      title: cleanText(candidate.title, 220) || "Untitled result",
-      url: candidate.url || null,
-      candidateKind: candidate.candidateKind,
-      sourceName: candidate.sourceName,
-      provider: candidate.provider,
-      query: candidate.query,
-    },
-    select: { id: true, candidateId: true, feedback: true },
-  });
+  const saved = await withOptionalDiscoveryFeedback(
+    () =>
+      db.discoveryFeedback.upsert({
+        where: { ownerId_candidateId: { ownerId, candidateId } },
+        update: {
+          feedback,
+          features,
+          reason,
+          title: cleanText(candidate.title, 220) || "Untitled result",
+          url: candidate.url || null,
+          candidateKind: candidate.candidateKind,
+          sourceName: candidate.sourceName,
+          provider: candidate.provider,
+          query: candidate.query,
+        },
+        create: {
+          ownerId,
+          candidateId,
+          feedback,
+          features,
+          reason,
+          title: cleanText(candidate.title, 220) || "Untitled result",
+          url: candidate.url || null,
+          candidateKind: candidate.candidateKind,
+          sourceName: candidate.sourceName,
+          provider: candidate.provider,
+          query: candidate.query,
+        },
+        select: { id: true, candidateId: true, feedback: true },
+      }),
+    { id: "", candidateId, feedback },
+  );
   return { feedback: saved };
 }
 

@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
 import { runDiscoverySearch, type DiscoveryCandidateDto } from "@/lib/discovery";
 import { discoveryCountLabel, discoveryLogEntry, formatDiscoveryElapsed } from "@/lib/crm/discovery-logging";
-import { laneFit, laneMissionQueries, missionQuery, type LaneFitResult } from "@/lib/crm/lanes";
+import { laneCandidateGate, laneFit, laneMissionQueries, missionQuery, type LaneFitResult } from "@/lib/crm/lanes";
 import { confidenceScore, pursuitScore } from "@/lib/crm/scoring";
 import type { AccountType, DealStatus, DiscoveryAiSearchPlan, DiscoverySearchMode, Workspace } from "@/lib/types";
 
@@ -80,6 +80,12 @@ type PreparedDiscoveryMission = {
   scoringLane: MissionLane;
 };
 
+type LaneFilteredDiscoveryCandidates = {
+  candidates: DiscoveryCandidateDto[];
+  removed: number;
+  reasons: string[];
+};
+
 function clean(value?: string | null, fallback = "Unknown account") {
   return value?.replace(/\s+/g, " ").trim() || fallback;
 }
@@ -151,6 +157,34 @@ function profileString(user: {
   ]
     .filter(Boolean)
     .join("\n") || undefined;
+}
+
+function filterCandidatesForLane(
+  lane: Pick<MissionLane, "slug" | "name" | "queryTemplates" | "positiveKeywords" | "negativeKeywords" | "evidenceRequirements">,
+  candidates: DiscoveryCandidateDto[],
+): LaneFilteredDiscoveryCandidates {
+  const reasonCounts = new Map<string, number>();
+  const filtered: DiscoveryCandidateDto[] = [];
+
+  for (const candidate of candidates) {
+    const gate = laneCandidateGate(lane, candidate);
+    if (gate.allowed) {
+      filtered.push(candidate);
+      continue;
+    }
+    const reason = gate.reason ?? "lane guard";
+    reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+  }
+
+  const reasons = [...reasonCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => `${count} ${reason}`);
+
+  return {
+    candidates: filtered,
+    removed: candidates.length - filtered.length,
+    reasons,
+  };
 }
 
 function parsePlanData(data: unknown): DiscoveryAiSearchPlan | undefined {
@@ -394,9 +428,12 @@ async function prepareDiscoveryMission(
     : undefined;
   const focus = cleanTerm(input.query || input.freeformBrief, 500);
   const laneQueries = laneMissionQueries(lane, focus, queryCount);
+  const planQueries = plan?.queries ?? [];
+  const querySeeds = lane.slug === "tenders-procurement"
+    ? [...laneQueries, ...planQueries]
+    : [...planQueries, ...laneQueries];
   const queries = cleanTerms([
-    ...(plan?.queries ?? []),
-    ...laneQueries,
+    ...querySeeds,
     ...(focus ? [`${focus} ${lane.positiveKeywords.slice(0, 5).join(" ")}`] : []),
   ], queryCount, 360);
   const query = queries[0] || missionQuery(lane, input.query);
@@ -537,18 +574,31 @@ export async function executeDiscoveryMission(
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
       onProgress: appendLog,
     });
+    const laneFiltered = filterCandidatesForLane(prepared.scoringLane, result.candidates);
     const searchMs = Date.now() - phaseStartedAt;
+    if (laneFiltered.removed > 0) {
+      await appendLog(
+        `${prepared.lane.name} lane guard hid ${discoveryCountLabel(laneFiltered.removed, "candidate")}: ${laneFiltered.reasons.slice(0, 3).join("; ")}.`,
+      );
+    }
     await db.discoveryMission.update({
       where: { id: missionId },
       data: {
         log: {
           push: discoveryLogEntry(
-            `Search returned ${discoveryCountLabel(result.candidates.length, "candidate")} from ${result.provider}; scanned ${discoveryCountLabel(result.sourceScanCount, "source")} in ${formatDiscoveryElapsed(searchMs)}.`,
+            `Search returned ${discoveryCountLabel(laneFiltered.candidates.length, "candidate")} from ${result.provider}; scanned ${discoveryCountLabel(result.sourceScanCount, "source")} in ${formatDiscoveryElapsed(searchMs)}.`,
           ),
         },
       },
     });
-    const warnings = [...result.warnings];
+    const warnings = [
+      ...result.warnings,
+      ...(laneFiltered.removed > 0
+        ? [
+            `${prepared.lane.name} lane guard hid ${discoveryCountLabel(laneFiltered.removed, "candidate")}: ${laneFiltered.reasons.slice(0, 3).join("; ")}.`,
+          ]
+        : []),
+    ];
     if (searchMs > 90_000) {
       warnings.push(`Discovery network phase took ${Math.round(searchMs / 1000)}s.`);
     }
@@ -570,8 +620,8 @@ export async function executeDiscoveryMission(
 
     const candidates = [];
     const persistStartedAt = Date.now();
-    await appendLog(`Saving ${discoveryCountLabel(result.candidates.length, "candidate")} to the review queue.`);
-    for (const candidate of result.candidates) {
+    await appendLog(`Saving ${discoveryCountLabel(laneFiltered.candidates.length, "candidate")} to the review queue.`);
+    for (const candidate of laneFiltered.candidates) {
       candidates.push(await persistCandidate(ownerId, missionId, prepared.scoringLane, candidate));
     }
     const persistMs = Date.now() - persistStartedAt;

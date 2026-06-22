@@ -37,6 +37,8 @@ type CandidateLike = {
   budgetMin?: number | null;
   budgetMax?: number | null;
   deadline?: string | Date | null;
+  candidateKind?: string | null;
+  applicationRoute?: string | null;
 };
 
 export interface LaneFitResult {
@@ -50,6 +52,11 @@ export interface LaneFitResult {
   reasons: string[];
   signals: string[];
 }
+
+export type LaneCandidateGateResult = {
+  allowed: boolean;
+  reason?: string;
+};
 
 export const DEFAULT_DISCOVERY_LANES: LaneDefinition[] = [
   {
@@ -116,12 +123,27 @@ export const DEFAULT_DISCOVERY_LANES: LaneDefinition[] = [
     workspace: "DK",
     sourceTypes: ["PROCUREMENT", "PUBLIC_WEB", "RSS"],
     queryTemplates: [
-      "udbud software udvikling webapp AI Danmark",
-      "procurement tender small IT development Denmark",
-      "offentlig digitalisering udvikler konsulent udbud",
+      "site:udbud.dk/detaljevisning software udvikling drift support tilbudsfrist",
+      "site:eu.eu-supply.com/ctm/Supplier/PublicPurchase software udvikling drift support public rft",
+      "site:mercell.com/da-dk/udbud software udvikling drift vedligeholdelse udbud",
+      "site:ethics.dk/ethics/eo#/tender software udvikling digitalisering udbud",
     ],
     positiveKeywords: ["udbud", "tender", "procurement", "software", "IT", "webapp", "digitalisering"],
-    negativeKeywords: ["rammeaftale", "enterprise", "million", "hardware"],
+    negativeKeywords: [
+      "arkiv",
+      "archive",
+      "cofounder",
+      "enterprise",
+      "hardware",
+      "job",
+      "jobs",
+      "linkedin",
+      "million",
+      "portal",
+      "rammeaftale",
+      "recruitment",
+      "the hub",
+    ],
     scoringConfig: { formalFit: 1, scopeFit: 1, deadline: 1 },
     evidenceRequirements: ["scope", "submission route", "deadline", "buyer"],
     conversionGuidance:
@@ -241,6 +263,138 @@ function candidateText(candidate: CandidateLike) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function candidateEvidenceText(candidate: CandidateLike) {
+  const fields = candidate.rawContent
+    ? [
+        candidate.title,
+        candidate.rawContent,
+        candidate.organization,
+        candidate.sourceName,
+        candidate.category,
+        candidate.url,
+      ]
+    : [
+        candidate.title,
+        candidate.description,
+        candidate.organization,
+        candidate.sourceName,
+        candidate.category,
+        candidate.url,
+      ];
+  return fields.filter(Boolean).join(" ").toLowerCase();
+}
+
+function candidateUrlParts(url?: string | null) {
+  if (!url) return { host: "", path: "", url: "" };
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname.replace(/^www\./, "").toLowerCase(),
+      path: parsed.pathname.toLowerCase(),
+      url: parsed.toString().toLowerCase(),
+    };
+  } catch {
+    return { host: "", path: "", url: url.toLowerCase() };
+  }
+}
+
+function isConcreteTenderUrl(host: string, path: string, url: string) {
+  if (!url || /\/arkiv\/|\/archive\//.test(url)) return false;
+  const hasNoticeId = /[?&]noticeid=/.test(url);
+  return (
+    (host === "udbud.dk" && path === "/detaljevisning" && hasNoticeId) ||
+    (host.endsWith("udbud.dk") && /\/pages\/tenders\/showtender/.test(path)) ||
+    (host === "eu.eu-supply.com" && /\/ctm\/supplier\/publicpurchase\/|\/app\/rfq\//.test(path)) ||
+    (host.endsWith("mercell.com") && /\/udbud\/\d+\//.test(path)) ||
+    (host.endsWith("ethics.dk") && /\/ethics\/eo#\/tender/.test(url)) ||
+    (host.endsWith("comdia.com") && /\/tender\//.test(path)) ||
+    (host === "ted.europa.eu" && /\/notice\//.test(path)) ||
+    /\/indkoeb\/tilbud\/indsend\/|\/indkøb\/tilbud\/indsend\/|\/tender\/\d+|\/rfp\/\d+/.test(path)
+  );
+}
+
+function hasTenderCue(text: string, url: string) {
+  return /udbud|udbudsfrist|tilbudsfrist|afgiv tilbud|indsend tilbud|public rft|request for tender|contract notice|procurement|tender|noticeid|publicpurchase|mercell|eu-supply|ethics|comdia|ted\.europa\.eu|e-avrop/.test(
+    `${text} ${url}`,
+  );
+}
+
+function hasTenderConcreteCue(candidate: CandidateLike, text: string, url: string, concreteTenderUrl: boolean) {
+  return (
+    Boolean(candidate.deadline) ||
+    candidate.applicationRoute === "APPLICATION" ||
+    concreteTenderUrl ||
+    /tilbudsfrist|udbudsfrist|frist for tilbud|submission deadline|deadline|afgiv tilbud|indsend tilbud|send tilbud|public rft|noticeid|noticepublicationnumber|publicpurchase|rfq|detaljevisning|\/tender\/|\/ctm\/supplier\/publicpurchase|mercell\.com\/da-dk\/udbud/.test(
+      `${text} ${url}`,
+    )
+  );
+}
+
+function hasTechnicalTenderScope(text: string) {
+  return /\bit\b|software|softwareudvikling|udvikling|drift|vedligehold|webshop|webapp|\bapp\b|applikation|hjemmeside|digital|digitalisering|datafordeler|data|system|platform|integration|api|devops|sql|c#|java|linux|hosting|cloud|\bai\b|kunstig intelligens|automatisering/.test(
+    text,
+  );
+}
+
+function isJobOrRecruitingResult(text: string, host: string, path: string) {
+  return /linkedin\.com|thehub\.io/.test(host) ||
+    /\/jobs?\b|\/careers?\b|\/stillinger?\b|\/jobopslag\b/.test(path) ||
+    /job posting|jobannonce|job ad|full.?time|part.?time|internship|praktik|cofounder|co-founder|equity.?based|recruitment|hiring|søger en developer|søger developer|technical cofounder|cto role/.test(
+      text,
+    );
+}
+
+function isGenericTenderSource(text: string, host: string, path: string) {
+  return /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen/.test(host) ||
+    /\/$|\/alle\/?$|\/sources?\/?$|\/kilder?\/?$|\/udbud\/?$|\/indkoeb\/alle\/?$|\/indkøb\/alle\/?$/.test(path) ||
+    /find tenders?|tender portal|procurement platform|udbudsportal|udbudsliste|alle udbud|liste over|oversigt over|database|markedsplads|offentlige udbud|søg efter udbud|soeg efter udbud/.test(
+      text,
+    );
+}
+
+export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): LaneCandidateGateResult {
+  if (lane.slug !== "tenders-procurement") return { allowed: true };
+
+  const text = candidateText(candidate);
+  const evidenceText = candidateEvidenceText(candidate);
+  const { host, path, url } = candidateUrlParts(candidate.url);
+  const concreteTenderUrl = isConcreteTenderUrl(host, path, url);
+
+  if (isJobOrRecruitingResult(text, host, path)) {
+    return { allowed: false, reason: "job/recruiting result" };
+  }
+
+  if (/\/arkiv\/|\/archive\//.test(url)) {
+    return { allowed: false, reason: "archived tender URL" };
+  }
+
+  if (/\/pages\/tenders\/showtender/.test(path) && !candidate.deadline) {
+    return { allowed: false, reason: "legacy udbud.dk page without active deadline" };
+  }
+
+  if (candidate.candidateKind === "source" && !concreteTenderUrl) {
+    return { allowed: false, reason: "generic tender source, not a concrete opportunity" };
+  }
+
+  if (!concreteTenderUrl && isGenericTenderSource(text, host, path)) {
+    return { allowed: false, reason: "generic tender source, not a concrete opportunity" };
+  }
+
+  if (!hasTenderCue(text, url)) {
+    return { allowed: false, reason: "missing tender evidence" };
+  }
+
+  if (!hasTenderConcreteCue(candidate, text, url, concreteTenderUrl)) {
+    return { allowed: false, reason: "missing concrete submission/deadline evidence" };
+  }
+
+  if (!hasTechnicalTenderScope(evidenceText)) {
+    return { allowed: false, reason: "missing software/technical scope" };
+  }
+
+  return { allowed: true };
 }
 
 function includesTerm(text: string, term: string) {
