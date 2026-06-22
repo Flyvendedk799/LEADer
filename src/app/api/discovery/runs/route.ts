@@ -18,8 +18,8 @@ import {
 import { discoveryRunCreateSchema } from "@/lib/validators";
 
 const discoveryRunActionSchema = z.object({
-  id: z.string().min(1),
-  action: z.enum(["CANCEL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
+  id: z.string().min(1).optional(),
+  action: z.enum(["CANCEL", "CANCEL_ALL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
 });
 
 const missionListInclude = {
@@ -70,6 +70,50 @@ export async function PATCH(req: Request) {
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
     await recoverDiscoveryQueue(ownerId);
+    if (parsed.data.action === "CANCEL_ALL") {
+      const liveMissions = await db.discoveryMission.findMany({
+        where: { ownerId, status: { in: ["QUEUED", "RUNNING"] } },
+        include: missionListInclude,
+        orderBy: { startedAt: "desc" },
+      });
+      const now = new Date();
+      await Promise.all(
+        liveMissions.map((mission) => {
+          const removed = removeQueuedDiscoveryMission(ownerId, mission.id);
+          const active = isActiveDiscoveryMission(ownerId, mission.id);
+          return db.discoveryMission.update({
+            where: { id: mission.id },
+            include: missionListInclude,
+            data: {
+              status: "CANCELED",
+              finishedAt: now,
+              log: {
+                push: discoveryLogEntry(
+                  active && !removed
+                    ? "Bulk cancel requested while worker was running; results will be discarded when the current phase returns."
+                    : "Bulk canceled before worker started.",
+                ),
+              },
+            },
+          });
+        }),
+      );
+      const missions = await db.discoveryMission.findMany({
+        where: { ownerId },
+        orderBy: { startedAt: "desc" },
+        take: 20,
+        include: missionListInclude,
+      });
+      return NextResponse.json({
+        missions,
+        queue: discoveryQueueSnapshot(ownerId),
+        canceled: liveMissions.length,
+      });
+    }
+
+    if (!parsed.data.id) {
+      return NextResponse.json({ error: "Discovery mission id is required" }, { status: 400 });
+    }
     const source = await db.discoveryMission.findFirst({ where: { id: parsed.data.id, ownerId } });
     if (!source) return NextResponse.json({ error: "Discovery mission not found" }, { status: 404 });
 

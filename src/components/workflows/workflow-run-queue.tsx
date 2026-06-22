@@ -44,9 +44,11 @@ type WorkflowQueueSnapshot = {
 type WorkflowRunQueueResponse = {
   runs?: Array<Partial<WorkflowRunQueueItem> & { id: string }>;
   queue?: Partial<WorkflowQueueSnapshot>;
+  canceled?: number;
+  error?: string;
 };
 
-type WorkflowRunAction = "CANCEL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
+type WorkflowRunAction = "CANCEL" | "CANCEL_ALL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
 
 function statusVariant(status: string) {
   if (status === "SUCCESS") return "success";
@@ -210,6 +212,29 @@ export function WorkflowRunQueue({
     }
   }
 
+  async function cancelLiveRuns() {
+    setBusyId("CANCEL_ALL");
+    try {
+      const res = await fetch("/api/workflows/run", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "CANCEL_ALL" }),
+      });
+      const data = (await res.json().catch(() => null)) as WorkflowRunQueueResponse | null;
+      if (!res.ok || !data) throw new Error(data?.error || "Workflow control failed");
+
+      if (Array.isArray(data.runs)) setItems(data.runs.map(apiRunToItem));
+      if (data.queue) setQueueState(normalizeQueue(data.queue));
+      setLastUpdatedAt(new Date());
+      toast.success("Live workflow queue canceled", `${data.canceled ?? 0} playbook runs stopped`);
+      router.refresh();
+    } catch (err) {
+      toast.error("Workflow control failed", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (items.length === 0) {
     return <p className="py-4 text-center text-sm text-muted-foreground">No playbook runs yet.</p>;
   }
@@ -218,10 +243,22 @@ export function WorkflowRunQueue({
     <div className="space-y-2">
       <div className="flex items-center justify-end text-xs text-muted-foreground">
         {live ? (
-          <span className="inline-flex items-center gap-1">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Live queue
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Live queue
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={Boolean(busyId)}
+              onClick={cancelLiveRuns}
+            >
+              {busyId === "CANCEL_ALL" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+              Cancel live
+            </Button>
+          </div>
         ) : lastUpdatedAt ? (
           <span>Updated {formatDate(lastUpdatedAt.toISOString())}</span>
         ) : null}

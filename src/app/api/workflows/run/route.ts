@@ -26,8 +26,8 @@ type WorkflowRunPayload = WorkflowRun & {
 };
 
 const workflowRunActionSchema = z.object({
-  id: z.string().min(1),
-  action: z.enum(["CANCEL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
+  id: z.string().min(1).optional(),
+  action: z.enum(["CANCEL", "CANCEL_ALL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
 });
 
 function workflowRunPayload(run: WorkflowRunPayload | null) {
@@ -92,6 +92,50 @@ export async function PATCH(req: Request) {
     }
 
     await recoverWorkflowQueue(ownerId);
+    if (parsed.data.action === "CANCEL_ALL") {
+      const liveRuns = await db.workflowRun.findMany({
+        where: { ownerId, status: { in: ["QUEUED", "RUNNING"] } },
+        include: { preset: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+      });
+      const now = new Date();
+      await Promise.all(
+        liveRuns.map((run) => {
+          const removed = removeQueuedWorkflowRun(ownerId, run.id);
+          const active = isActiveWorkflowRun(ownerId, run.id);
+          return db.workflowRun.update({
+            where: { id: run.id },
+            include: { preset: { select: { name: true } } },
+            data: {
+              status: "CANCELED",
+              finishedAt: now,
+              log: {
+                push: workflowLogEntry(
+                  active && !removed
+                    ? "Bulk cancel requested while worker was running; preserving canceled status when the current step returns."
+                    : "Bulk canceled before worker started.",
+                ),
+              },
+            },
+          });
+        }),
+      );
+      const runs = await db.workflowRun.findMany({
+        where: { ownerId },
+        include: { preset: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      });
+      return NextResponse.json({
+        runs: runs.map(workflowRunPayload),
+        queue: workflowQueueSnapshot(ownerId),
+        canceled: liveRuns.length,
+      });
+    }
+
+    if (!parsed.data.id) {
+      return NextResponse.json({ error: "Workflow run id is required" }, { status: 400 });
+    }
     const source = await db.workflowRun.findFirst({ where: { id: parsed.data.id, ownerId } });
     if (!source) return NextResponse.json({ error: "Workflow run not found" }, { status: 404 });
 

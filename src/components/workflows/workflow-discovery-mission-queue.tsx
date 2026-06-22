@@ -49,6 +49,8 @@ type ApiMission = Partial<WorkflowDiscoveryMissionItem> & {
 type MissionListResponse = {
   missions?: ApiMission[];
   queue?: Partial<DiscoveryQueueSnapshot>;
+  canceled?: number;
+  error?: string;
 };
 
 type MissionControlResponse = {
@@ -57,7 +59,7 @@ type MissionControlResponse = {
   error?: string;
 };
 
-type MissionAction = "CANCEL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
+type MissionAction = "CANCEL" | "CANCEL_ALL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
 
 function statusVariant(status: string): React.ComponentProps<typeof Badge>["variant"] {
   if (status === "SUCCESS") return "success";
@@ -222,6 +224,29 @@ export function WorkflowDiscoveryMissionQueue({
     }
   }
 
+  async function cancelLiveMissions() {
+    setBusyId("CANCEL_ALL");
+    try {
+      const res = await fetch("/api/discovery/runs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "CANCEL_ALL" }),
+      });
+      const data = (await res.json().catch(() => null)) as MissionListResponse | null;
+      if (!res.ok || !data) throw new Error(data?.error || "Discovery control failed");
+
+      if (Array.isArray(data.missions)) setItems(data.missions.map(apiMissionToItem));
+      if (data.queue) setQueueState(normalizeQueue(data.queue));
+      setLastUpdatedAt(new Date());
+      toast.success("Live discovery queue canceled", `${data.canceled ?? 0} missions stopped`);
+      router.refresh();
+    } catch (err) {
+      toast.error("Discovery control failed", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (items.length === 0) {
     return <p className="py-4 text-center text-sm text-muted-foreground">No discovery runs yet.</p>;
   }
@@ -230,10 +255,22 @@ export function WorkflowDiscoveryMissionQueue({
     <div className="space-y-2">
       <div className="flex items-center justify-end text-xs text-muted-foreground">
         {live ? (
-          <span className="inline-flex items-center gap-1">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Live queue
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Live queue
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={Boolean(busyId)}
+              onClick={cancelLiveMissions}
+            >
+              {busyId === "CANCEL_ALL" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+              Cancel live
+            </Button>
+          </div>
         ) : lastUpdatedAt ? (
           <span>Updated {formatDate(lastUpdatedAt.toISOString())}</span>
         ) : null}
