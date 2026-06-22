@@ -3,10 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Loader2, Trash2 } from "lucide-react";
+import { ExternalLink, Loader2, PlayCircle, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import { discoveryMissionHref } from "@/lib/discovery-links";
+import type { SavedSearchDiscoveryPayload } from "@/lib/saved-searches";
 import { formatDate } from "@/lib/utils";
 
 export type WorkflowSavedSearchItem = {
@@ -15,12 +17,14 @@ export type WorkflowSavedSearchItem = {
   href: string;
   summary: string;
   createdAt: string;
+  discoveryPayload: SavedSearchDiscoveryPayload | null;
 };
 
 export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSavedSearchItem[] }) {
   const router = useRouter();
   const [items, setItems] = React.useState(searches);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [runningId, setRunningId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setItems(searches);
@@ -49,6 +53,27 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
     }
   }
 
+  async function runSearch(search: WorkflowSavedSearchItem) {
+    if (!search.discoveryPayload) return;
+    setRunningId(search.id);
+    try {
+      const res = await fetch("/api/discovery/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(search.discoveryPayload),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.mission?.id) throw new Error(data?.error || "Could not queue discovery");
+      toast.success("Discovery mission queued", search.name);
+      router.push(discoveryMissionHref(data.mission.id));
+      router.refresh();
+    } catch (err) {
+      toast.error("Could not queue discovery", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setRunningId(null);
+    }
+  }
+
   if (items.length === 0) {
     return <p className="py-4 text-center text-sm text-muted-foreground">No saved searches.</p>;
   }
@@ -57,6 +82,8 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
     <div className="space-y-2">
       {items.map((search) => {
         const deleting = deletingId === search.id;
+        const running = runningId === search.id;
+        const busy = deleting || running;
         return (
           <div
             key={search.id}
@@ -69,6 +96,16 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
             </Link>
 
             <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy || !search.discoveryPayload}
+                onClick={() => runSearch(search)}
+              >
+                {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+                Run
+              </Button>
               <Button asChild size="icon" variant="outline" className="h-8 w-8" title="Open saved search">
                 <Link href={search.href} aria-label={`Open ${search.name}`}>
                   <ExternalLink className="h-4 w-4" />
@@ -79,7 +116,7 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
                 size="icon"
                 variant="ghost"
                 className="h-8 w-8"
-                disabled={deleting}
+                disabled={busy}
                 onClick={() => deleteSearch(search)}
                 aria-label={`Delete ${search.name}`}
                 title="Delete saved search"

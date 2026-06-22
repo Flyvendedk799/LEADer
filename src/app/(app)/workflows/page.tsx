@@ -38,7 +38,7 @@ import { ensureDefaultDiscoveryLanes } from "@/lib/crm/lanes";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { isSourceDue } from "@/lib/ingestion";
-import { describeSavedSearchFilters, savedSearchFiltersToHref } from "@/lib/saved-searches";
+import { describeSavedSearchFilters, savedSearchDiscoveryPayload, savedSearchFiltersToHref } from "@/lib/saved-searches";
 import { cn, formatBudget } from "@/lib/utils";
 import { ensureDefaultWorkflowPresets, presetToWorkflowInput, workflowPresetOptionSummary, workflowPresetScheduleSummary } from "@/lib/workflows/presets";
 import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
@@ -293,12 +293,16 @@ export default async function WorkflowsPage() {
     enabled: source.enabled,
     lastCheckedAt: source.lastCheckedAt?.toISOString() ?? null,
   }));
+  const defaultLaneId = lanes.find((lane) => lane.slug === "sme-ai-automation")?.id ?? lanes[0]?.id ?? null;
   const savedSearchItems = savedSearches.map((search) => ({
     id: search.id,
     name: search.name,
     href: savedSearchFiltersToHref(search.filters),
     summary: describeSavedSearchFilters(search.filters),
     createdAt: search.createdAt.toISOString(),
+    discoveryPayload: defaultLaneId
+      ? savedSearchDiscoveryPayload(search.filters, { laneId: defaultLaneId, name: search.name })
+      : null,
   }));
   const alertItems = unreadAlerts.map((alert) => ({
     id: alert.id,
