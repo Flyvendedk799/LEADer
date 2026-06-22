@@ -1,13 +1,14 @@
 import type { Prisma } from "@prisma/client";
 
 import { dispatchForOwner, type DispatchResult } from "@/lib/alerts/dispatch";
+import { saveCandidateAsDeal } from "@/lib/crm";
 import { db } from "@/lib/db";
 import { runDueDiscovery, type RunResult } from "@/lib/ingestion";
 import type { Workspace } from "@/lib/types";
 import { summarizeSourceRuns, type SourceRunSummary } from "./summary";
 import type { WorkflowRunInput } from "./types";
 
-export type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue";
+export type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest";
 
 const OPEN_DEAL_STATUSES = ["DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION"] as const;
 const DAY = 24 * 60 * 60 * 1000;
@@ -42,7 +43,24 @@ export type PipelineRescueResult = {
   log: string[];
 };
 
-export type WorkflowPlaybookResult = DailySweepResult | PipelineRescueResult;
+export type CandidateHarvestResult = {
+  playbook: "candidate-harvest";
+  workspace: Workspace;
+  ranAt: string;
+  durationMs: number;
+  candidates: {
+    reviewed: number;
+    saved: number;
+    alreadyInPipeline: number;
+    minScore: number;
+  };
+  candidateIds: string[];
+  dealIds: string[];
+  taskIds: string[];
+  log: string[];
+};
+
+export type WorkflowPlaybookResult = DailySweepResult | PipelineRescueResult | CandidateHarvestResult;
 
 function workflowLogEntry(message: string) {
   return `${new Date().toISOString()} ${message}`;
@@ -69,6 +87,9 @@ function prepDueDate(deadline: Date | null) {
 }
 
 export function workflowRunSummary(result: WorkflowPlaybookResult) {
+  if (result.playbook === "candidate-harvest") {
+    return `${result.candidates.saved} hot candidates saved as deals, ${result.candidates.alreadyInPipeline} already in pipeline.`;
+  }
   if (result.playbook === "pipeline-rescue") {
     return `${result.staleDeals.tasksCreated} stale follow-up tasks, ${result.deadlines.tasksCreated} deadline prep tasks, ${result.nextActionsUpdated} next actions updated.`;
   }
@@ -340,8 +361,79 @@ export async function runPipelineRescue(ownerId: string, workspace: Workspace = 
   };
 }
 
+export async function runCandidateHarvest(ownerId: string, workspace: Workspace = "DK"): Promise<CandidateHarvestResult> {
+  const startedAt = Date.now();
+  const minScore = 70;
+  const log = [workflowLogEntry(`Started candidate harvest for ${workspace}.`)];
+  const candidates = await db.discoveryCandidate.findMany({
+    where: {
+      ownerId,
+      workspace,
+      status: "NEW",
+      pursuitScore: { gte: minScore },
+    },
+    orderBy: [{ pursuitScore: "desc" }, { createdAt: "desc" }],
+    take: 5,
+    select: { id: true, title: true, pursuitScore: true },
+  });
+
+  const candidateIds: string[] = [];
+  const dealIds: string[] = [];
+  const taskIds: string[] = [];
+  let saved = 0;
+  let alreadyInPipeline = 0;
+
+  for (const candidate of candidates) {
+    const result = await saveCandidateAsDeal(ownerId, candidate.id);
+    candidateIds.push(candidate.id);
+    dealIds.push(result.deal.id);
+    if (result.created) {
+      saved++;
+      log.push(workflowLogEntry(`Saved candidate "${candidate.title}" as a deal.`));
+    } else {
+      alreadyInPipeline++;
+      log.push(workflowLogEntry(`Candidate "${candidate.title}" was already in the pipeline.`));
+    }
+
+    const task = await db.task.findFirst({
+      where: {
+        ownerId,
+        dealId: result.deal.id,
+        title: "Qualify buyer, budget and next step",
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    if (task) taskIds.push(task.id);
+  }
+
+  log.push(workflowLogEntry(`Reviewed ${candidates.length} hot candidates; saved ${saved} new deals.`));
+
+  const durationMs = Date.now() - startedAt;
+  log.push(workflowLogEntry(`Finished candidate harvest in ${Math.round(durationMs / 1000)}s.`));
+
+  return {
+    playbook: "candidate-harvest",
+    workspace,
+    ranAt: new Date().toISOString(),
+    durationMs,
+    candidates: {
+      reviewed: candidates.length,
+      saved,
+      alreadyInPipeline,
+      minScore,
+    },
+    candidateIds,
+    dealIds: [...new Set(dealIds)],
+    taskIds: [...new Set(taskIds)],
+    log,
+  };
+}
+
 export async function runWorkflowPlaybook(ownerId: string, input: WorkflowRunInput): Promise<WorkflowPlaybookResult> {
   switch (input.playbook) {
+    case "candidate-harvest":
+      return runCandidateHarvest(ownerId, input.workspace);
     case "pipeline-rescue":
       return runPipelineRescue(ownerId, input.workspace);
     case "daily-sweep":

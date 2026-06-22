@@ -19,6 +19,7 @@ import {
   Search,
   Sparkles,
   Sun,
+  Target,
   TimerReset,
 } from "lucide-react";
 import { cn, formatBudget } from "@/lib/utils";
@@ -63,7 +64,7 @@ type WorkflowRunResponse = {
   error?: unknown;
 };
 
-type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue";
+type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest";
 
 export function CommandPalette() {
   const router = useRouter();
@@ -273,6 +274,14 @@ export function CommandPalette() {
           router.push("/import");
           close();
         },
+      },
+      {
+        id: "act-candidate-harvest",
+        group: "Workflow actions",
+        label: "Harvest hot candidates",
+        hint: "Save top candidates as deals",
+        icon: <Target className="h-4 w-4 text-muted-foreground" />,
+        perform: () => queueWorkflowPlaybook("candidate-harvest", "act-candidate-harvest", "Candidate harvest"),
       },
       {
         id: "act-pipeline-rescue",

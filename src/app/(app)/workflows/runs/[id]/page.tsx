@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Activity, ArrowLeft, BriefcaseBusiness, CalendarClock, CheckCircle2, Clock3, ListChecks, RotateCw } from "lucide-react";
+import { Activity, ArrowLeft, BriefcaseBusiness, CalendarClock, CheckCircle2, Clock3, ListChecks, RotateCw, Target } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,11 +56,20 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
   const digest = objectValue(result?.digest);
   const staleDeals = objectValue(result?.staleDeals);
   const deadlines = objectValue(result?.deadlines);
+  const candidates = objectValue(result?.candidates);
   const taskIds = stringList(result?.taskIds);
+  const dealIds = stringList(result?.dealIds);
   const tasks = taskIds.length
     ? await db.task.findMany({
         where: { ownerId, id: { in: taskIds } },
         include: { deal: { include: { account: true } }, account: true },
+        orderBy: { createdAt: "desc" },
+      })
+    : [];
+  const deals = dealIds.length
+    ? await db.deal.findMany({
+        where: { ownerId, id: { in: dealIds } },
+        include: { account: true },
         orderBy: { createdAt: "desc" },
       })
     : [];
@@ -86,7 +95,14 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
         <RunMetric label="Finished" value={run.finishedAt ? formatDate(run.finishedAt) : "Running"} icon={<CheckCircle2 />} />
       </section>
 
-      {run.playbook === "pipeline-rescue" ? (
+      {run.playbook === "candidate-harvest" ? (
+        <section className="grid gap-3 md:grid-cols-4">
+          <RunMetric label="Reviewed" value={numberValue(candidates?.reviewed)} icon={<Target />} />
+          <RunMetric label="Saved deals" value={numberValue(candidates?.saved)} icon={<BriefcaseBusiness />} />
+          <RunMetric label="Already in pipe" value={numberValue(candidates?.alreadyInPipeline)} icon={<CheckCircle2 />} />
+          <RunMetric label="Min score" value={numberValue(candidates?.minScore)} icon={<ListChecks />} />
+        </section>
+      ) : run.playbook === "pipeline-rescue" ? (
         <section className="grid gap-3 md:grid-cols-4">
           <RunMetric label="Stale tasks" value={numberValue(staleDeals?.tasksCreated)} icon={<RotateCw />} />
           <RunMetric label="Deadline tasks" value={numberValue(deadlines?.tasksCreated)} icon={<CalendarClock />} />
@@ -140,8 +156,26 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           <CardTitle className="text-sm">Created work</CardTitle>
         </CardHeader>
         <CardContent>
-          {tasks.length ? (
+          {deals.length || tasks.length ? (
             <div className="space-y-2">
+              {deals.map((deal) => (
+                <Link
+                  key={deal.id}
+                  href={`/deals/${deal.id}`}
+                  className="grid gap-2 rounded-md border border-border bg-surface/40 p-3 transition-colors hover:border-primary/50 md:grid-cols-[minmax(0,1fr)_auto]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{deal.title}</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {deal.account?.name ?? "No account"} - {deal.nextAction ? truncate(deal.nextAction, 90) : "No next action"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground md:justify-end">
+                    <Badge variant="secondary">{deal.status.toLowerCase()}</Badge>
+                    <span className="whitespace-nowrap">{deal.pursuitScore ?? 0} score</span>
+                  </div>
+                </Link>
+              ))}
               {tasks.map((task) => (
                 <Link
                   key={task.id}

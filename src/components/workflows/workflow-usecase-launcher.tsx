@@ -14,6 +14,7 @@ import {
   Radar,
   RefreshCw,
   Search,
+  Target,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -55,7 +56,7 @@ type WorkflowRunResponse = {
   error?: unknown;
 };
 
-type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue";
+type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest";
 
 export type WorkflowLaneItem = {
   id: string;
@@ -356,6 +357,15 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
           >
             {busy === "pipeline-rescue" ? <Loader2 className="h-4 w-4 animate-spin" /> : <BriefcaseBusiness className="h-4 w-4" />}
             Rescue pipeline
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => queueWorkflowPlaybook("candidate-harvest", "candidate-harvest", "Candidate harvest")}
+            disabled={Boolean(busy)}
+          >
+            {busy === "candidate-harvest" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Target className="h-4 w-4" />}
+            Harvest candidates
           </Button>
           <Button type="button" variant="outline" onClick={() => generateAlerts("REMINDERS")} disabled={Boolean(busy)}>
             {busy === "REMINDERS" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
