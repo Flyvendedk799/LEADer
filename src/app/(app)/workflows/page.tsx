@@ -25,6 +25,7 @@ import { WorkflowActivityFeed } from "@/components/workflows/workflow-activity-f
 import { WorkflowAlertQueue } from "@/components/workflows/workflow-alert-queue";
 import { WorkflowCandidateQueue } from "@/components/workflows/workflow-candidate-queue";
 import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
+import { WorkflowPresetPanel, type WorkflowPresetPanelItem } from "@/components/workflows/workflow-preset-panel";
 import { WorkflowRunQueue } from "@/components/workflows/workflow-run-queue";
 import { WorkflowSavedSearchQueue } from "@/components/workflows/workflow-saved-search-queue";
 import { WorkflowSourceQueue } from "@/components/workflows/workflow-source-queue";
@@ -39,6 +40,8 @@ import { discoveryMissionHref } from "@/lib/discovery-links";
 import { isSourceDue } from "@/lib/ingestion";
 import { describeSavedSearchFilters, savedSearchFiltersToHref } from "@/lib/saved-searches";
 import { cn, formatBudget } from "@/lib/utils";
+import { ensureDefaultWorkflowPresets, presetToWorkflowInput, workflowPresetOptionSummary } from "@/lib/workflows/presets";
+import { previewWorkflowRun } from "@/lib/workflows/preview";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 
@@ -86,12 +89,14 @@ export default async function WorkflowsPage() {
   const weekFromNow = new Date(now.getTime() + 7 * 86400000);
   const staleCutoff = new Date(now.getTime() - 14 * 86400000);
   await ensureDefaultDiscoveryLanes(ownerId);
+  await ensureDefaultWorkflowPresets(ownerId);
   const workflowQueue = await recoverWorkflowQueue(ownerId);
 
   const [
     lanes,
     missions,
     workflowRuns,
+    workflowPresets,
     hotCandidates,
     overdueTasks,
     dueTasks,
@@ -122,6 +127,11 @@ export default async function WorkflowsPage() {
     db.workflowRun.findMany({
       where: { ownerId },
       orderBy: { createdAt: "desc" },
+      take: 8,
+    }),
+    db.workflowPreset.findMany({
+      where: { ownerId },
+      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
       take: 8,
     }),
     db.discoveryCandidate.findMany({
@@ -291,6 +301,24 @@ export default async function WorkflowsPage() {
       summary: workflowRunResultSummary(run.playbook, run.result),
     };
   });
+  const workflowPresetItems: WorkflowPresetPanelItem[] = await Promise.all(
+    workflowPresets.map(async (preset) => {
+      const input = presetToWorkflowInput(preset);
+      return {
+        id: preset.id,
+        name: preset.name,
+        description: preset.description,
+        playbook: input.playbook,
+        workspace: input.workspace,
+        options: input.options ?? {},
+        optionSummary: workflowPresetOptionSummary(input.options),
+        pinned: preset.pinned,
+        lastQueuedAt: preset.lastQueuedAt?.toISOString() ?? null,
+        updatedAt: preset.updatedAt.toISOString(),
+        preview: await previewWorkflowRun(ownerId, input, now),
+      };
+    }),
+  );
   const workflowRecommendations: WorkflowRecommendationItem[] = [];
   const pipelineSignalCount = staleDeals.length + upcomingDeadlines.length;
   if (hotCandidates.length && (pipelineSignalCount || dueSourceCount)) {
@@ -620,7 +648,8 @@ export default async function WorkflowsPage() {
               Operating modes
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <WorkflowPresetPanel presets={workflowPresetItems} />
             <WorkflowUsecaseLauncher lanes={laneItems} />
           </CardContent>
         </Card>

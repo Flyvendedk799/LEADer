@@ -223,6 +223,7 @@ model User {
   discoveryMissions   DiscoveryMission[]
   discoveryCandidates DiscoveryCandidate[]
   workflowRuns        WorkflowRun[]
+  workflowPresets     WorkflowPreset[]
   evidence            Evidence[]
   touchpoints         Touchpoint[]
   tasks               Task[]
@@ -730,6 +731,25 @@ model WorkflowRun {
 
   @@index([ownerId, createdAt])
   @@index([ownerId, status])
+}
+
+model WorkflowPreset {
+  id           String    @id @default(cuid())
+  ownerId      String
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?   @db.Text
+  playbook     String
+  workspace    Workspace @default(DK)
+  options      Json?
+  pinned       Boolean   @default(false)
+  lastQueuedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([ownerId, name])
+  @@index([ownerId, pinned])
+  @@index([ownerId, updatedAt])
 }
 
 model Evidence {
