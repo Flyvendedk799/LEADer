@@ -1,4 +1,4 @@
-import type { WorkflowPreset } from "@prisma/client";
+import type { Prisma, WorkflowPreset } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { createWorkflowRun } from "./playbooks";
@@ -74,6 +74,39 @@ export type QueuedScheduledPreset = {
   error?: string;
 };
 
+export function workflowPresetEventMessage(result: QueuedScheduledPreset) {
+  if (result.status === "QUEUED") {
+    return `Queued scheduled preset "${result.presetName}"${result.runId ? ` as run ${result.runId}` : ""}.`;
+  }
+  if (result.status === "ERROR") {
+    return `Scheduled preset "${result.presetName}" failed to queue${result.error ? `: ${result.error}` : "."}`;
+  }
+  if (result.skipReason === "already_running") {
+    return `Skipped scheduled preset "${result.presetName}" because run ${result.activeRunId ?? "unknown"} is already ${(result.activeRunStatus ?? "active").toLowerCase()}.`;
+  }
+  return `Skipped scheduled preset "${result.presetName}" because it was not due.`;
+}
+
+async function recordScheduledPresetEvent(ownerId: string, result: QueuedScheduledPreset) {
+  if (result.skipReason === "not_due") return;
+
+  await db.workflowPresetEvent.create({
+    data: {
+      ownerId,
+      presetId: result.presetId,
+      runId: result.runId ?? result.activeRunId ?? null,
+      eventType: result.status,
+      reason: result.skipReason ?? (result.status === "ERROR" ? "error" : null),
+      message: workflowPresetEventMessage(result),
+      metadata: JSON.parse(JSON.stringify({
+        nextRunAt: result.nextRunAt ?? null,
+        activeRunStatus: result.activeRunStatus ?? null,
+        error: result.error ?? null,
+      })) as Prisma.InputJsonValue,
+    },
+  }).catch(() => undefined);
+}
+
 export function scheduledPresetOverlapSkipResult(
   preset: Pick<WorkflowPreset, "id" | "name">,
   activeRun: Pick<ActiveWorkflowPresetRun, "id" | "status">,
@@ -113,13 +146,22 @@ export async function queueDueWorkflowPresets(ownerId: string, now = new Date())
   const results: QueuedScheduledPreset[] = [];
   for (const preset of presets) {
     if (!isWorkflowPresetDue(preset, now)) {
-      results.push({ presetId: preset.id, presetName: preset.name, status: "SKIPPED", skipReason: "not_due" });
+      const result: QueuedScheduledPreset = {
+        presetId: preset.id,
+        presetName: preset.name,
+        status: "SKIPPED",
+        skipReason: "not_due",
+      };
+      await recordScheduledPresetEvent(ownerId, result);
+      results.push(result);
       continue;
     }
 
     const activeRun = await findActiveWorkflowPresetRun(ownerId, preset.id);
     if (activeRun) {
-      results.push(scheduledPresetOverlapSkipResult(preset, activeRun));
+      const result = scheduledPresetOverlapSkipResult(preset, activeRun);
+      await recordScheduledPresetEvent(ownerId, result);
+      results.push(result);
       continue;
     }
 
@@ -129,20 +171,24 @@ export async function queueDueWorkflowPresets(ownerId: string, now = new Date())
         where: { id: preset.id },
         select: { scheduleNextRunAt: true },
       });
-      results.push({
+      const result: QueuedScheduledPreset = {
         presetId: preset.id,
         presetName: preset.name,
         runId: queued.run.id,
         nextRunAt: refreshed?.scheduleNextRunAt?.toISOString() ?? null,
         status: "QUEUED",
-      });
+      };
+      await recordScheduledPresetEvent(ownerId, result);
+      results.push(result);
     } catch (error) {
-      results.push({
+      const result: QueuedScheduledPreset = {
         presetId: preset.id,
         presetName: preset.name,
         status: "ERROR",
         error: error instanceof Error ? error.message : "Could not queue preset",
-      });
+      };
+      await recordScheduledPresetEvent(ownerId, result);
+      results.push(result);
     }
   }
 

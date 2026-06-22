@@ -224,6 +224,7 @@ model User {
   discoveryCandidates DiscoveryCandidate[]
   workflowRuns        WorkflowRun[]
   workflowPresets     WorkflowPreset[]
+  workflowPresetEvents WorkflowPresetEvent[]
   evidence            Evidence[]
   touchpoints         Touchpoint[]
   tasks               Task[]
@@ -732,6 +733,8 @@ model WorkflowRun {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  presetEvents WorkflowPresetEvent[]
+
   @@index([ownerId, createdAt])
   @@index([ownerId, status])
   @@index([ownerId, trigger])
@@ -757,11 +760,32 @@ model WorkflowPreset {
   updatedAt    DateTime  @updatedAt
 
   workflowRuns WorkflowRun[]
+  events       WorkflowPresetEvent[]
 
   @@unique([ownerId, name])
   @@index([ownerId, pinned])
   @@index([ownerId, scheduleEnabled, scheduleNextRunAt])
   @@index([ownerId, updatedAt])
+}
+
+model WorkflowPresetEvent {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  presetId  String
+  preset    WorkflowPreset @relation(fields: [presetId], references: [id], onDelete: Cascade)
+  runId     String?
+  run       WorkflowRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  eventType String
+  reason    String?
+  message   String   @db.Text
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([ownerId, createdAt])
+  @@index([presetId, createdAt])
+  @@index([runId])
+  @@index([ownerId, eventType])
 }
 
 model Evidence {

@@ -99,6 +99,7 @@ export default async function WorkflowsPage() {
     workflowRuns,
     workflowPresets,
     activePresetRuns,
+    workflowPresetEvents,
     hotCandidates,
     overdueTasks,
     dueTasks,
@@ -145,6 +146,20 @@ export default async function WorkflowsPage() {
       },
       orderBy: { createdAt: "desc" },
       select: { id: true, presetId: true, status: true, trigger: true, createdAt: true },
+    }),
+    db.workflowPresetEvent.findMany({
+      where: { ownerId },
+      orderBy: { createdAt: "desc" },
+      take: 24,
+      select: {
+        id: true,
+        presetId: true,
+        runId: true,
+        eventType: true,
+        reason: true,
+        message: true,
+        createdAt: true,
+      },
     }),
     db.discoveryCandidate.findMany({
       where: { ownerId, status: "NEW", pursuitScore: { gte: 70 } },
@@ -320,6 +335,17 @@ export default async function WorkflowsPage() {
     workflowPresets.map(async (preset) => {
       const input = presetToWorkflowInput(preset);
       const activeRun = activePresetRuns.find((run) => run.presetId === preset.id) ?? null;
+      const recentEvents = workflowPresetEvents
+        .filter((event) => event.presetId === preset.id)
+        .slice(0, 3)
+        .map((event) => ({
+          id: event.id,
+          runId: event.runId,
+          eventType: event.eventType,
+          reason: event.reason,
+          message: event.message,
+          createdAt: event.createdAt.toISOString(),
+        }));
       return {
         id: preset.id,
         name: preset.name,
@@ -344,6 +370,7 @@ export default async function WorkflowsPage() {
               createdAt: activeRun.createdAt.toISOString(),
             }
           : null,
+        recentEvents,
         preview: await previewWorkflowRun(ownerId, input, now),
       };
     }),

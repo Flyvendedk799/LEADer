@@ -89,6 +89,14 @@ export type WorkflowPresetPanelItem = {
     trigger: string;
     createdAt: string;
   } | null;
+  recentEvents: Array<{
+    id: string;
+    runId: string | null;
+    eventType: string;
+    reason: string | null;
+    message: string;
+    createdAt: string;
+  }>;
   preview: WorkflowRunPreview;
 };
 
@@ -249,6 +257,12 @@ function scheduleLabel(preset: WorkflowPresetPanelItem) {
   return preset.scheduleNextRunAt ? `${cadence} · next ${formatDate(preset.scheduleNextRunAt)}` : `${cadence} · due now`;
 }
 
+function eventVariant(eventType: string) {
+  if (eventType === "QUEUED") return "success";
+  if (eventType === "ERROR") return "warning";
+  return "outline";
+}
+
 export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelItem[] }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -377,6 +391,33 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
                       <ExternalLink className="h-3.5 w-3.5" />
                       {preset.activeRun.trigger}: {preset.activeRun.status.toLowerCase()} since {formatDate(preset.activeRun.createdAt)}
                     </Link>
+                  ) : null}
+                  {preset.recentEvents.length ? (
+                    <div className="space-y-1 rounded-md border border-border bg-background/40 p-2">
+                      {preset.recentEvents.slice(0, 2).map((event) => {
+                        const content = (
+                          <>
+                            <Badge variant={eventVariant(event.eventType)}>{event.eventType.toLowerCase()}</Badge>
+                            {event.reason ? <Badge variant="outline">{event.reason.replace(/_/g, " ")}</Badge> : null}
+                            <span className="truncate">{event.message}</span>
+                            <span className="whitespace-nowrap text-muted-foreground">{formatDate(event.createdAt)}</span>
+                          </>
+                        );
+                        return event.runId ? (
+                          <Link
+                            key={event.id}
+                            href={`/workflows/runs/${event.runId}`}
+                            className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] hover:text-primary"
+                          >
+                            {content}
+                          </Link>
+                        ) : (
+                          <div key={event.id} className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                            {content}
+                          </div>
+                        );
+                      })}
+                    </div>
                   ) : null}
                   <div className="grid gap-2 sm:grid-cols-4">
                     <PreviewStat
