@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Database, Edit3, Loader2, Plus, PlayCircle, Save, Sparkles, Target, TimerReset, Trash2 } from "lucide-react";
+import { CalendarClock, Database, Edit3, ExternalLink, Loader2, Plus, PlayCircle, Save, Sparkles, Target, TimerReset, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,12 @@ export type WorkflowPresetPanelItem = {
   lastScheduledAt: string | null;
   lastQueuedAt: string | null;
   updatedAt: string;
+  activeRun: {
+    id: string;
+    status: string;
+    trigger: string;
+    createdAt: string;
+  } | null;
   preview: WorkflowRunPreview;
 };
 
@@ -354,6 +361,7 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
                     <Badge variant="outline">{preset.workspace}</Badge>
                     {preset.pinned ? <Badge variant="secondary">pinned</Badge> : null}
                     {preset.scheduleEnabled ? <Badge variant="secondary">scheduled</Badge> : null}
+                    {preset.activeRun ? <Badge variant="secondary">active</Badge> : null}
                   </div>
                   {preset.description ? <p className="text-xs text-muted-foreground">{preset.description}</p> : null}
                   <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
@@ -361,6 +369,15 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
                     <span>{scheduleLabel(preset)}</span>
                     <span>{preset.lastQueuedAt ? `Queued ${formatDate(preset.lastQueuedAt)}` : `Updated ${formatDate(preset.updatedAt)}`}</span>
                   </div>
+                  {preset.activeRun ? (
+                    <Link
+                      href={`/workflows/runs/${preset.activeRun.id}`}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {preset.activeRun.trigger}: {preset.activeRun.status.toLowerCase()} since {formatDate(preset.activeRun.createdAt)}
+                    </Link>
+                  ) : null}
                   <div className="grid gap-2 sm:grid-cols-4">
                     <PreviewStat
                       label="Sources"

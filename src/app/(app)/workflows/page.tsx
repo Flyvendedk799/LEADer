@@ -41,6 +41,7 @@ import { isSourceDue } from "@/lib/ingestion";
 import { describeSavedSearchFilters, savedSearchFiltersToHref } from "@/lib/saved-searches";
 import { cn, formatBudget } from "@/lib/utils";
 import { ensureDefaultWorkflowPresets, presetToWorkflowInput, workflowPresetOptionSummary, workflowPresetScheduleSummary } from "@/lib/workflows/presets";
+import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
 import { previewWorkflowRun } from "@/lib/workflows/preview";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
@@ -97,6 +98,7 @@ export default async function WorkflowsPage() {
     missions,
     workflowRuns,
     workflowPresets,
+    activePresetRuns,
     hotCandidates,
     overdueTasks,
     dueTasks,
@@ -134,6 +136,15 @@ export default async function WorkflowsPage() {
       where: { ownerId },
       orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
       take: 8,
+    }),
+    db.workflowRun.findMany({
+      where: {
+        ownerId,
+        presetId: { not: null },
+        status: { in: [...ACTIVE_WORKFLOW_RUN_STATUSES] },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, presetId: true, status: true, trigger: true, createdAt: true },
     }),
     db.discoveryCandidate.findMany({
       where: { ownerId, status: "NEW", pursuitScore: { gte: 70 } },
@@ -308,6 +319,7 @@ export default async function WorkflowsPage() {
   const workflowPresetItems: WorkflowPresetPanelItem[] = await Promise.all(
     workflowPresets.map(async (preset) => {
       const input = presetToWorkflowInput(preset);
+      const activeRun = activePresetRuns.find((run) => run.presetId === preset.id) ?? null;
       return {
         id: preset.id,
         name: preset.name,
@@ -324,6 +336,14 @@ export default async function WorkflowsPage() {
         lastScheduledAt: preset.lastScheduledAt?.toISOString() ?? null,
         lastQueuedAt: preset.lastQueuedAt?.toISOString() ?? null,
         updatedAt: preset.updatedAt.toISOString(),
+        activeRun: activeRun
+          ? {
+              id: activeRun.id,
+              status: activeRun.status,
+              trigger: activeRun.trigger,
+              createdAt: activeRun.createdAt.toISOString(),
+            }
+          : null,
         preview: await previewWorkflowRun(ownerId, input, now),
       };
     }),

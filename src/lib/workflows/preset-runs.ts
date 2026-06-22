@@ -6,9 +6,18 @@ import { presetToWorkflowInput, nextWorkflowPresetRunAt, isWorkflowPresetDue } f
 import { enqueueWorkflowRun, workflowQueueSnapshot } from "./queue";
 import { workflowRunResultSummary } from "./result-summary";
 
+export const ACTIVE_WORKFLOW_RUN_STATUSES = ["QUEUED", "RUNNING"] as const;
+
 type QueuePresetOptions = {
   scheduled?: boolean;
   now?: Date;
+};
+
+type ActiveWorkflowPresetRun = {
+  id: string;
+  status: string;
+  trigger: string;
+  createdAt: Date;
 };
 
 function workflowRunPayload(run: Awaited<ReturnType<typeof createWorkflowRun>>, presetName?: string | null) {
@@ -59,8 +68,37 @@ export type QueuedScheduledPreset = {
   runId?: string;
   nextRunAt?: string | null;
   status: "QUEUED" | "SKIPPED" | "ERROR";
+  skipReason?: "already_running" | "not_due";
+  activeRunId?: string;
+  activeRunStatus?: string;
   error?: string;
 };
+
+export function scheduledPresetOverlapSkipResult(
+  preset: Pick<WorkflowPreset, "id" | "name">,
+  activeRun: Pick<ActiveWorkflowPresetRun, "id" | "status">,
+): QueuedScheduledPreset {
+  return {
+    presetId: preset.id,
+    presetName: preset.name,
+    status: "SKIPPED",
+    skipReason: "already_running",
+    activeRunId: activeRun.id,
+    activeRunStatus: activeRun.status,
+  };
+}
+
+export async function findActiveWorkflowPresetRun(ownerId: string, presetId: string) {
+  return db.workflowRun.findFirst({
+    where: {
+      ownerId,
+      presetId,
+      status: { in: [...ACTIVE_WORKFLOW_RUN_STATUSES] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, status: true, trigger: true, createdAt: true },
+  });
+}
 
 export async function queueDueWorkflowPresets(ownerId: string, now = new Date()): Promise<QueuedScheduledPreset[]> {
   const presets = await db.workflowPreset.findMany({
@@ -75,7 +113,13 @@ export async function queueDueWorkflowPresets(ownerId: string, now = new Date())
   const results: QueuedScheduledPreset[] = [];
   for (const preset of presets) {
     if (!isWorkflowPresetDue(preset, now)) {
-      results.push({ presetId: preset.id, presetName: preset.name, status: "SKIPPED" });
+      results.push({ presetId: preset.id, presetName: preset.name, status: "SKIPPED", skipReason: "not_due" });
+      continue;
+    }
+
+    const activeRun = await findActiveWorkflowPresetRun(ownerId, preset.id);
+    if (activeRun) {
+      results.push(scheduledPresetOverlapSkipResult(preset, activeRun));
       continue;
     }
 
