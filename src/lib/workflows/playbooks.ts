@@ -5,6 +5,7 @@ import { saveCandidateAsDeal } from "@/lib/crm";
 import { db } from "@/lib/db";
 import { runDueDiscovery, type RunResult } from "@/lib/ingestion";
 import type { Workspace } from "@/lib/types";
+import { formatWorkflowElapsed, workflowLogEntry } from "./logging";
 import { summarizeSourceRuns, type SourceRunSummary } from "./summary";
 import type { WorkflowRunInput, WorkflowRunOptions } from "./types";
 
@@ -88,10 +89,6 @@ type WorkflowRunMetadata = {
   presetName?: string | null;
 };
 
-function workflowLogEntry(message: string) {
-  return `${new Date().toISOString()} ${message}`;
-}
-
 function atNine(date: Date) {
   date.setHours(9, 0, 0, 0);
   return date;
@@ -163,6 +160,7 @@ export async function createWorkflowRun(
 }
 
 export async function executeWorkflowRun(ownerId: string, runId: string, input: WorkflowRunInput) {
+  const workerStartedAt = Date.now();
   const persistedPlaybookLogs = new Set<string>();
   async function recordPlaybookLog(entry: string) {
     persistedPlaybookLogs.add(entry);
@@ -203,7 +201,11 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
         status: "SUCCESS",
         result: JSON.parse(JSON.stringify(result)) as Prisma.InputJsonValue,
         finishedAt: new Date(),
-        log: { push: workflowLogEntry(`Playbook complete: ${workflowRunSummary(result)}`) },
+        log: {
+          push: workflowLogEntry(
+            `Playbook complete after ${formatWorkflowElapsed(Date.now() - workerStartedAt)}: ${workflowRunSummary(result)}`,
+          ),
+        },
       },
     });
     if (finished.count === 0) {
@@ -221,7 +223,7 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
         finishedAt: new Date(),
         log: {
           push: workflowLogEntry(
-            `Playbook failed: ${error instanceof Error ? error.message : "Workflow playbook failed"}`,
+            `Playbook failed after ${formatWorkflowElapsed(Date.now() - workerStartedAt)}: ${error instanceof Error ? error.message : "Workflow playbook failed"}`,
           ),
         },
       },
@@ -274,7 +276,7 @@ export async function runDailySweep(
   }
 
   const durationMs = Date.now() - startedAt;
-  log.push(workflowLogEntry(`Finished daily sweep in ${Math.round(durationMs / 1000)}s.`));
+  log.push(workflowLogEntry(`Finished daily sweep in ${formatWorkflowElapsed(durationMs)}.`));
 
   return {
     playbook: "daily-sweep",
@@ -428,7 +430,7 @@ export async function runPipelineRescue(
   log.push(workflowLogEntry(`Updated ${nextActionsUpdated} deal next actions.`));
 
   const durationMs = Date.now() - startedAt;
-  log.push(workflowLogEntry(`Finished pipeline rescue in ${Math.round(durationMs / 1000)}s.`));
+  log.push(workflowLogEntry(`Finished pipeline rescue in ${formatWorkflowElapsed(durationMs)}.`));
 
   return {
     playbook: "pipeline-rescue",
@@ -505,7 +507,7 @@ export async function runCandidateHarvest(
   log.push(workflowLogEntry(`Candidate harvest options: min score ${minScore}, limit ${limit}.`));
 
   const durationMs = Date.now() - startedAt;
-  log.push(workflowLogEntry(`Finished candidate harvest in ${Math.round(durationMs / 1000)}s.`));
+  log.push(workflowLogEntry(`Finished candidate harvest in ${formatWorkflowElapsed(durationMs)}.`));
 
   return {
     playbook: "candidate-harvest",
@@ -580,7 +582,7 @@ export async function runOperatingDay(
   }
 
   const durationMs = Date.now() - startedAt;
-  await record(workflowLogEntry(`Finished operating day in ${Math.round(durationMs / 1000)}s.`));
+  await record(workflowLogEntry(`Finished operating day in ${formatWorkflowElapsed(durationMs)}.`));
 
   return {
     playbook: "operating-day",

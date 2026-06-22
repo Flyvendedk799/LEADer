@@ -1,5 +1,6 @@
 import { executeWorkflowRun } from "./playbooks";
 import { db } from "@/lib/db";
+import { workflowLogEntry } from "./logging";
 import { workflowRunInputSchema, type WorkflowRunInput } from "./types";
 
 type QueuedWorkflowRun = {
@@ -12,10 +13,6 @@ export type WorkflowQueueMoveAction = "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
 
 const queue: QueuedWorkflowRun[] = [];
 let active: QueuedWorkflowRun | null = null;
-
-function workflowLogEntry(message: string) {
-  return `${new Date().toISOString()} ${message}`;
-}
 
 function isInMemory(runId: string) {
   return active?.runId === runId || queue.some((item) => item.runId === runId);

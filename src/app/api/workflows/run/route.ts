@@ -6,6 +6,7 @@ import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createWorkflowRun } from "@/lib/workflows/playbooks";
+import { workflowLogEntry, workflowQueueLogMessage } from "@/lib/workflows/logging";
 import {
   enqueueWorkflowRun,
   isActiveWorkflowRun,
@@ -28,10 +29,6 @@ const workflowRunActionSchema = z.object({
   id: z.string().min(1),
   action: z.enum(["CANCEL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
 });
-
-function workflowLogEntry(message: string) {
-  return `${new Date().toISOString()} ${message}`;
-}
 
 function workflowRunPayload(run: WorkflowRunPayload | null) {
   if (!run) return null;
@@ -70,7 +67,16 @@ export async function POST(req: Request) {
 
     const run = await createWorkflowRun(ownerId, parsed.data, "QUEUED");
     enqueueWorkflowRun(ownerId, run.id, parsed.data);
-    return NextResponse.json({ run: workflowRunPayload(run), queued: true, queue: workflowQueueSnapshot(ownerId) }, { status: 202 });
+    const queue = workflowQueueSnapshot(ownerId);
+    const queueLog = workflowLogEntry(workflowQueueLogMessage(run.id, queue));
+    await db.workflowRun.update({
+      where: { id: run.id },
+      data: { log: { push: queueLog } },
+    }).catch(() => {});
+    return NextResponse.json(
+      { run: workflowRunPayload({ ...run, log: [...run.log, queueLog] }), queued: true, queue },
+      { status: 202 },
+    );
   } catch (err) {
     return apiError(err);
   }
@@ -151,12 +157,18 @@ export async function PATCH(req: Request) {
       data: { log: { push: workflowLogEntry(`Rerun requested from ${source.id}.`) } },
     });
     enqueueWorkflowRun(ownerId, run.id, input.data);
+    const queue = workflowQueueSnapshot(ownerId);
+    const queueLog = workflowLogEntry(workflowQueueLogMessage(run.id, queue));
+    await db.workflowRun.update({
+      where: { id: run.id },
+      data: { log: { push: queueLog } },
+    }).catch(() => {});
     const queued = await db.workflowRun.findUnique({
       where: { id: run.id },
       include: { preset: { select: { name: true } } },
     });
     return NextResponse.json(
-      { run: workflowRunPayload(queued ?? run), queued: true, queue: workflowQueueSnapshot(ownerId) },
+      { run: workflowRunPayload(queued ?? { ...run, log: [...run.log, queueLog] }), queued: true, queue },
       { status: 202 },
     );
   } catch (err) {

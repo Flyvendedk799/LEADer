@@ -2,6 +2,7 @@ import type { Prisma, WorkflowPreset } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { createWorkflowRun } from "./playbooks";
+import { workflowLogEntry, workflowQueueLogMessage } from "./logging";
 import { presetToWorkflowInput, nextWorkflowPresetRunAt, isWorkflowPresetDue } from "./presets";
 import { enqueueWorkflowRun, workflowQueueSnapshot } from "./queue";
 import { workflowRunResultSummary } from "./result-summary";
@@ -54,11 +55,17 @@ export async function queueWorkflowPresetRun(
     },
   });
   enqueueWorkflowRun(ownerId, run.id, input);
+  const queue = workflowQueueSnapshot(ownerId);
+  const queueLog = workflowLogEntry(workflowQueueLogMessage(run.id, queue));
+  await db.workflowRun.update({
+    where: { id: run.id },
+    data: { log: { push: queueLog } },
+  }).catch(() => undefined);
 
   return {
-    run: workflowRunPayload(run, preset.name),
+    run: workflowRunPayload({ ...run, log: [...run.log, queueLog] }, preset.name),
     queued: true,
-    queue: workflowQueueSnapshot(ownerId),
+    queue,
   };
 }
 
