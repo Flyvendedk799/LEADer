@@ -445,12 +445,13 @@ export async function createDiscoveryMission(
       ownerId,
       laneId: lane.id,
       query: queries.join("\n") || missionQuery(lane, input.query),
+      input: JSON.parse(JSON.stringify(input)) as Prisma.InputJsonValue,
       workspace,
       provider: input.provider,
       status,
       log: [
         missionLogEntry(
-          `Queued ${input.searchMode ?? "balanced"} mission for ${missionSurfaces(input)} using ${input.provider}.`,
+          `${status === "RUNNING" ? "Started" : "Queued"} ${input.searchMode ?? "balanced"} mission for ${missionSurfaces(input)} using ${input.provider}.`,
         ),
         ...(input.useAiPlanner ? [missionLogEntry("AI query planner requested.")] : []),
       ],

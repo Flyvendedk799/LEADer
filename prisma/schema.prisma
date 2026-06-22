@@ -642,6 +642,7 @@ model DiscoveryMission {
   laneId          String
   lane            DiscoveryLane @relation(fields: [laneId], references: [id], onDelete: Cascade)
   query           String        @db.Text
+  input           Json?
   workspace       Workspace     @default(DK)
   provider        String?
   status          String        @default("RUNNING")
