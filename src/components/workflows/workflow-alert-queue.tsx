@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Bell,
   CalendarClock,
+  CheckCheck,
   CheckCircle2,
   ExternalLink,
   Loader2,
@@ -22,6 +23,7 @@ import { truncate } from "@/lib/utils";
 type AlertType = "DEADLINE" | "NEW_HIGH_MATCH" | "DIGEST" | "NEEDS_ACTION";
 type AlertChannel = "LOCAL" | "EMAIL";
 type GenerateType = "REMINDERS" | "DIGEST";
+type BusyAction = string | "all";
 
 export type WorkflowAlertItem = {
   id: string;
@@ -51,7 +53,7 @@ function alertLabel(type: AlertType) {
 export function WorkflowAlertQueue({ alerts }: { alerts: WorkflowAlertItem[] }) {
   const router = useRouter();
   const [items, setItems] = React.useState(alerts);
-  const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [busyId, setBusyId] = React.useState<BusyAction | null>(null);
   const [generating, setGenerating] = React.useState<GenerateType | null>(null);
 
   React.useEffect(() => {
@@ -76,6 +78,29 @@ export function WorkflowAlertQueue({ alerts }: { alerts: WorkflowAlertItem[] }) 
     } catch (err) {
       setItems(previous);
       toast.error("Could not update alert", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function markAllRead() {
+    const previous = items;
+    setBusyId("all");
+    setItems([]);
+
+    try {
+      const res = await fetch("/api/alerts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Could not update alerts");
+      toast.success("Alerts handled", `${Number(data?.count ?? previous.length)} alerts cleared`);
+      router.refresh();
+    } catch (err) {
+      setItems(previous);
+      toast.error("Could not update alerts", err instanceof Error ? err.message : "Try again");
     } finally {
       setBusyId(null);
     }
@@ -134,6 +159,22 @@ export function WorkflowAlertQueue({ alerts }: { alerts: WorkflowAlertItem[] }) 
         <p className="py-4 text-center text-sm text-muted-foreground">No unread alerts.</p>
       ) : (
         <div className="space-y-2">
+          <div className="flex items-center justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={Boolean(busyId)}
+              onClick={markAllRead}
+            >
+              {busyId === "all" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCheck className="h-4 w-4" />
+              )}
+              Done all
+            </Button>
+          </div>
           {items.map((alert) => {
             const Icon = ICONS[alert.type] ?? Bell;
             const href = alertHref(alert);
