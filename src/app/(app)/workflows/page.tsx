@@ -24,9 +24,11 @@ import { WorkflowCandidateQueue } from "@/components/workflows/workflow-candidat
 import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
 import { WorkflowSavedSearchQueue } from "@/components/workflows/workflow-saved-search-queue";
 import { WorkflowSourceQueue } from "@/components/workflows/workflow-source-queue";
+import { WorkflowUsecaseLauncher } from "@/components/workflows/workflow-usecase-launcher";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensureDefaultDiscoveryLanes } from "@/lib/crm/lanes";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { describeSavedSearchFilters, savedSearchFiltersToHref } from "@/lib/saved-searches";
@@ -69,8 +71,10 @@ export default async function WorkflowsPage() {
   const now = new Date();
   const weekFromNow = new Date(now.getTime() + 7 * 86400000);
   const staleCutoff = new Date(now.getTime() - 14 * 86400000);
+  await ensureDefaultDiscoveryLanes(ownerId);
 
   const [
+    lanes,
     missions,
     hotCandidates,
     overdueTasks,
@@ -83,6 +87,11 @@ export default async function WorkflowsPage() {
     statusGroups,
     pipelineValue,
   ] = await Promise.all([
+    db.discoveryLane.findMany({
+      where: { ownerId, active: true },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, slug: true, name: true, description: true },
+    }),
     db.discoveryMission.findMany({
       where: { ownerId },
       include: { lane: true, _count: { select: { candidates: true } } },
@@ -202,6 +211,12 @@ export default async function WorkflowsPage() {
     body: alert.body ?? null,
     payload: alertPayload(alert.payload),
     createdAt: alert.createdAt.toISOString(),
+  }));
+  const laneItems = lanes.map((lane) => ({
+    id: lane.id,
+    slug: lane.slug,
+    name: lane.name,
+    description: lane.description,
   }));
 
   return (
@@ -365,10 +380,8 @@ export default async function WorkflowsPage() {
               Operating modes
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3">
-            <ModeCard title="Find work" body="Queue a lane, review hot candidates, save the strongest into deals." href="/discover" icon={<Radar />} />
-            <ModeCard title="Advance deals" body="Clear overdue tasks, revive stale deals, prepare outreach and proposals." href="/deals" icon={<BriefcaseBusiness />} />
-            <ModeCard title="Expand surface area" body="Add sources, saved searches, and manual community captures." href="/sources" icon={<Database />} />
+          <CardContent>
+            <WorkflowUsecaseLauncher lanes={laneItems} />
           </CardContent>
         </Card>
 
@@ -429,28 +442,6 @@ function ControlMetric({
         </div>
       </div>
     </div>
-  );
-}
-
-function ModeCard({
-  title,
-  body,
-  href,
-  icon,
-}: {
-  title: string;
-  body: string;
-  href: string;
-  icon: ReactNode;
-}) {
-  return (
-    <Link href={href} className="rounded-md border border-border bg-surface/40 p-3 hover:border-primary/50">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <span className="text-primary">{icon}</span>
-        {title}
-      </div>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{body}</p>
-    </Link>
   );
 }
 
