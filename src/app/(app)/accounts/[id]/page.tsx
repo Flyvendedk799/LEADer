@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { DealStatusBadge } from "@/components/crm/deal-status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ResearchBriefLauncher } from "@/components/workflows/research-brief-launcher";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,19 @@ export default async function AccountDetailPage({ params }: { params: { id: stri
         </main>
 
         <aside className="space-y-6">
+          <Card>
+            <CardContent className="pt-6">
+              <ResearchBriefLauncher
+                defaultSubject={account.name}
+                subjectType="company"
+                objective={account.people.some((person) => person.email || person.phone) ? "qualify-lead" : "find-contact"}
+                depth="standard"
+                workspace={account.workspace}
+                accountId={account.id}
+              />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-sm">People</CardTitle></CardHeader>
             <CardContent className="space-y-3">

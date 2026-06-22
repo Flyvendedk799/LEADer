@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { operatingDayPresetPayload } from "./usecase-actions";
+import { operatingDayPresetPayload, researchBriefRunPayload } from "./usecase-actions";
 
 describe("workflow usecase actions", () => {
   it("builds a pinned preset payload from an operating day configuration", () => {
@@ -26,6 +26,34 @@ describe("workflow usecase actions", () => {
         operatingDay: { dailySweep: true, candidateHarvest: false, pipelineRescue: true },
         dailySweep: { includeSources: true, includeAlerts: false },
         pipelineRescue: { staleDays: 10, deadlineDays: 5, limit: 8 },
+      },
+    });
+  });
+
+  it("builds a linked research brief run payload", () => {
+    expect(
+      researchBriefRunPayload({
+        subject: " Aarhus Kommune ",
+        subjectType: "company",
+        objective: "map-opportunity",
+        depth: "deep",
+        workspace: "DK",
+        accountId: "account-1",
+        dealId: "deal-1",
+      }),
+    ).toEqual({
+      playbook: "research-brief",
+      workspace: "DK",
+      options: {
+        researchBrief: {
+          subject: "Aarhus Kommune",
+          subjectType: "company",
+          objective: "map-opportunity",
+          depth: "deep",
+          createTasks: true,
+          accountId: "account-1",
+          dealId: "deal-1",
+        },
       },
     });
   });

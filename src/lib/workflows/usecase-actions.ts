@@ -22,3 +22,42 @@ export function operatingDayPresetPayload(options: WorkflowRunOptions, now = new
     options: options ?? {},
   };
 }
+
+export function researchBriefRunPayload({
+  subject,
+  subjectType = "unknown",
+  objective = "qualify-lead",
+  depth = "standard",
+  createTasks = true,
+  workspace = "DK",
+  accountId,
+  personId,
+  dealId,
+}: {
+  subject: string;
+  subjectType?: "person" | "company" | "unknown";
+  objective?: "find-contact" | "qualify-lead" | "map-opportunity" | "verify-identity" | "general";
+  depth?: "quick" | "standard" | "deep";
+  createTasks?: boolean;
+  workspace?: "DK" | "GLOBAL";
+  accountId?: string | null;
+  personId?: string | null;
+  dealId?: string | null;
+}) {
+  return {
+    playbook: "research-brief",
+    workspace,
+    options: {
+      researchBrief: {
+        subject: subject.trim(),
+        subjectType,
+        objective,
+        depth,
+        createTasks,
+        ...(accountId ? { accountId } : {}),
+        ...(personId ? { personId } : {}),
+        ...(dealId ? { dealId } : {}),
+      },
+    },
+  };
+}

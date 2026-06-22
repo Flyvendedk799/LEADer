@@ -11,6 +11,7 @@ import { DealAiPanel } from "@/components/crm/deal-ai-panel";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ResearchBriefLauncher } from "@/components/workflows/research-brief-launcher";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +84,20 @@ export default async function DealDetailPage({ params }: { params: { id: string 
         </main>
 
         <aside className="space-y-6">
+          <Card>
+            <CardContent className="pt-6">
+              <ResearchBriefLauncher
+                defaultSubject={deal.account?.name ?? deal.title}
+                subjectType={deal.account ? "company" : "unknown"}
+                objective={deal.account ? "map-opportunity" : "verify-identity"}
+                depth="standard"
+                workspace={deal.workspace}
+                accountId={deal.accountId}
+                dealId={deal.id}
+              />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-sm">
