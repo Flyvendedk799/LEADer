@@ -31,6 +31,7 @@ import { WorkflowRunQueue } from "@/components/workflows/workflow-run-queue";
 import { WorkflowSavedSearchQueue } from "@/components/workflows/workflow-saved-search-queue";
 import { WorkflowSourceQueue } from "@/components/workflows/workflow-source-queue";
 import { WorkflowRecommendationPanel, type WorkflowRecommendationItem } from "@/components/workflows/workflow-recommendation-panel";
+import { WorkflowResearchTargetQueue, type WorkflowResearchTargetItem } from "@/components/workflows/workflow-research-target-queue";
 import { WorkflowUsecaseLauncher } from "@/components/workflows/workflow-usecase-launcher";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireOwnerId } from "@/lib/auth";
@@ -46,6 +47,7 @@ import { ensureDefaultWorkflowPresets, presetToWorkflowInput, workflowPresetOpti
 import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
 import { previewWorkflowRun } from "@/lib/workflows/preview";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
+import { contactResearchReason, countReachablePeople, needsContactResearch } from "@/lib/workflows/research-targets";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 
 export const dynamic = "force-dynamic";
@@ -89,6 +91,7 @@ export default async function WorkflowsPage() {
     activePresetRuns,
     workflowPresetEvents,
     hotCandidatesRaw,
+    contactGapAccounts,
     overdueTasks,
     dueTasks,
     staleDeals,
@@ -153,6 +156,23 @@ export default async function WorkflowsPage() {
       where: { ownerId, status: "NEW", pursuitScore: { gte: 70 } },
       include: { lane: true, evidence: { take: 1, orderBy: { createdAt: "desc" } } },
       orderBy: [{ pursuitScore: "desc" }, { createdAt: "desc" }],
+      take: 24,
+    }),
+    db.account.findMany({
+      where: {
+        ownerId,
+        deals: { some: { status: { in: [...OPEN_DEAL_STATUSES] } } },
+      },
+      include: {
+        people: { select: { email: true, phone: true, linkedin: true } },
+        deals: {
+          where: { status: { in: [...OPEN_DEAL_STATUSES] } },
+          orderBy: { updatedAt: "desc" },
+          take: 5,
+          select: { id: true, title: true, updatedAt: true },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
       take: 24,
     }),
     db.task.findMany({
@@ -243,6 +263,33 @@ export default async function WorkflowsPage() {
     (source) => AUTOMATABLE_SOURCE_TYPES.has(source.type) && isSourceDue(source, now),
   ).length;
   const hotCandidates = filterVisibleLaneCandidates(hotCandidatesRaw).slice(0, 8);
+  const contactResearchTargets: WorkflowResearchTargetItem[] = contactGapAccounts
+    .flatMap((account) => {
+      const reachablePeopleCount = countReachablePeople(account.people);
+      const openDealCount = account.deals.length;
+      if (!needsContactResearch({ people: account.people, openDealCount })) return [];
+      const latestDeal = account.deals[0] ?? null;
+      const stats = {
+        peopleCount: account.people.length,
+        reachablePeopleCount,
+        openDealCount,
+        latestDealTitle: latestDeal?.title ?? null,
+      };
+      return [{
+        id: account.id,
+        accountId: account.id,
+        name: account.name,
+        workspace: account.workspace,
+        type: account.type,
+        peopleCount: stats.peopleCount,
+        reachablePeopleCount,
+        openDealCount,
+        latestDealId: latestDeal?.id ?? null,
+        latestDealTitle: latestDeal?.title ?? null,
+        reason: contactResearchReason(stats),
+      }];
+    })
+    .slice(0, 6);
   const actionTasks = [...overdueTasks, ...dueTasks].map((task) => ({
     id: task.id,
     title: task.title,
@@ -549,9 +596,10 @@ export default async function WorkflowsPage() {
         </Button>
       </PageHeader>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <ControlMetric label="Running" value={runningMissions.length + runningWorkflowRuns.length} icon={<Radar />} tone="primary" />
         <ControlMetric label="Hot candidates" value={hotCandidates.length} icon={<Target />} tone="warning" />
+        <ControlMetric label="Contact gaps" value={contactResearchTargets.length} icon={<Search />} tone="warning" />
         <ControlMetric label="Due actions" value={openTaskCount} icon={<CalendarClock />} tone="warning" />
         <ControlMetric label="Stale deals" value={staleDeals.length} icon={<TimerReset />} tone="default" />
         <ControlMetric label="Open value" value={formatBudget(null, openPipelineValue, "DKK")} icon={<BriefcaseBusiness />} tone="success" />
@@ -621,6 +669,18 @@ export default async function WorkflowsPage() {
         </div>
 
         <aside className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Search className="h-4 w-4 text-primary" />
+                Contact research
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <WorkflowResearchTargetQueue targets={contactResearchTargets} />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-sm">
