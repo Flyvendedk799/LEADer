@@ -69,7 +69,6 @@ export async function PATCH(req: Request) {
     const parsed = discoveryRunActionSchema.safeParse(body ?? {});
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-    await recoverDiscoveryQueue(ownerId);
     if (parsed.data.action === "CANCEL_ALL") {
       const liveMissions = await db.discoveryMission.findMany({
         where: { ownerId, status: { in: ["QUEUED", "RUNNING"] } },
@@ -111,6 +110,7 @@ export async function PATCH(req: Request) {
       });
     }
 
+    await recoverDiscoveryQueue(ownerId);
     if (!parsed.data.id) {
       return NextResponse.json({ error: "Discovery mission id is required" }, { status: 400 });
     }

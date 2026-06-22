@@ -91,7 +91,6 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    await recoverWorkflowQueue(ownerId);
     if (parsed.data.action === "CANCEL_ALL") {
       const liveRuns = await db.workflowRun.findMany({
         where: { ownerId, status: { in: ["QUEUED", "RUNNING"] } },
@@ -133,6 +132,7 @@ export async function PATCH(req: Request) {
       });
     }
 
+    await recoverWorkflowQueue(ownerId);
     if (!parsed.data.id) {
       return NextResponse.json({ error: "Workflow run id is required" }, { status: 400 });
     }
