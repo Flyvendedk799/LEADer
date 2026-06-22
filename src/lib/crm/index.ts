@@ -465,6 +465,13 @@ export async function executeDiscoveryMission(
   missionId: string,
   input: DiscoveryMissionInput,
 ) {
+  const isCanceled = async () => {
+    const mission = await db.discoveryMission.findFirst({
+      where: { id: missionId, ownerId },
+      select: { status: true },
+    });
+    return mission?.status === "CANCELED";
+  };
   const appendLog = async (message: string) => {
     await db.discoveryMission.update({
       where: { id: missionId },
@@ -473,6 +480,14 @@ export async function executeDiscoveryMission(
   };
 
   try {
+    if (await isCanceled()) {
+      await appendLog("Worker skipped mission because it was canceled before start.");
+      const canceled = await db.discoveryMission.findFirstOrThrow({
+        where: { id: missionId, ownerId },
+        include: DISCOVERY_MISSION_INCLUDE,
+      });
+      return { mission: canceled, candidates: [] };
+    }
     await db.discoveryMission.update({
       where: { id: missionId },
       data: {
@@ -538,6 +553,21 @@ export async function executeDiscoveryMission(
       warnings.push(`Discovery network phase took ${Math.round(searchMs / 1000)}s.`);
     }
 
+    if (await isCanceled()) {
+      await appendLog("Mission finished after cancellation; search results were discarded.");
+      const canceled = await db.discoveryMission.findFirstOrThrow({
+        where: { id: missionId, ownerId },
+        include: DISCOVERY_MISSION_INCLUDE,
+      });
+      return {
+        mission: canceled,
+        providerConfigured: result.providerConfigured,
+        queries: result.queries,
+        plan: prepared.plan,
+        candidates: [],
+      };
+    }
+
     const candidates = [];
     for (const candidate of result.candidates) {
       candidates.push(await persistCandidate(ownerId, missionId, prepared.scoringLane, candidate));
@@ -564,6 +594,14 @@ export async function executeDiscoveryMission(
       candidates,
     };
   } catch (error) {
+    if (await isCanceled()) {
+      await appendLog("Mission stopped after cancellation.");
+      const canceled = await db.discoveryMission.findFirstOrThrow({
+        where: { id: missionId, ownerId },
+        include: DISCOVERY_MISSION_INCLUDE,
+      });
+      return { mission: canceled, candidates: [] };
+    }
     await db.discoveryMission.update({
       where: { id: missionId },
       data: {

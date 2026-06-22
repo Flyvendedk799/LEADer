@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   Activity,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpToLine,
   CheckCircle2,
   Clock3,
   Link2,
@@ -17,6 +20,7 @@ import {
   Loader2,
   Radar,
   RefreshCw,
+  RotateCw,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -39,6 +43,7 @@ import { toast } from "@/hooks/use-toast";
 
 type Provider = "auto" | "tavily" | "brave" | "serper" | "none";
 type CandidateAction = "review" | "save" | "dismiss" | "duplicate";
+type MissionAction = "CANCEL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
 
 type Candidate = {
   id: string;
@@ -126,6 +131,15 @@ type MissionDetailResponse = MissionResult & {
   error?: string;
 };
 
+type MissionControlResponse = {
+  mission?: Partial<MissionSummary> & { id: string; candidates?: Candidate[] };
+  queue?: Partial<DiscoveryQueueSnapshot>;
+  queued?: boolean;
+  moved?: boolean;
+  reason?: string | null;
+  error?: string;
+};
+
 function listFromInput(value: string) {
   return value
     .split(",")
@@ -204,6 +218,22 @@ function sortMissionsWithQueue(items: MissionSummary[], queue: DiscoveryQueueSna
   });
 }
 
+function apiMissionToSummary(mission: Partial<MissionSummary> & { id: string; candidates?: Candidate[] }): MissionSummary {
+  return {
+    id: mission.id,
+    status: String(mission.status ?? "QUEUED"),
+    provider: mission.provider,
+    startedAt: mission.startedAt ?? new Date().toISOString(),
+    finishedAt: mission.finishedAt,
+    query: String(mission.query ?? ""),
+    lane: mission.lane,
+    warnings: Array.isArray(mission.warnings) ? mission.warnings : [],
+    log: Array.isArray(mission.log) ? mission.log : [],
+    sourceScanCount: mission.sourceScanCount,
+    _count: mission._count ?? { candidates: mission.candidates?.length ?? 0 },
+  };
+}
+
 function queryPreview(value?: string) {
   return (value || "")
     .split("\n")
@@ -237,6 +267,7 @@ export function LaneMissionControl({
   const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
   const [activeMissionId, setActiveMissionId] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<MissionResult | null>(null);
+  const [busyMissionAction, setBusyMissionAction] = React.useState<string | null>(null);
   const selectedLane = lanes.find((lane) => lane.id === laneId);
   const candidates = result?.mission.candidates ?? [];
   const missionStatus = result?.mission.status ?? "";
@@ -416,6 +447,54 @@ export function LaneMissionControl({
       toast.success("Mission link copied");
     } catch {
       toast.error("Could not copy link", "Your browser blocked clipboard access.");
+    }
+  }
+
+  async function controlMission(mission: MissionSummary, action: MissionAction) {
+    setBusyMissionAction(`${action}-${mission.id}`);
+    try {
+      const res = await fetch("/api/discovery/runs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: mission.id, action }),
+      });
+      const data = (await res.json().catch(() => null)) as MissionControlResponse | null;
+      if (!res.ok || !data?.mission) throw new Error(data?.error || "Discovery control failed");
+
+      if (data.queue) setQueueState(normalizeQueue(data.queue));
+      const summary = apiMissionToSummary(data.mission);
+      mergeMission(summary);
+      setLastUpdatedAt(new Date());
+
+      if (action === "RERUN") {
+        setActiveMissionId(summary.id);
+        syncMissionUrl(summary.id);
+        void loadMission(summary.id, true, false);
+        toast.success("Discovery mission queued", queryPreview(summary.query));
+      } else if (action === "CANCEL") {
+        setResult((current) =>
+          current?.mission.id === summary.id
+            ? {
+                ...current,
+                mission: {
+                  ...current.mission,
+                  status: summary.status,
+                  finishedAt: summary.finishedAt,
+                  log: summary.log ?? current.mission.log,
+                  warnings: summary.warnings ?? current.mission.warnings,
+                },
+              }
+            : current,
+        );
+        toast.success("Discovery mission canceled", queryPreview(summary.query));
+      } else {
+        toast.success("Discovery priority updated", queryPreview(summary.query));
+      }
+      router.refresh();
+    } catch (err) {
+      toast.error("Discovery control failed", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyMissionAction(null);
     }
   }
 
@@ -680,36 +759,132 @@ export function LaneMissionControl({
                 const queueLabel = missionQueueLabel(mission.id, queueState);
                 const latestMissionLog = mission.log?.at(-1);
                 const latestMissionLogMessage = latestMissionLog ? missionLogParts(latestMissionLog).message : null;
+                const queuedIndex = queueState.queuedMissionIds.indexOf(mission.id);
+                const moveable = mission.status === "QUEUED" && queuedIndex >= 0;
+                const lastQueuedIndex = queueState.queuedMissionIds.length - 1;
+                const cancelable = mission.status === "QUEUED" || mission.status === "RUNNING";
                 return (
-                <button
-                  key={mission.id}
-                  type="button"
-                  onClick={() => void loadMission(mission.id, false, true)}
-                  className={cn(
-                    "w-full rounded-md border border-border bg-surface/40 p-2 text-left transition hover:border-primary/40 hover:bg-surface",
-                    activeMissionId === mission.id && "border-primary/50 bg-primary/5",
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium">{mission.lane?.name ?? "Discovery mission"}</span>
-                    <span className="flex shrink-0 items-center gap-1">
-                      {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
-                      <Badge variant={missionStatusVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
-                    </span>
+                  <div
+                    key={mission.id}
+                    className={cn(
+                      "rounded-md border border-border bg-surface/40 p-2 transition hover:border-primary/40 hover:bg-surface",
+                      activeMissionId === mission.id && "border-primary/50 bg-primary/5",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => void loadMission(mission.id, false, true)}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium">{mission.lane?.name ?? "Discovery mission"}</span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
+                          <Badge variant={missionStatusVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{queryPreview(mission.query)}</p>
+                      {latestMissionLogMessage ? (
+                        <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{latestMissionLogMessage}</p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <Clock3 className="h-3 w-3" />
+                          {missionTime(mission.startedAt)}
+                        </span>
+                        <span>{missionDuration(mission.startedAt, mission.finishedAt)}</span>
+                        <span>{missionCandidateCount(mission)} candidates</span>
+                      </div>
+                    </button>
+                    <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-border pt-2">
+                      {moveable ? (
+                        <>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7"
+                            disabled={Boolean(busyMissionAction) || queuedIndex === 0}
+                            onClick={() => controlMission(mission, "MOVE_TOP")}
+                            aria-label="Move discovery mission to top"
+                            title="Move discovery mission to top"
+                          >
+                            {busyMissionAction === `MOVE_TOP-${mission.id}` ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <ArrowUpToLine className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7"
+                            disabled={Boolean(busyMissionAction) || queuedIndex === 0}
+                            onClick={() => controlMission(mission, "MOVE_UP")}
+                            aria-label="Move discovery mission up"
+                            title="Move discovery mission up"
+                          >
+                            {busyMissionAction === `MOVE_UP-${mission.id}` ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <ArrowUp className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7"
+                            disabled={Boolean(busyMissionAction) || queuedIndex === lastQueuedIndex}
+                            onClick={() => controlMission(mission, "MOVE_DOWN")}
+                            aria-label="Move discovery mission down"
+                            title="Move discovery mission down"
+                          >
+                            {busyMissionAction === `MOVE_DOWN-${mission.id}` ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <ArrowDown className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </>
+                      ) : null}
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="h-7 w-7"
+                        disabled={Boolean(busyMissionAction)}
+                        onClick={() => controlMission(mission, "RERUN")}
+                        aria-label="Rerun discovery mission"
+                        title="Rerun discovery mission"
+                      >
+                        {busyMissionAction === `RERUN-${mission.id}` ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RotateCw className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      {cancelable ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="h-7 w-7"
+                          disabled={Boolean(busyMissionAction)}
+                          onClick={() => controlMission(mission, "CANCEL")}
+                          aria-label="Cancel discovery mission"
+                          title="Cancel discovery mission"
+                        >
+                          {busyMissionAction === `CANCEL-${mission.id}` ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{queryPreview(mission.query)}</p>
-                  {latestMissionLogMessage ? (
-                    <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{latestMissionLogMessage}</p>
-                  ) : null}
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                    <span className="inline-flex items-center gap-1">
-                      <Clock3 className="h-3 w-3" />
-                      {missionTime(mission.startedAt)}
-                    </span>
-                    <span>{missionDuration(mission.startedAt, mission.finishedAt)}</span>
-                    <span>{missionCandidateCount(mission)} candidates</span>
-                  </div>
-                </button>
                 );
               })
             ) : (

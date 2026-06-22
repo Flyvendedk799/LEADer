@@ -8,8 +8,14 @@ type QueuedMission = {
   input: DiscoveryMissionInput;
 };
 
+export type DiscoveryQueueMoveAction = "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
+
 const queue: QueuedMission[] = [];
 let active: QueuedMission | null = null;
+
+function discoveryLogEntry(message: string) {
+  return `${new Date().toISOString()} ${message}`;
+}
 
 function isInMemory(missionId: string) {
   return active?.missionId === missionId || queue.some((item) => item.missionId === missionId);
@@ -34,6 +40,60 @@ export function enqueueDiscoveryMission(ownerId: string, missionId: string, inpu
   if (isInMemory(missionId)) return false;
   queue.push({ ownerId, missionId, input });
   drainQueue();
+  return true;
+}
+
+export function reorderDiscoveryQueueIds(ids: string[], missionId: string, action: DiscoveryQueueMoveAction) {
+  const currentIndex = ids.indexOf(missionId);
+  if (currentIndex === -1) return { ids: [...ids], moved: false, reason: "not_queued" as const };
+  if ((action === "MOVE_UP" || action === "MOVE_TOP") && currentIndex === 0) {
+    return { ids: [...ids], moved: false, reason: "already_first" as const };
+  }
+  if (action === "MOVE_DOWN" && currentIndex === ids.length - 1) {
+    return { ids: [...ids], moved: false, reason: "already_last" as const };
+  }
+
+  const nextIds = [...ids];
+  const [mission] = nextIds.splice(currentIndex, 1);
+  if (action === "MOVE_TOP") {
+    nextIds.unshift(mission);
+  } else if (action === "MOVE_UP") {
+    nextIds.splice(currentIndex - 1, 0, mission);
+  } else {
+    nextIds.splice(currentIndex + 1, 0, mission);
+  }
+
+  return { ids: nextIds, moved: true, reason: null };
+}
+
+export function reorderQueuedDiscoveryMission(ownerId: string, missionId: string, action: DiscoveryQueueMoveAction) {
+  const ownerIndexes = queue
+    .map((item, index) => (item.ownerId === ownerId ? index : null))
+    .filter((index): index is number => index !== null);
+  const ownerMissionIds = ownerIndexes.map((index) => queue[index].missionId);
+  const reordered = reorderDiscoveryQueueIds(ownerMissionIds, missionId, action);
+
+  if (!reordered.moved) {
+    return { moved: false, reason: reordered.reason, queue: discoveryQueueSnapshot(ownerId) };
+  }
+
+  const byMissionId = new Map(ownerIndexes.map((index) => [queue[index].missionId, queue[index]]));
+  reordered.ids.forEach((nextMissionId, ownerIndex) => {
+    const item = byMissionId.get(nextMissionId);
+    if (item) queue[ownerIndexes[ownerIndex]] = item;
+  });
+
+  return { moved: true, reason: null, queue: discoveryQueueSnapshot(ownerId) };
+}
+
+export function isActiveDiscoveryMission(ownerId: string, missionId: string) {
+  return active?.ownerId === ownerId && active.missionId === missionId;
+}
+
+export function removeQueuedDiscoveryMission(ownerId: string, missionId: string) {
+  const index = queue.findIndex((item) => item.ownerId === ownerId && item.missionId === missionId);
+  if (index === -1) return false;
+  queue.splice(index, 1);
   return true;
 }
 
@@ -66,7 +126,7 @@ export async function recoverDiscoveryQueue(ownerId: string) {
           status: "ERROR",
           finishedAt: new Date(),
           warnings: ["Mission could not be recovered because its queued input is missing or invalid."],
-          log: { push: `${new Date().toISOString()} Recovery failed: queued input was missing or invalid.` },
+          log: { push: discoveryLogEntry("Recovery failed: queued input was missing or invalid.") },
         },
       });
       continue;
@@ -79,8 +139,8 @@ export async function recoverDiscoveryQueue(ownerId: string) {
         log: {
           push:
             mission.status === "RUNNING"
-              ? `${new Date().toISOString()} Recovered orphaned running mission after restart; queued again.`
-              : `${new Date().toISOString()} Recovered queued mission after restart.`,
+              ? discoveryLogEntry("Recovered orphaned running mission after restart; queued again.")
+              : discoveryLogEntry("Recovered queued mission after restart."),
         },
       },
     });
