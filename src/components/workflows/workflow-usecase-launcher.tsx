@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 
@@ -58,6 +59,26 @@ type WorkflowRunResponse = {
 };
 
 type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
+type WorkflowRunOptions = {
+  dailySweep?: {
+    includeSources?: boolean;
+    includeAlerts?: boolean;
+  };
+  candidateHarvest?: {
+    minScore?: number;
+    limit?: number;
+  };
+  pipelineRescue?: {
+    staleDays?: number;
+    deadlineDays?: number;
+    limit?: number;
+  };
+  operatingDay?: {
+    dailySweep?: boolean;
+    candidateHarvest?: boolean;
+    pipelineRescue?: boolean;
+  };
+};
 
 export type WorkflowLaneItem = {
   id: string;
@@ -103,6 +124,16 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
   const [laneId, setLaneId] = React.useState(() => pickDefaultLane(lanes));
   const [focus, setFocus] = React.useState("");
   const [searchMode, setSearchMode] = React.useState<SearchMode>("balanced");
+  const [daySweep, setDaySweep] = React.useState(true);
+  const [dayHarvest, setDayHarvest] = React.useState(true);
+  const [dayRescue, setDayRescue] = React.useState(true);
+  const [daySources, setDaySources] = React.useState(true);
+  const [dayAlerts, setDayAlerts] = React.useState(true);
+  const [candidateMinScore, setCandidateMinScore] = React.useState(70);
+  const [candidateLimit, setCandidateLimit] = React.useState(5);
+  const [pipelineStaleDays, setPipelineStaleDays] = React.useState(14);
+  const [pipelineDeadlineDays, setPipelineDeadlineDays] = React.useState(7);
+  const [pipelineLimit, setPipelineLimit] = React.useState(12);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [sourceResult, setSourceResult] = React.useState<string | null>(null);
   const [sweepResult, setSweepResult] = React.useState<DailySweepResult | null>(null);
@@ -167,6 +198,37 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
     }
   }
 
+  function numberChange(setValue: React.Dispatch<React.SetStateAction<number>>, min: number, max: number) {
+    return (event: React.ChangeEvent<HTMLInputElement>) => {
+      const next = Number(event.currentTarget.value);
+      if (!Number.isFinite(next)) return;
+      setValue(Math.min(max, Math.max(min, next)));
+    };
+  }
+
+  function operatingDayOptions(): WorkflowRunOptions {
+    return {
+      operatingDay: {
+        dailySweep: daySweep,
+        candidateHarvest: dayHarvest,
+        pipelineRescue: dayRescue,
+      },
+      dailySweep: {
+        includeSources: daySources,
+        includeAlerts: dayAlerts,
+      },
+      candidateHarvest: {
+        minScore: candidateMinScore,
+        limit: candidateLimit,
+      },
+      pipelineRescue: {
+        staleDays: pipelineStaleDays,
+        deadlineDays: pipelineDeadlineDays,
+        limit: pipelineLimit,
+      },
+    };
+  }
+
   async function runDailySweep() {
     setBusy("daily-sweep");
     setSweepResult(null);
@@ -189,13 +251,18 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
     }
   }
 
-  async function queueWorkflowPlaybook(playbook: WorkflowPlaybook, busyKey: string, label: string) {
+  async function queueWorkflowPlaybook(
+    playbook: WorkflowPlaybook,
+    busyKey: string,
+    label: string,
+    options?: WorkflowRunOptions,
+  ) {
     setBusy(busyKey);
     try {
       const res = await fetch("/api/workflows/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playbook, workspace: "DK" }),
+        body: JSON.stringify({ playbook, workspace: "DK", options }),
       });
       const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
       if (!res.ok || !data?.run) throw new Error(String(data?.error || `Could not queue ${label.toLowerCase()}`));
@@ -264,20 +331,76 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
   return (
     <div className="grid gap-3 md:grid-cols-3">
       <div className="rounded-md border border-border bg-surface/40 p-3 md:col-span-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Sparkles className="h-4 w-4 text-primary" />
-            Operating day
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Operating day
+            </div>
+            <Button
+              type="button"
+              onClick={() => queueWorkflowPlaybook("operating-day", "operating-day", "Operating day", operatingDayOptions())}
+              disabled={Boolean(busy) || (!daySweep && !dayHarvest && !dayRescue)}
+              className="w-full sm:w-auto"
+            >
+              {busy === "operating-day" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Run day
+            </Button>
           </div>
-          <Button
-            type="button"
-            onClick={() => queueWorkflowPlaybook("operating-day", "operating-day", "Operating day")}
-            disabled={Boolean(busy)}
-            className="w-full sm:w-auto"
-          >
-            {busy === "operating-day" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            Run day
-          </Button>
+          <div className="grid gap-3 md:grid-cols-5">
+            <SwitchControl id="day-sweep" label="Sweep" checked={daySweep} onCheckedChange={setDaySweep} />
+            <SwitchControl id="day-harvest" label="Harvest" checked={dayHarvest} onCheckedChange={setDayHarvest} />
+            <SwitchControl id="day-rescue" label="Rescue" checked={dayRescue} onCheckedChange={setDayRescue} />
+            <SwitchControl id="day-sources" label="Sources" checked={daySources} onCheckedChange={setDaySources} disabled={!daySweep} />
+            <SwitchControl id="day-alerts" label="Alerts" checked={dayAlerts} onCheckedChange={setDayAlerts} disabled={!daySweep} />
+          </div>
+          <div className="grid gap-3 md:grid-cols-5">
+            <NumberControl
+              id="candidate-min-score"
+              label="Min score"
+              value={candidateMinScore}
+              min={0}
+              max={100}
+              onChange={numberChange(setCandidateMinScore, 0, 100)}
+              disabled={!dayHarvest}
+            />
+            <NumberControl
+              id="candidate-limit"
+              label="Candidates"
+              value={candidateLimit}
+              min={1}
+              max={20}
+              onChange={numberChange(setCandidateLimit, 1, 20)}
+              disabled={!dayHarvest}
+            />
+            <NumberControl
+              id="pipeline-stale-days"
+              label="Stale days"
+              value={pipelineStaleDays}
+              min={1}
+              max={90}
+              onChange={numberChange(setPipelineStaleDays, 1, 90)}
+              disabled={!dayRescue}
+            />
+            <NumberControl
+              id="pipeline-deadline-days"
+              label="Deadline days"
+              value={pipelineDeadlineDays}
+              min={1}
+              max={60}
+              onChange={numberChange(setPipelineDeadlineDays, 1, 60)}
+              disabled={!dayRescue}
+            />
+            <NumberControl
+              id="pipeline-limit"
+              label="Deal limit"
+              value={pipelineLimit}
+              min={1}
+              max={50}
+              onChange={numberChange(setPipelineLimit, 1, 50)}
+              disabled={!dayRescue}
+            />
+          </div>
         </div>
       </div>
 
@@ -428,6 +551,61 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
         </div>
         {sourceResult ? <p className="mt-2 text-xs text-muted-foreground">{sourceResult}</p> : null}
       </div>
+    </div>
+  );
+}
+
+function SwitchControl({
+  id,
+  label,
+  checked,
+  onCheckedChange,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">{label}</Label>
+      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
+    </div>
+  );
+}
+
+function NumberControl({
+  id,
+  label,
+  value,
+  min,
+  max,
+  onChange,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">{label}</Label>
+      <Input
+        id={id}
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        className="h-9"
+      />
     </div>
   );
 }

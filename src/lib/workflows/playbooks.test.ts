@@ -91,6 +91,7 @@ describe("workflowRunSummary", () => {
       workspace: "DK",
       ranAt: "2026-06-22T00:00:00.000Z",
       durationMs: 3300,
+      phases: { dailySweep: true, candidateHarvest: true, pipelineRescue: true },
       dailySweep,
       candidateHarvest,
       pipelineRescue,
@@ -100,5 +101,20 @@ describe("workflowRunSummary", () => {
     };
 
     expect(workflowRunSummary(result)).toBe("4 new from sources, 3 candidates saved, 3 rescue tasks created.");
+  });
+
+  it("summarizes operating day results with skipped phases", () => {
+    const result: OperatingDayResult = {
+      playbook: "operating-day",
+      workspace: "DK",
+      ranAt: "2026-06-22T00:00:00.000Z",
+      durationMs: 3300,
+      phases: { dailySweep: false, candidateHarvest: false, pipelineRescue: false },
+      dealIds: [],
+      taskIds: [],
+      log: [],
+    };
+
+    expect(workflowRunSummary(result)).toBe("0 new from sources, 0 candidates saved, 0 rescue tasks created.");
   });
 });

@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { runDueDiscovery, type RunResult } from "@/lib/ingestion";
 import type { Workspace } from "@/lib/types";
 import { summarizeSourceRuns, type SourceRunSummary } from "./summary";
-import type { WorkflowRunInput } from "./types";
+import type { WorkflowRunInput, WorkflowRunOptions } from "./types";
 
 export type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
 
@@ -65,9 +65,14 @@ export type OperatingDayResult = {
   workspace: Workspace;
   ranAt: string;
   durationMs: number;
-  dailySweep: DailySweepResult;
-  candidateHarvest: CandidateHarvestResult;
-  pipelineRescue: PipelineRescueResult;
+  phases: {
+    dailySweep: boolean;
+    candidateHarvest: boolean;
+    pipelineRescue: boolean;
+  };
+  dailySweep?: DailySweepResult;
+  candidateHarvest?: CandidateHarvestResult;
+  pipelineRescue?: PipelineRescueResult;
   dealIds: string[];
   taskIds: string[];
   log: string[];
@@ -102,8 +107,9 @@ function prepDueDate(deadline: Date | null) {
 
 export function workflowRunSummary(result: WorkflowPlaybookResult) {
   if (result.playbook === "operating-day") {
-    const rescueTasks = result.pipelineRescue.staleDeals.tasksCreated + result.pipelineRescue.deadlines.tasksCreated;
-    return `${result.dailySweep.sources.created} new from sources, ${result.candidateHarvest.candidates.saved} candidates saved, ${rescueTasks} rescue tasks created.`;
+    const rescueTasks =
+      (result.pipelineRescue?.staleDeals.tasksCreated ?? 0) + (result.pipelineRescue?.deadlines.tasksCreated ?? 0);
+    return `${result.dailySweep?.sources.created ?? 0} new from sources, ${result.candidateHarvest?.candidates.saved ?? 0} candidates saved, ${rescueTasks} rescue tasks created.`;
   }
   if (result.playbook === "candidate-harvest") {
     return `${result.candidates.saved} hot candidates saved as deals, ${result.candidates.alreadyInPipeline} already in pipeline.`;
@@ -201,24 +207,48 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
   }
 }
 
-export async function runDailySweep(ownerId: string, workspace: Workspace = "DK"): Promise<DailySweepResult> {
+type DailySweepOptions = NonNullable<WorkflowRunOptions>["dailySweep"];
+type CandidateHarvestOptions = NonNullable<WorkflowRunOptions>["candidateHarvest"];
+type PipelineRescueOptions = NonNullable<WorkflowRunOptions>["pipelineRescue"];
+type OperatingDayOptions = NonNullable<WorkflowRunOptions>["operatingDay"];
+
+const emptyDispatchResult: DispatchResult = { created: 0, emailed: 0, provider: "none" };
+
+export async function runDailySweep(
+  ownerId: string,
+  workspace: Workspace = "DK",
+  options: DailySweepOptions = {},
+): Promise<DailySweepResult> {
   const startedAt = Date.now();
   const log = [workflowLogEntry(`Started daily sweep for ${workspace}.`)];
 
-  const sourceResults = await runDueDiscovery(ownerId);
-  const sourceSummary = summarizeSourceRuns(sourceResults);
-  log.push(
-    workflowLogEntry(
-      `Checked due sources: ${sourceSummary.ran} ran, ${sourceSummary.created} new, ${sourceSummary.updated} updated, ${sourceSummary.failed} failed.`,
-    ),
-  );
+  const includeSources = options?.includeSources !== false;
+  const includeAlerts = options?.includeAlerts !== false;
 
-  const alerts = await dispatchForOwner(ownerId, { digest: true, workspace });
-  log.push(
-    workflowLogEntry(
-      `Generated alerts: ${alerts.reminders.created} reminders and ${alerts.digest?.created ?? 0} digest.`,
-    ),
-  );
+  const sourceResults = includeSources ? await runDueDiscovery(ownerId) : [];
+  const sourceSummary = summarizeSourceRuns(sourceResults);
+  if (includeSources) {
+    log.push(
+      workflowLogEntry(
+        `Checked due sources: ${sourceSummary.ran} ran, ${sourceSummary.created} new, ${sourceSummary.updated} updated, ${sourceSummary.failed} failed.`,
+      ),
+    );
+  } else {
+    log.push(workflowLogEntry("Skipped due sources by run options."));
+  }
+
+  const alerts = includeAlerts
+    ? await dispatchForOwner(ownerId, { digest: true, workspace })
+    : { reminders: emptyDispatchResult, digest: emptyDispatchResult };
+  if (includeAlerts) {
+    log.push(
+      workflowLogEntry(
+        `Generated alerts: ${alerts.reminders.created} reminders and ${alerts.digest?.created ?? 0} digest.`,
+      ),
+    );
+  } else {
+    log.push(workflowLogEntry("Skipped reminders and digest by run options."));
+  }
 
   const durationMs = Date.now() - startedAt;
   log.push(workflowLogEntry(`Finished daily sweep in ${Math.round(durationMs / 1000)}s.`));
@@ -235,11 +265,18 @@ export async function runDailySweep(ownerId: string, workspace: Workspace = "DK"
   };
 }
 
-export async function runPipelineRescue(ownerId: string, workspace: Workspace = "DK"): Promise<PipelineRescueResult> {
+export async function runPipelineRescue(
+  ownerId: string,
+  workspace: Workspace = "DK",
+  options: PipelineRescueOptions = {},
+): Promise<PipelineRescueResult> {
   const startedAt = Date.now();
   const now = new Date();
-  const staleCutoff = new Date(now.getTime() - 14 * DAY);
-  const deadlineHorizon = new Date(now.getTime() + 7 * DAY);
+  const staleDays = options?.staleDays ?? 14;
+  const deadlineDays = options?.deadlineDays ?? 7;
+  const limit = options?.limit ?? 12;
+  const staleCutoff = new Date(now.getTime() - staleDays * DAY);
+  const deadlineHorizon = new Date(now.getTime() + deadlineDays * DAY);
   const log = [workflowLogEntry(`Started pipeline rescue for ${workspace}.`)];
 
   const [staleDeals, deadlineDeals] = await Promise.all([
@@ -251,7 +288,7 @@ export async function runPipelineRescue(ownerId: string, workspace: Workspace = 
         updatedAt: { lt: staleCutoff },
       },
       orderBy: { updatedAt: "asc" },
-      take: 12,
+      take: limit,
       select: { id: true, title: true, accountId: true, nextAction: true },
     }),
     db.deal.findMany({
@@ -262,7 +299,7 @@ export async function runPipelineRescue(ownerId: string, workspace: Workspace = 
         deadline: { gte: now, lte: deadlineHorizon },
       },
       orderBy: { deadline: "asc" },
-      take: 12,
+      take: limit,
       select: { id: true, title: true, accountId: true, deadline: true, nextAction: true },
     }),
   ]);
@@ -361,6 +398,7 @@ export async function runPipelineRescue(ownerId: string, workspace: Workspace = 
       `Reviewed ${staleDeals.length} stale deals and ${deadlineDeals.length} deadline deals; created ${staleTasksCreated + deadlineTasksCreated} tasks.`,
     ),
   );
+  log.push(workflowLogEntry(`Pipeline rescue options: stale ${staleDays}d, deadlines ${deadlineDays}d, limit ${limit}.`));
   if (skippedExistingTasks) {
     log.push(workflowLogEntry(`Skipped ${skippedExistingTasks} tasks that already existed.`));
   }
@@ -389,9 +427,14 @@ export async function runPipelineRescue(ownerId: string, workspace: Workspace = 
   };
 }
 
-export async function runCandidateHarvest(ownerId: string, workspace: Workspace = "DK"): Promise<CandidateHarvestResult> {
+export async function runCandidateHarvest(
+  ownerId: string,
+  workspace: Workspace = "DK",
+  options: CandidateHarvestOptions = {},
+): Promise<CandidateHarvestResult> {
   const startedAt = Date.now();
-  const minScore = 70;
+  const minScore = options?.minScore ?? 70;
+  const limit = options?.limit ?? 5;
   const log = [workflowLogEntry(`Started candidate harvest for ${workspace}.`)];
   const candidates = await db.discoveryCandidate.findMany({
     where: {
@@ -401,7 +444,7 @@ export async function runCandidateHarvest(ownerId: string, workspace: Workspace 
       pursuitScore: { gte: minScore },
     },
     orderBy: [{ pursuitScore: "desc" }, { createdAt: "desc" }],
-    take: 5,
+    take: limit,
     select: { id: true, title: true, pursuitScore: true },
   });
 
@@ -436,6 +479,7 @@ export async function runCandidateHarvest(ownerId: string, workspace: Workspace 
   }
 
   log.push(workflowLogEntry(`Reviewed ${candidates.length} hot candidates; saved ${saved} new deals.`));
+  log.push(workflowLogEntry(`Candidate harvest options: min score ${minScore}, limit ${limit}.`));
 
   const durationMs = Date.now() - startedAt;
   log.push(workflowLogEntry(`Finished candidate harvest in ${Math.round(durationMs / 1000)}s.`));
@@ -461,10 +505,16 @@ export async function runCandidateHarvest(ownerId: string, workspace: Workspace 
 export async function runOperatingDay(
   ownerId: string,
   workspace: Workspace = "DK",
+  options: WorkflowRunOptions = {},
   onLog?: WorkflowLogSink,
 ): Promise<OperatingDayResult> {
   const startedAt = Date.now();
   const log: string[] = [];
+  const phases = {
+    dailySweep: options?.operatingDay?.dailySweep !== false,
+    candidateHarvest: options?.operatingDay?.candidateHarvest !== false,
+    pipelineRescue: options?.operatingDay?.pipelineRescue !== false,
+  };
 
   async function record(entry: string) {
     log.push(entry);
@@ -473,23 +523,38 @@ export async function runOperatingDay(
 
   await record(workflowLogEntry(`Started operating day for ${workspace}.`));
 
-  const dailySweep = await runDailySweep(ownerId, workspace);
-  for (const entry of dailySweep.log) {
-    await record(`[daily-sweep] ${entry}`);
+  let dailySweep: DailySweepResult | undefined;
+  if (phases.dailySweep) {
+    dailySweep = await runDailySweep(ownerId, workspace, options?.dailySweep);
+    for (const entry of dailySweep.log) {
+      await record(`[daily-sweep] ${entry}`);
+    }
+    await record(workflowLogEntry(`Daily sweep complete: ${workflowRunSummary(dailySweep)}`));
+  } else {
+    await record(workflowLogEntry("Skipped daily sweep by run options."));
   }
-  await record(workflowLogEntry(`Daily sweep complete: ${workflowRunSummary(dailySweep)}`));
 
-  const candidateHarvest = await runCandidateHarvest(ownerId, workspace);
-  for (const entry of candidateHarvest.log) {
-    await record(`[candidate-harvest] ${entry}`);
+  let candidateHarvest: CandidateHarvestResult | undefined;
+  if (phases.candidateHarvest) {
+    candidateHarvest = await runCandidateHarvest(ownerId, workspace, options?.candidateHarvest);
+    for (const entry of candidateHarvest.log) {
+      await record(`[candidate-harvest] ${entry}`);
+    }
+    await record(workflowLogEntry(`Candidate harvest complete: ${workflowRunSummary(candidateHarvest)}`));
+  } else {
+    await record(workflowLogEntry("Skipped candidate harvest by run options."));
   }
-  await record(workflowLogEntry(`Candidate harvest complete: ${workflowRunSummary(candidateHarvest)}`));
 
-  const pipelineRescue = await runPipelineRescue(ownerId, workspace);
-  for (const entry of pipelineRescue.log) {
-    await record(`[pipeline-rescue] ${entry}`);
+  let pipelineRescue: PipelineRescueResult | undefined;
+  if (phases.pipelineRescue) {
+    pipelineRescue = await runPipelineRescue(ownerId, workspace, options?.pipelineRescue);
+    for (const entry of pipelineRescue.log) {
+      await record(`[pipeline-rescue] ${entry}`);
+    }
+    await record(workflowLogEntry(`Pipeline rescue complete: ${workflowRunSummary(pipelineRescue)}`));
+  } else {
+    await record(workflowLogEntry("Skipped pipeline rescue by run options."));
   }
-  await record(workflowLogEntry(`Pipeline rescue complete: ${workflowRunSummary(pipelineRescue)}`));
 
   const durationMs = Date.now() - startedAt;
   await record(workflowLogEntry(`Finished operating day in ${Math.round(durationMs / 1000)}s.`));
@@ -499,11 +564,12 @@ export async function runOperatingDay(
     workspace,
     ranAt: new Date().toISOString(),
     durationMs,
+    phases,
     dailySweep,
     candidateHarvest,
     pipelineRescue,
-    dealIds: [...new Set(candidateHarvest.dealIds)],
-    taskIds: [...new Set([...candidateHarvest.taskIds, ...pipelineRescue.taskIds])],
+    dealIds: [...new Set(candidateHarvest?.dealIds ?? [])],
+    taskIds: [...new Set([...(candidateHarvest?.taskIds ?? []), ...(pipelineRescue?.taskIds ?? [])])],
     log,
   };
 }
@@ -515,13 +581,13 @@ export async function runWorkflowPlaybook(
 ): Promise<WorkflowPlaybookResult> {
   switch (input.playbook) {
     case "operating-day":
-      return runOperatingDay(ownerId, input.workspace, onLog);
+      return runOperatingDay(ownerId, input.workspace, input.options, onLog);
     case "candidate-harvest":
-      return runCandidateHarvest(ownerId, input.workspace);
+      return runCandidateHarvest(ownerId, input.workspace, input.options?.candidateHarvest);
     case "pipeline-rescue":
-      return runPipelineRescue(ownerId, input.workspace);
+      return runPipelineRescue(ownerId, input.workspace, input.options?.pipelineRescue);
     case "daily-sweep":
     default:
-      return runDailySweep(ownerId, input.workspace);
+      return runDailySweep(ownerId, input.workspace, input.options?.dailySweep);
   }
 }

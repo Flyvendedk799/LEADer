@@ -40,6 +40,11 @@ function stringList(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function compactJson(value: unknown) {
+  if (!value || typeof value !== "object") return "Default";
+  return JSON.stringify(value);
+}
+
 export default async function WorkflowRunDetailPage({ params }: { params: { id: string } }) {
   const ownerId = await requireOwnerId();
   await recoverWorkflowQueue(ownerId);
@@ -162,6 +167,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           <CardContent className="space-y-2 text-sm">
             <KeyValue label="Playbook" value={run.playbook} />
             <KeyValue label="Workspace" value={String(input?.workspace ?? run.workspace)} />
+            <KeyValue label="Options" value={compactJson(input?.options)} />
             <KeyValue label="Created" value={formatDate(run.createdAt)} />
             <KeyValue label="Updated" value={formatDate(run.updatedAt)} />
           </CardContent>
