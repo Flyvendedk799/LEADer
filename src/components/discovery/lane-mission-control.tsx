@@ -589,8 +589,8 @@ export function LaneMissionControl({
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div className="space-y-4">
         <form onSubmit={runMission} className="rounded-lg border border-border bg-card p-4 shadow-sm">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
-            <div className="grid gap-4 md:grid-cols-[18rem_minmax(0,1fr)]">
+          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_19rem]">
+            <div className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
               <div className="space-y-2">
                 <Label>Discovery lane</Label>
                 <Select value={laneId} onValueChange={setLaneId}>

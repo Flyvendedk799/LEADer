@@ -35,7 +35,7 @@ import { WorkflowUsecaseLauncher } from "@/components/workflows/workflow-usecase
 import { PageHeader } from "@/components/shared/page-header";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ensureDefaultDiscoveryLanes } from "@/lib/crm/lanes";
+import { ensureDefaultDiscoveryLanes, filterVisibleLaneCandidates } from "@/lib/crm/lanes";
 import { recoverDiscoveryQueue } from "@/lib/crm/discovery-queue";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
@@ -88,7 +88,7 @@ export default async function WorkflowsPage() {
     workflowPresets,
     activePresetRuns,
     workflowPresetEvents,
-    hotCandidates,
+    hotCandidatesRaw,
     overdueTasks,
     dueTasks,
     staleDeals,
@@ -153,7 +153,7 @@ export default async function WorkflowsPage() {
       where: { ownerId, status: "NEW", pursuitScore: { gte: 70 } },
       include: { lane: true, evidence: { take: 1, orderBy: { createdAt: "desc" } } },
       orderBy: [{ pursuitScore: "desc" }, { createdAt: "desc" }],
-      take: 8,
+      take: 24,
     }),
     db.task.findMany({
       where: { ownerId, status: "OPEN", dueAt: { lt: now } },
@@ -242,6 +242,7 @@ export default async function WorkflowsPage() {
   const dueSourceCount = sourceSchedules.filter(
     (source) => AUTOMATABLE_SOURCE_TYPES.has(source.type) && isSourceDue(source, now),
   ).length;
+  const hotCandidates = filterVisibleLaneCandidates(hotCandidatesRaw).slice(0, 8);
   const actionTasks = [...overdueTasks, ...dueTasks].map((task) => ({
     id: task.id,
     title: task.title,

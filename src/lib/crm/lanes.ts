@@ -498,6 +498,15 @@ export function filterLaneCandidates<T extends CandidateLike>(
   };
 }
 
+export function filterVisibleLaneCandidates<T extends CandidateLike & { lane?: LaneLike | null }>(
+  candidates: T[],
+): T[] {
+  return candidates.filter((candidate) => {
+    if (!candidate.lane) return true;
+    return laneCandidateGate(candidate.lane, candidate).allowed;
+  });
+}
+
 function includesTerm(text: string, term: string) {
   const t = term.toLowerCase().trim();
   if (!t) return false;

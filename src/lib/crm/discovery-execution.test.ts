@@ -76,6 +76,17 @@ const candidate = {
   attachments: [],
 };
 
+const tenderLane = {
+  ...lane,
+  id: "tender-lane-1",
+  slug: "tenders-procurement",
+  name: "Tenders / procurement",
+  queryTemplates: ["site:udbud.dk/detaljevisning software tilbudsfrist"],
+  positiveKeywords: ["udbud", "software"],
+  negativeKeywords: ["job", "archive"],
+  evidenceRequirements: ["scope", "submission route", "deadline", "buyer"],
+};
+
 describe("discovery mission execution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -92,6 +103,18 @@ describe("discovery mission execution", () => {
     });
     mocks.db.discoveryLane.findFirst.mockResolvedValue(lane);
     mocks.db.discoveryLane.upsert.mockResolvedValue({});
+    mocks.db.discoveryCandidate.findFirst.mockResolvedValue(null);
+    mocks.db.discoveryCandidate.create.mockResolvedValue({
+      id: "created-candidate",
+      evidence: [],
+      lane,
+    });
+    mocks.db.discoveryCandidate.update.mockResolvedValue({
+      id: "updated-candidate",
+      evidence: [],
+      lane,
+    });
+    mocks.db.evidence.create.mockResolvedValue({});
     mocks.runDiscoverySearch.mockResolvedValue({
       candidates: [candidate],
       queries: ["software udbud"],
@@ -134,6 +157,105 @@ describe("discovery mission execution", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           log: expect.objectContaining({ push: expect.stringContaining("search results were discarded") }),
+        }),
+      }),
+    );
+  });
+
+  it("creates a duplicate snapshot instead of moving an older mission candidate", async () => {
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
+      id: "mission-2",
+      status: "SUCCESS",
+      warnings: [],
+      log: [],
+      lane,
+      candidates: [],
+    });
+    mocks.db.discoveryCandidate.findFirst.mockResolvedValue({
+      id: "existing-candidate",
+      missionId: "older-mission",
+      evidence: [{ id: "evidence-1" }],
+      lane,
+    });
+    mocks.db.discoveryCandidate.create.mockResolvedValue({
+      id: "duplicate-candidate",
+      evidence: [],
+      lane,
+    });
+    mocks.db.evidence.create.mockResolvedValue({});
+
+    await executeDiscoveryMission("owner-1", "mission-2", {
+      laneId: "lane-1",
+      query: "software udbud",
+      useAiPlanner: false,
+      searchMode: "focused",
+      maxResults: 8,
+      includeWeb: true,
+      includeSources: false,
+      provider: "auto",
+    });
+
+    expect(mocks.db.discoveryCandidate.update).not.toHaveBeenCalled();
+    expect(mocks.db.discoveryCandidate.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          missionId: "mission-2",
+          status: "DUPLICATE",
+          reasons: expect.arrayContaining(["Rediscovered in this mission; matching candidate already exists."]),
+        }),
+      }),
+    );
+  });
+
+  it("uses the official Danish tender index for focused auto tender missions", async () => {
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
+      id: "mission-3",
+      status: "SUCCESS",
+      warnings: [],
+      log: [],
+      lane: tenderLane,
+      candidates: [],
+    });
+    mocks.db.discoveryLane.findFirst.mockResolvedValue(tenderLane);
+    mocks.runDiscoverySearch.mockResolvedValue({
+      candidates: [],
+      queries: ["site:udbud.dk/detaljevisning software tilbudsfrist"],
+      searchPlan: {
+        queries: ["site:udbud.dk/detaljevisning software tilbudsfrist"],
+        focusTerms: [],
+        avoidTerms: [],
+        rationale: "",
+        usedAi: false,
+      },
+      provider: "none",
+      providerConfigured: true,
+      sourceScanCount: 0,
+      warnings: [],
+    });
+
+    await executeDiscoveryMission("owner-1", "mission-3", {
+      laneId: "tender-lane-1",
+      query: "software udbud",
+      useAiPlanner: false,
+      searchMode: "focused",
+      maxResults: 8,
+      includeWeb: true,
+      includeSources: false,
+      provider: "auto",
+    });
+
+    expect(mocks.runDiscoverySearch).toHaveBeenCalledWith(
+      "owner-1",
+      expect.objectContaining({ provider: "none", resultKind: "opportunities" }),
+    );
+    expect(mocks.db.discoveryMission.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          log: expect.objectContaining({
+            push: expect.stringContaining("official udbud.dk index"),
+          }),
         }),
       }),
     );

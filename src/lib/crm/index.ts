@@ -6,6 +6,7 @@ import { runDiscoverySearch, type DiscoveryCandidateDto } from "@/lib/discovery"
 import { discoveryCountLabel, discoveryLogEntry, formatDiscoveryElapsed } from "@/lib/crm/discovery-logging";
 import {
   ensureDefaultDiscoveryLanes,
+  filterVisibleLaneCandidates,
   laneCandidateGate,
   laneFit,
   laneMissionQueries,
@@ -350,7 +351,7 @@ export async function getCockpit(ownerId: string, workspace: Workspace = "DK") {
     openDeals,
     wonDeals,
     lostDeals,
-    hotCandidates,
+    hotCandidatesRaw,
     overdueTasks,
     dueTasks,
     upcomingDeadlines,
@@ -365,7 +366,7 @@ export async function getCockpit(ownerId: string, workspace: Workspace = "DK") {
       where: { ownerId, workspace, status: "NEW", pursuitScore: { gte: 70 } },
       include: { lane: true, evidence: { take: 1, orderBy: { createdAt: "desc" } } },
       orderBy: { pursuitScore: "desc" },
-      take: 8,
+      take: 24,
     }),
     db.task.findMany({
       where: { ownerId, status: "OPEN", dueAt: { lt: now }, deal: { workspace } },
@@ -411,7 +412,7 @@ export async function getCockpit(ownerId: string, workspace: Workspace = "DK") {
     openDeals,
     wonDeals,
     lostDeals,
-    hotCandidates,
+    hotCandidates: filterVisibleLaneCandidates(hotCandidatesRaw).slice(0, 8),
     overdueTasks,
     dueTasks,
     upcomingDeadlines,
@@ -583,6 +584,17 @@ export async function executeDiscoveryMission(
     }
 
     const phaseStartedAt = Date.now();
+    const broadWebProvider =
+      prepared.lane.slug === "tenders-procurement" &&
+      prepared.workspace === "DK" &&
+      input.provider === "auto" &&
+      input.searchMode !== "wide"
+        ? "none"
+        : input.provider;
+    if (broadWebProvider !== input.provider) {
+      await appendLog("Tender lane using official udbud.dk index; choose Wide or an explicit provider for broad web expansion.");
+    }
+
     const result = await runDiscoverySearch(ownerId, {
       query: cleanTerm(input.query || input.freeformBrief, 500) || prepared.query,
       queryVariants: prepared.queries,
@@ -592,7 +604,7 @@ export async function executeDiscoveryMission(
       maxResults: input.maxResults,
       includeWeb: input.includeWeb,
       includeSources: input.includeSources,
-      provider: input.provider,
+      provider: broadWebProvider,
       resultKind: prepared.lane.slug === "tenders-procurement" ? "opportunities" : undefined,
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
       onProgress: appendLog,
@@ -811,9 +823,20 @@ async function persistCandidate(
     dedupeKey,
   };
 
-  const saved = existing
+  const sameMission = existing?.missionId === missionId;
+  const saved = existing && sameMission
     ? await db.discoveryCandidate.update({ where: { id: existing.id }, data, include: { evidence: true, lane: true } })
-    : await db.discoveryCandidate.create({ data: { ownerId, ...data }, include: { evidence: true, lane: true } });
+    : await db.discoveryCandidate.create({
+        data: {
+          ownerId,
+          ...data,
+          status: existing ? "DUPLICATE" : "NEW",
+          reasons: existing
+            ? [...new Set(["Rediscovered in this mission; matching candidate already exists.", ...reasons])].slice(0, 8)
+            : reasons,
+        },
+        include: { evidence: true, lane: true },
+      });
 
   if (saved.evidence.length === 0) {
     await db.evidence.create({

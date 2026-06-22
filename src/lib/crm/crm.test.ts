@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_DISCOVERY_LANES, laneCandidateGate, laneFit, laneMissionQueries, missionQuery } from "./lanes";
+import {
+  DEFAULT_DISCOVERY_LANES,
+  filterVisibleLaneCandidates,
+  laneCandidateGate,
+  laneFit,
+  laneMissionQueries,
+  missionQuery,
+} from "./lanes";
 import { confidenceScore, pursuitScore } from "./scoring";
 
 describe("CRM discovery lanes", () => {
@@ -209,6 +216,39 @@ describe("CRM discovery lanes", () => {
         url: "https://www.linkedin.com/posts/denmark-startup-jobs_how-to-get-full-stack-developer-job",
       }),
     ).toEqual({ allowed: false, reason: "job/recruiting result" });
+  });
+
+  it("filters hot candidate queues through the same lane guard as mission detail", () => {
+    const tenderLane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "tenders-procurement")!;
+    const startupLane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "direct-startup-mvp")!;
+    const activeDeadline = new Date(Date.now() + 30 * 86400000).toISOString();
+
+    const visible = filterVisibleLaneCandidates([
+      {
+        title: "Intranet",
+        description: "Udbud om udvikling og drift af intranet. Tilbudsfrist 30-07-2099.",
+        rawContent: "Ordregiver: kommune. Softwareudvikling, drift og support. Tilbudsfrist 30-07-2099.",
+        url: "https://udbud.dk/detaljevisning?noticeId=2de56b9a-b277-4787-9266-531686ad9731",
+        organization: "Kommune",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+        lane: tenderLane,
+      },
+      {
+        title: "Udbud_076502.pdf",
+        description: "Arkiveret udbud om software.",
+        url: "https://udbud.dk/udbud/arkiv/udbud/76502/vedhaeftning/Udbud_076502.pdf",
+        lane: tenderLane,
+      },
+      {
+        title: "Tech & Startup Jobs in Denmark",
+        description: "Full-time developer jobs.",
+        url: "https://thehub.io/jobs/location/denmark/copenhagen",
+        lane: startupLane,
+      },
+    ]);
+
+    expect(visible.map((candidate) => candidate.title)).toEqual(["Intranet"]);
   });
 
   it("does not count generic tender platform copy as real tender evidence", () => {

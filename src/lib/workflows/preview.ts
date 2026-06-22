@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { filterVisibleLaneCandidates } from "@/lib/crm/lanes";
 import { isSourceDue } from "@/lib/ingestion";
 import type { WorkflowRunInput, WorkflowRunOptions } from "./types";
 
@@ -90,7 +91,7 @@ export async function previewWorkflowRun(
   const staleCutoff = new Date(now.getTime() - rescueOptions.staleDays * DAY);
   const deadlineHorizon = new Date(now.getTime() + rescueOptions.deadlineDays * DAY);
 
-  const [sources, matchingCandidates, staleDeals, deadlineDeals] = await Promise.all([
+  const [sources, matchingCandidateRows, staleDeals, deadlineDeals] = await Promise.all([
     activePhases.dailySweep && sweepOptions.includeSources
       ? db.source.findMany({
           where: { ownerId, enabled: true },
@@ -98,15 +99,18 @@ export async function previewWorkflowRun(
         })
       : [],
     activePhases.candidateHarvest
-      ? db.discoveryCandidate.count({
+      ? db.discoveryCandidate.findMany({
           where: {
             ownerId,
             workspace: input.workspace,
             status: "NEW",
             pursuitScore: { gte: harvestOptions.minScore },
           },
+          include: { lane: true },
+          orderBy: [{ pursuitScore: "desc" }, { createdAt: "desc" }],
+          take: Math.max(harvestOptions.limit * 3, harvestOptions.limit),
         })
-      : 0,
+      : [],
     activePhases.pipelineRescue
       ? db.deal.count({
           where: {
@@ -132,6 +136,7 @@ export async function previewWorkflowRun(
   const dueSources = sources.filter(
     (source) => AUTOMATABLE_SOURCE_TYPES.has(source.type) && isSourceDue(source, now),
   ).length;
+  const matchingCandidates = filterVisibleLaneCandidates(matchingCandidateRows).length;
   const pipelineWillReview = Math.min(staleDeals, rescueOptions.limit) + Math.min(deadlineDeals, rescueOptions.limit);
 
   return {

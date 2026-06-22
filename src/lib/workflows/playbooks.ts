@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 import { dispatchForOwner, type DispatchResult } from "@/lib/alerts/dispatch";
 import { saveCandidateAsDeal } from "@/lib/crm";
+import { filterVisibleLaneCandidates } from "@/lib/crm/lanes";
 import { db } from "@/lib/db";
 import { runDueDiscovery, type RunResult } from "@/lib/ingestion";
 import type { Workspace } from "@/lib/types";
@@ -500,7 +501,7 @@ export async function runCandidateHarvest(
   const minScore = options?.minScore ?? 70;
   const limit = options?.limit ?? 5;
   const log = [workflowLogEntry(`Started candidate harvest for ${workspace}.`)];
-  const candidates = await db.discoveryCandidate.findMany({
+  const rawCandidates = await db.discoveryCandidate.findMany({
     where: {
       ownerId,
       workspace,
@@ -508,9 +509,10 @@ export async function runCandidateHarvest(
       pursuitScore: { gte: minScore },
     },
     orderBy: [{ pursuitScore: "desc" }, { createdAt: "desc" }],
-    take: limit,
-    select: { id: true, title: true, pursuitScore: true },
+    take: Math.max(limit * 3, limit),
+    include: { lane: true },
   });
+  const candidates = filterVisibleLaneCandidates(rawCandidates).slice(0, limit);
 
   const candidateIds: string[] = [];
   const dealIds: string[] = [];
