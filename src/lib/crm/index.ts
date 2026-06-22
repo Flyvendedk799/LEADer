@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
 import { runDiscoverySearch, type DiscoveryCandidateDto } from "@/lib/discovery";
+import { discoveryCountLabel, discoveryLogEntry, formatDiscoveryElapsed } from "@/lib/crm/discovery-logging";
 import { laneFit, laneMissionQueries, missionQuery, type LaneFitResult } from "@/lib/crm/lanes";
 import { confidenceScore, pursuitScore } from "@/lib/crm/scoring";
 import type { AccountType, DealStatus, DiscoveryAiSearchPlan, DiscoverySearchMode, Workspace } from "@/lib/types";
@@ -81,10 +82,6 @@ type PreparedDiscoveryMission = {
 
 function clean(value?: string | null, fallback = "Unknown account") {
   return value?.replace(/\s+/g, " ").trim() || fallback;
-}
-
-function missionLogEntry(message: string) {
-  return `${new Date().toISOString()} ${message}`;
 }
 
 function missionSurfaces(input: Pick<DiscoveryMissionInput, "includeWeb" | "includeSources">) {
@@ -450,10 +447,10 @@ export async function createDiscoveryMission(
       provider: input.provider,
       status,
       log: [
-        missionLogEntry(
+        discoveryLogEntry(
           `${status === "RUNNING" ? "Started" : "Queued"} ${input.searchMode ?? "balanced"} mission for ${missionSurfaces(input)} using ${input.provider}.`,
         ),
-        ...(input.useAiPlanner ? [missionLogEntry("AI query planner requested.")] : []),
+        ...(input.useAiPlanner ? [discoveryLogEntry("AI query planner requested.")] : []),
       ],
     },
     include: DISCOVERY_MISSION_INCLUDE,
@@ -465,6 +462,7 @@ export async function executeDiscoveryMission(
   missionId: string,
   input: DiscoveryMissionInput,
 ) {
+  const workerStartedAt = Date.now();
   const isCanceled = async () => {
     const mission = await db.discoveryMission.findFirst({
       where: { id: missionId, ownerId },
@@ -475,7 +473,7 @@ export async function executeDiscoveryMission(
   const appendLog = async (message: string) => {
     await db.discoveryMission.update({
       where: { id: missionId },
-      data: { log: { push: missionLogEntry(message) } },
+      data: { log: { push: discoveryLogEntry(message) } },
     }).catch(() => {});
   };
 
@@ -496,15 +494,17 @@ export async function executeDiscoveryMission(
         warnings: [],
         sourceScanCount: 0,
         provider: input.provider,
-        log: { push: missionLogEntry("Worker started mission and is preparing probes.") },
+        log: { push: discoveryLogEntry("Worker started mission and is preparing probes.") },
       },
     });
+    const prepareStartedAt = Date.now();
     await appendLog(
       input.useAiPlanner
         ? "Planning search probes with AI; wide missions can take a few minutes."
         : "Compiling lane search probes without AI planning.",
     );
     const prepared = await prepareDiscoveryMission(ownerId, input);
+    const prepareMs = Date.now() - prepareStartedAt;
     await db.discoveryMission.update({
       where: { id: missionId },
       data: {
@@ -516,8 +516,8 @@ export async function executeDiscoveryMission(
         workspace: prepared.workspace,
         provider: input.provider,
         log: {
-          push: missionLogEntry(
-            `Prepared ${prepared.queries.length} probes${prepared.plan ? " with AI planner" : ""}.`,
+          push: discoveryLogEntry(
+            `Prepared ${discoveryCountLabel(prepared.queries.length, "probe")}${prepared.plan ? " with AI planner" : ""} in ${formatDiscoveryElapsed(prepareMs)}.`,
           ),
         },
       },
@@ -542,8 +542,8 @@ export async function executeDiscoveryMission(
       where: { id: missionId },
       data: {
         log: {
-          push: missionLogEntry(
-            `Search returned ${result.candidates.length} candidates from ${result.provider}; scanned ${result.sourceScanCount} sources in ${Math.round(searchMs / 1000)}s.`,
+          push: discoveryLogEntry(
+            `Search returned ${discoveryCountLabel(result.candidates.length, "candidate")} from ${result.provider}; scanned ${discoveryCountLabel(result.sourceScanCount, "source")} in ${formatDiscoveryElapsed(searchMs)}.`,
           ),
         },
       },
@@ -569,9 +569,12 @@ export async function executeDiscoveryMission(
     }
 
     const candidates = [];
+    const persistStartedAt = Date.now();
+    await appendLog(`Saving ${discoveryCountLabel(result.candidates.length, "candidate")} to the review queue.`);
     for (const candidate of result.candidates) {
       candidates.push(await persistCandidate(ownerId, missionId, prepared.scoringLane, candidate));
     }
+    const persistMs = Date.now() - persistStartedAt;
 
     const updated = await db.discoveryMission.update({
       where: { id: missionId },
@@ -581,7 +584,11 @@ export async function executeDiscoveryMission(
         warnings,
         sourceScanCount: result.sourceScanCount,
         provider: result.provider,
-        log: { push: missionLogEntry(`Saved ${candidates.length} candidates; mission complete.`) },
+        log: {
+          push: discoveryLogEntry(
+            `Saved ${discoveryCountLabel(candidates.length, "candidate")} in ${formatDiscoveryElapsed(persistMs)}; mission complete after ${formatDiscoveryElapsed(Date.now() - workerStartedAt)}.`,
+          ),
+        },
       },
       include: DISCOVERY_MISSION_INCLUDE,
     });
@@ -608,7 +615,11 @@ export async function executeDiscoveryMission(
         status: "ERROR",
         finishedAt: new Date(),
         warnings: [error instanceof Error ? error.message : "Discovery failed"],
-        log: { push: missionLogEntry(`Mission failed: ${error instanceof Error ? error.message : "Discovery failed"}`) },
+        log: {
+          push: discoveryLogEntry(
+            `Mission failed after ${formatDiscoveryElapsed(Date.now() - workerStartedAt)}: ${error instanceof Error ? error.message : "Discovery failed"}`,
+          ),
+        },
       },
     }).catch(() => {});
     throw error;

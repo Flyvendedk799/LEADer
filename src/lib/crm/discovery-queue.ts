@@ -1,4 +1,5 @@
 import { executeDiscoveryMission, type DiscoveryMissionInput } from "@/lib/crm";
+import { discoveryLogEntry } from "@/lib/crm/discovery-logging";
 import { db } from "@/lib/db";
 import { discoveryRunCreateSchema } from "@/lib/validators";
 
@@ -12,10 +13,6 @@ export type DiscoveryQueueMoveAction = "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
 
 const queue: QueuedMission[] = [];
 let active: QueuedMission | null = null;
-
-function discoveryLogEntry(message: string) {
-  return `${new Date().toISOString()} ${message}`;
-}
 
 function isInMemory(missionId: string) {
   return active?.missionId === missionId || queue.some((item) => item.missionId === missionId);

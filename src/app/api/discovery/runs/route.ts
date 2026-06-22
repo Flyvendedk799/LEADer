@@ -5,6 +5,7 @@ import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createDiscoveryMission } from "@/lib/crm";
+import { discoveryLogEntry, discoveryQueueLogMessage } from "@/lib/crm/discovery-logging";
 import {
   discoveryQueueSnapshot,
   enqueueDiscoveryMission,
@@ -25,10 +26,6 @@ const missionListInclude = {
   lane: true,
   _count: { select: { candidates: true } },
 };
-
-function discoveryLogEntry(message: string) {
-  return `${new Date().toISOString()} ${message}`;
-}
 
 export async function GET() {
   try {
@@ -54,7 +51,12 @@ export async function POST(req: Request) {
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     const mission = await createDiscoveryMission(ownerId, parsed.data, "QUEUED");
     enqueueDiscoveryMission(ownerId, mission.id, parsed.data);
-    return NextResponse.json({ mission, queued: true, queue: discoveryQueueSnapshot(ownerId) }, { status: 202 });
+    const queue = discoveryQueueSnapshot(ownerId);
+    await db.discoveryMission.update({
+      where: { id: mission.id },
+      data: { log: { push: discoveryLogEntry(discoveryQueueLogMessage(mission.id, queue)) } },
+    }).catch(() => {});
+    return NextResponse.json({ mission, queued: true, queue }, { status: 202 });
   } catch (err) {
     return apiError(err);
   }
@@ -134,12 +136,17 @@ export async function PATCH(req: Request) {
       data: { log: { push: discoveryLogEntry(`Rerun requested from ${source.id}.`) } },
     });
     enqueueDiscoveryMission(ownerId, mission.id, input.data);
+    const queue = discoveryQueueSnapshot(ownerId);
+    await db.discoveryMission.update({
+      where: { id: mission.id },
+      data: { log: { push: discoveryLogEntry(discoveryQueueLogMessage(mission.id, queue)) } },
+    }).catch(() => {});
     const queued = await db.discoveryMission.findFirst({
       where: { id: mission.id, ownerId },
       include: missionListInclude,
     });
     return NextResponse.json(
-      { mission: queued ?? mission, queued: true, queue: discoveryQueueSnapshot(ownerId) },
+      { mission: queued ?? mission, queued: true, queue },
       { status: 202 },
     );
   } catch (err) {
