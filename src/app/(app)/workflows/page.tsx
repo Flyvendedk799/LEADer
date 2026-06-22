@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkflowActionQueue } from "@/components/workflows/workflow-action-queue";
+import { WorkflowAlertQueue } from "@/components/workflows/workflow-alert-queue";
 import { WorkflowCandidateQueue } from "@/components/workflows/workflow-candidate-queue";
 import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
 import { WorkflowSavedSearchQueue } from "@/components/workflows/workflow-saved-search-queue";
@@ -29,7 +30,7 @@ import { db } from "@/lib/db";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { describeSavedSearchFilters, savedSearchFiltersToHref } from "@/lib/saved-searches";
-import { cn, formatBudget, truncate } from "@/lib/utils";
+import { cn, formatBudget } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,15 @@ function duration(start?: Date | null, end?: Date | null) {
 
 function firstQuery(value = "") {
   return value.split("\n").map((item) => item.trim()).filter(Boolean)[0] || "Discovery mission";
+}
+
+function alertPayload(raw: unknown) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const payload = raw as Record<string, unknown>;
+  return {
+    opportunityId: typeof payload.opportunityId === "string" ? payload.opportunityId : undefined,
+    workspace: typeof payload.workspace === "string" ? payload.workspace : undefined,
+  };
 }
 
 export default async function WorkflowsPage() {
@@ -183,6 +193,15 @@ export default async function WorkflowsPage() {
     href: savedSearchFiltersToHref(search.filters),
     summary: describeSavedSearchFilters(search.filters),
     createdAt: search.createdAt.toISOString(),
+  }));
+  const alertItems = unreadAlerts.map((alert) => ({
+    id: alert.id,
+    type: alert.type,
+    channel: alert.channel,
+    title: alert.title,
+    body: alert.body ?? null,
+    payload: alertPayload(alert.payload),
+    createdAt: alert.createdAt.toISOString(),
   }));
 
   return (
@@ -331,14 +350,8 @@ export default async function WorkflowsPage() {
                 Alerts
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {unreadAlerts.map((alert) => (
-                <Link key={alert.id} href="/" className="block rounded-md border border-border bg-surface/40 p-3 hover:border-primary/50">
-                  <p className="truncate text-sm font-medium">{alert.title}</p>
-                  {alert.body ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{truncate(alert.body, 120)}</p> : null}
-                </Link>
-              ))}
-              {unreadAlerts.length === 0 ? <EmptyLine>No unread alerts.</EmptyLine> : null}
+            <CardContent>
+              <WorkflowAlertQueue alerts={alertItems} />
             </CardContent>
           </Card>
         </aside>
