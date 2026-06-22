@@ -23,4 +23,14 @@ describe("workflowRunResultSummary", () => {
   it("returns null before a run has a result", () => {
     expect(workflowRunResultSummary("daily-sweep", null)).toBeNull();
   });
+
+  it("summarizes research brief JSON results", () => {
+    expect(
+      workflowRunResultSummary("research-brief", {
+        subject: "Aarhus Kommune",
+        createdTasks: 6,
+        skippedExistingTasks: 2,
+      }),
+    ).toBe("6 research tasks - 2 existing - Aarhus Kommune");
+  });
 });

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Activity, ArrowLeft, BriefcaseBusiness, CalendarClock, CheckCircle2, Clock3, ListChecks, RotateCw, Sparkles, Target } from "lucide-react";
+import { Activity, ArrowLeft, BriefcaseBusiness, CalendarClock, CheckCircle2, Clock3, ListChecks, RotateCw, Search, Sparkles, Target } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
   const operatingDeadlines = objectValue(pipelineRescue?.deadlines);
   const operatingRescueTasks =
     numberValue(operatingStaleDeals?.tasksCreated) + numberValue(operatingDeadlines?.tasksCreated);
+  const checklist = Array.isArray(result?.checklist) ? result.checklist.filter((item) => objectValue(item)) : [];
   const taskIds = stringList(result?.taskIds);
   const dealIds = stringList(result?.dealIds);
   const tasks = taskIds.length
@@ -138,6 +139,13 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           <RunMetric label="Rescue tasks" value={operatingRescueTasks} icon={<Sparkles />} />
           <RunMetric label="Digests" value={numberValue(operatingDigest?.created)} icon={<ListChecks />} />
         </section>
+      ) : run.playbook === "research-brief" ? (
+        <section className="grid gap-3 md:grid-cols-4">
+          <RunMetric label="Subject" value={typeof result?.subject === "string" ? truncate(result.subject, 28) : "Research"} icon={<Search />} />
+          <RunMetric label="Created tasks" value={numberValue(result?.createdTasks)} icon={<ListChecks />} />
+          <RunMetric label="Existing tasks" value={numberValue(result?.skippedExistingTasks)} icon={<CheckCircle2 />} />
+          <RunMetric label="Checklist steps" value={checklist.length} icon={<Target />} />
+        </section>
       ) : run.playbook === "candidate-harvest" ? (
         <section className="grid gap-3 md:grid-cols-4">
           <RunMetric label="Reviewed" value={numberValue(candidates?.reviewed)} icon={<Target />} />
@@ -160,6 +168,41 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           <RunMetric label="Digests" value={numberValue(digest?.created)} icon={<ListChecks />} />
         </section>
       )}
+
+      {run.playbook === "research-brief" && checklist.length ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Research checklist</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 lg:grid-cols-2">
+              {checklist.map((raw, index) => {
+                const step = objectValue(raw)!;
+                const title = typeof step.title === "string" ? step.title : `Research step ${index + 1}`;
+                const stage = typeof step.stage === "string" ? step.stage : "step";
+                const priority = typeof step.priority === "string" ? step.priority : "MEDIUM";
+                const prompts = Array.isArray(step.searchPrompts)
+                  ? step.searchPrompts.filter((prompt): prompt is string => typeof prompt === "string")
+                  : [];
+                return (
+                  <div key={`${stage}-${index}`} className="rounded-md border border-border bg-surface/40 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{stage}</Badge>
+                      <Badge variant={priority === "URGENT" || priority === "HIGH" ? "warning" : "outline"}>
+                        {priority.toLowerCase()}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm font-medium">{title}</p>
+                    {prompts.length ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{truncate(prompts.slice(0, 3).join(" · "), 140)}</p>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <Card>

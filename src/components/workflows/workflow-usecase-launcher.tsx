@@ -30,6 +30,9 @@ import { operatingDayPresetPayload } from "@/lib/workflows/usecase-actions";
 
 type SearchMode = "focused" | "balanced" | "wide";
 type AlertAction = "REMINDERS" | "DIGEST";
+type ResearchSubjectType = "unknown" | "person" | "company";
+type ResearchObjective = "find-contact" | "qualify-lead" | "map-opportunity" | "verify-identity" | "general";
+type ResearchDepth = "quick" | "standard" | "deep";
 
 type DailySweepResult = {
   sources?: {
@@ -92,7 +95,7 @@ type WorkflowRunPreview = {
   };
 };
 
-type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
+type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day" | "research-brief";
 type WorkflowRunOptions = {
   dailySweep?: {
     includeSources?: boolean;
@@ -111,6 +114,13 @@ type WorkflowRunOptions = {
     dailySweep?: boolean;
     candidateHarvest?: boolean;
     pipelineRescue?: boolean;
+  };
+  researchBrief?: {
+    subject: string;
+    subjectType?: ResearchSubjectType;
+    objective?: ResearchObjective;
+    depth?: ResearchDepth;
+    createTasks?: boolean;
   };
 };
 
@@ -168,6 +178,11 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
   const [pipelineStaleDays, setPipelineStaleDays] = React.useState(14);
   const [pipelineDeadlineDays, setPipelineDeadlineDays] = React.useState(7);
   const [pipelineLimit, setPipelineLimit] = React.useState(12);
+  const [researchSubject, setResearchSubject] = React.useState("");
+  const [researchSubjectType, setResearchSubjectType] = React.useState<ResearchSubjectType>("unknown");
+  const [researchObjective, setResearchObjective] = React.useState<ResearchObjective>("qualify-lead");
+  const [researchDepth, setResearchDepth] = React.useState<ResearchDepth>("standard");
+  const [researchCreateTasks, setResearchCreateTasks] = React.useState(true);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [sourceResult, setSourceResult] = React.useState<string | null>(null);
   const [sweepResult, setSweepResult] = React.useState<DailySweepResult | null>(null);
@@ -382,6 +397,20 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
     }
   }
 
+  async function queueResearchBrief() {
+    const subject = researchSubject.trim();
+    if (!subject) return;
+    await queueWorkflowPlaybook("research-brief", "research-brief", "Research brief", {
+      researchBrief: {
+        subject,
+        subjectType: researchSubjectType,
+        objective: researchObjective,
+        depth: researchDepth,
+        createTasks: researchCreateTasks,
+      },
+    });
+  }
+
   async function saveOperatingDayMode() {
     setBusy("save-operating-day");
     try {
@@ -564,6 +593,78 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
               muted={!dayRescue}
               loading={previewLoading}
             />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-md border border-border bg-surface/40 p-3 md:col-span-3">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Search className="h-4 w-4 text-primary" />
+              Research brief
+            </div>
+            <Button
+              type="button"
+              onClick={queueResearchBrief}
+              disabled={Boolean(busy) || researchSubject.trim().length < 2}
+              className="w-full sm:w-auto"
+            >
+              {busy === "research-brief" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Queue brief
+            </Button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="research-subject">Subject</Label>
+              <Input
+                id="research-subject"
+                value={researchSubject}
+                onChange={(event) => setResearchSubject(event.target.value)}
+                placeholder="Name, company, domain, or clue"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+              <Select value={researchSubjectType} onValueChange={(value) => setResearchSubjectType(value as ResearchSubjectType)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unknown">Unknown</SelectItem>
+                  <SelectItem value="person">Person</SelectItem>
+                  <SelectItem value="company">Company</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Goal</Label>
+              <Select value={researchObjective} onValueChange={(value) => setResearchObjective(value as ResearchObjective)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="qualify-lead">Qualify lead</SelectItem>
+                  <SelectItem value="find-contact">Find contact</SelectItem>
+                  <SelectItem value="map-opportunity">Map opportunity</SelectItem>
+                  <SelectItem value="verify-identity">Verify identity</SelectItem>
+                  <SelectItem value="general">General</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Depth</Label>
+              <Select value={researchDepth} onValueChange={(value) => setResearchDepth(value as ResearchDepth)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="quick">Quick</SelectItem>
+                  <SelectItem value="standard">Standard</SelectItem>
+                  <SelectItem value="deep">Deep</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <div className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-background/40 px-3 py-2">
+                <Label htmlFor="research-create-tasks" className="text-xs text-muted-foreground">Tasks</Label>
+                <Switch id="research-create-tasks" checked={researchCreateTasks} onCheckedChange={setResearchCreateTasks} />
+              </div>
+            </div>
           </div>
         </div>
       </div>

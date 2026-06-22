@@ -6,10 +6,16 @@ import { db } from "@/lib/db";
 import { runDueDiscovery, type RunResult } from "@/lib/ingestion";
 import type { Workspace } from "@/lib/types";
 import { formatWorkflowElapsed, workflowLogEntry } from "./logging";
+import {
+  buildResearchChecklist,
+  normalizeResearchBriefOptions,
+  type NormalizedResearchBriefOptions,
+  type ResearchChecklistItem,
+} from "./research-brief";
 import { summarizeSourceRuns, type SourceRunSummary } from "./summary";
 import type { WorkflowRunInput, WorkflowRunOptions } from "./types";
 
-export type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
+export type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day" | "research-brief";
 
 const OPEN_DEAL_STATUSES = ["DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION"] as const;
 const DAY = 24 * 60 * 60 * 1000;
@@ -79,7 +85,36 @@ export type OperatingDayResult = {
   log: string[];
 };
 
-export type WorkflowPlaybookResult = DailySweepResult | PipelineRescueResult | CandidateHarvestResult | OperatingDayResult;
+export type ResearchBriefResult = {
+  playbook: "research-brief";
+  workspace: Workspace;
+  ranAt: string;
+  durationMs: number;
+  subject: string;
+  subjectType: NormalizedResearchBriefOptions["subjectType"];
+  objective: NormalizedResearchBriefOptions["objective"];
+  depth: NormalizedResearchBriefOptions["depth"];
+  createdTasks: number;
+  skippedExistingTasks: number;
+  taskIds: string[];
+  checklist: ResearchChecklistItem[];
+  linked: {
+    accountId?: string;
+    accountName?: string;
+    personId?: string;
+    personName?: string;
+    dealId?: string;
+    dealTitle?: string;
+  };
+  log: string[];
+};
+
+export type WorkflowPlaybookResult =
+  | DailySweepResult
+  | PipelineRescueResult
+  | CandidateHarvestResult
+  | OperatingDayResult
+  | ResearchBriefResult;
 type WorkflowLogSink = (entry: string) => void | Promise<void>;
 export type WorkflowRunTrigger = "manual" | "preset" | "schedule" | "rerun";
 
@@ -120,6 +155,9 @@ export function workflowRunSummary(result: WorkflowPlaybookResult) {
   }
   if (result.playbook === "pipeline-rescue") {
     return `${result.staleDeals.tasksCreated} stale follow-up tasks, ${result.deadlines.tasksCreated} deadline prep tasks, ${result.nextActionsUpdated} next actions updated.`;
+  }
+  if (result.playbook === "research-brief") {
+    return `${result.createdTasks} research tasks created, ${result.skippedExistingTasks} already existed for ${result.subject}.`;
   }
   const failed = result.sources.failed ? `, ${result.sources.failed} failed` : "";
   return `${result.sources.ran} sources, ${result.sources.created} new, ${result.sources.updated} updated${failed}; ${result.reminders.created} reminders; ${result.digest.created} digest.`;
@@ -236,6 +274,7 @@ type DailySweepOptions = NonNullable<WorkflowRunOptions>["dailySweep"];
 type CandidateHarvestOptions = NonNullable<WorkflowRunOptions>["candidateHarvest"];
 type PipelineRescueOptions = NonNullable<WorkflowRunOptions>["pipelineRescue"];
 type OperatingDayOptions = NonNullable<WorkflowRunOptions>["operatingDay"];
+type ResearchBriefOptions = NonNullable<WorkflowRunOptions>["researchBrief"];
 
 const emptyDispatchResult: DispatchResult = { created: 0, emailed: 0, provider: "none" };
 
@@ -527,6 +566,142 @@ export async function runCandidateHarvest(
   };
 }
 
+function researchTaskDueDate(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  date.setHours(9, 0, 0, 0);
+  return date;
+}
+
+function researchTaskWhere(
+  ownerId: string,
+  titles: string[],
+  linked: { accountId?: string; personId?: string; dealId?: string },
+): Prisma.TaskWhereInput {
+  const where: Prisma.TaskWhereInput = {
+    ownerId,
+    status: "OPEN",
+    title: { in: titles },
+  };
+  if (linked.dealId) return { ...where, dealId: linked.dealId };
+  if (linked.accountId) return { ...where, accountId: linked.accountId };
+  if (linked.personId) return { ...where, personId: linked.personId };
+  return where;
+}
+
+export async function runResearchBrief(
+  ownerId: string,
+  workspace: Workspace = "DK",
+  options: ResearchBriefOptions = undefined,
+): Promise<ResearchBriefResult> {
+  const startedAt = Date.now();
+  const normalized = normalizeResearchBriefOptions(options);
+  if (!normalized.subject) {
+    throw new Error("Research brief requires a subject.");
+  }
+
+  const log = [workflowLogEntry(`Started research brief for ${workspace}: ${normalized.subject}.`)];
+
+  const [account, person, deal] = await Promise.all([
+    normalized.accountId
+      ? db.account.findFirst({
+          where: { id: normalized.accountId, ownerId },
+          select: { id: true, name: true },
+        })
+      : null,
+    normalized.personId
+      ? db.person.findFirst({
+          where: { id: normalized.personId, ownerId },
+          select: { id: true, name: true, accountId: true },
+        })
+      : null,
+    normalized.dealId
+      ? db.deal.findFirst({
+          where: { id: normalized.dealId, ownerId },
+          select: { id: true, title: true, accountId: true },
+        })
+      : null,
+  ]);
+
+  const linked = {
+    accountId: account?.id ?? deal?.accountId ?? person?.accountId ?? undefined,
+    accountName: account?.name,
+    personId: person?.id,
+    personName: person?.name ?? undefined,
+    dealId: deal?.id,
+    dealTitle: deal?.title,
+  };
+
+  if (normalized.accountId && !account) log.push(workflowLogEntry("Skipped account link because it was not found for this owner."));
+  if (normalized.personId && !person) log.push(workflowLogEntry("Skipped person link because it was not found for this owner."));
+  if (normalized.dealId && !deal) log.push(workflowLogEntry("Skipped deal link because it was not found for this owner."));
+
+  const checklist = buildResearchChecklist(normalized, workspace);
+  const taskIds: string[] = [];
+  let createdTasks = 0;
+  let skippedExistingTasks = 0;
+
+  if (normalized.createTasks) {
+    const existingTasks = await db.task.findMany({
+      where: researchTaskWhere(ownerId, checklist.map((step) => step.title), linked),
+      select: { id: true, title: true },
+    });
+    const existingTitles = new Set(existingTasks.map((task) => task.title));
+
+    for (const step of checklist) {
+      if (existingTitles.has(step.title)) {
+        skippedExistingTasks++;
+        continue;
+      }
+      const task = await db.task.create({
+        data: {
+          ownerId,
+          accountId: linked.accountId,
+          personId: linked.personId,
+          dealId: linked.dealId,
+          title: step.title,
+          description: step.description,
+          dueAt: researchTaskDueDate(step.dueInDays),
+          priority: step.priority,
+        },
+        select: { id: true },
+      });
+      taskIds.push(task.id);
+      existingTitles.add(step.title);
+      createdTasks++;
+    }
+    log.push(workflowLogEntry(`Created ${createdTasks} research tasks; skipped ${skippedExistingTasks} existing tasks.`));
+  } else {
+    log.push(workflowLogEntry("Generated checklist without creating tasks by run options."));
+  }
+
+  log.push(
+    workflowLogEntry(
+      `Research brief options: ${normalized.subjectType}, ${normalized.objective}, ${normalized.depth}, ${checklist.length} checklist steps.`,
+    ),
+  );
+
+  const durationMs = Date.now() - startedAt;
+  log.push(workflowLogEntry(`Finished research brief in ${formatWorkflowElapsed(durationMs)}.`));
+
+  return {
+    playbook: "research-brief",
+    workspace,
+    ranAt: new Date().toISOString(),
+    durationMs,
+    subject: normalized.subject,
+    subjectType: normalized.subjectType,
+    objective: normalized.objective,
+    depth: normalized.depth,
+    createdTasks,
+    skippedExistingTasks,
+    taskIds,
+    checklist,
+    linked,
+    log,
+  };
+}
+
 export async function runOperatingDay(
   ownerId: string,
   workspace: Workspace = "DK",
@@ -605,6 +780,8 @@ export async function runWorkflowPlaybook(
   onLog?: WorkflowLogSink,
 ): Promise<WorkflowPlaybookResult> {
   switch (input.playbook) {
+    case "research-brief":
+      return runResearchBrief(ownerId, input.workspace, input.options?.researchBrief);
     case "operating-day":
       return runOperatingDay(ownerId, input.workspace, input.options, onLog);
     case "candidate-harvest":

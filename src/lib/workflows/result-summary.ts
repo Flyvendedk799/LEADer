@@ -23,11 +23,16 @@ export function workflowRunResultSummary(playbook: string, result: unknown) {
   const operatingCandidates = objectValue(candidateHarvest?.candidates);
   const operatingStaleDeals = objectValue(pipelineRescue?.staleDeals);
   const operatingDeadlines = objectValue(pipelineRescue?.deadlines);
+  const subject = typeof payload.subject === "string" ? payload.subject : "subject";
 
   if (playbook === "operating-day") {
     const rescueTasks =
       numberValue(operatingStaleDeals?.tasksCreated) + numberValue(operatingDeadlines?.tasksCreated);
     return `${numberValue(operatingSources?.created)} source leads - ${numberValue(operatingCandidates?.saved)} saved deals - ${rescueTasks} rescue tasks`;
+  }
+
+  if (playbook === "research-brief") {
+    return `${numberValue(payload.createdTasks)} research tasks - ${numberValue(payload.skippedExistingTasks)} existing - ${subject}`;
   }
 
   if (playbook === "candidate-harvest") {

@@ -30,4 +30,33 @@ describe("workflowRunInputSchema", () => {
 
     expect(parsed.success).toBe(false);
   });
+
+  it("accepts research brief runs with a subject", () => {
+    const parsed = workflowRunInputSchema.parse({
+      playbook: "research-brief",
+      workspace: "DK",
+      options: {
+        researchBrief: {
+          subject: "Aarhus Kommune",
+          subjectType: "company",
+          objective: "map-opportunity",
+          depth: "deep",
+          createTasks: true,
+        },
+      },
+    });
+
+    expect(parsed.options?.researchBrief?.objective).toBe("map-opportunity");
+    expect(parsed.options?.researchBrief?.subject).toBe("Aarhus Kommune");
+  });
+
+  it("rejects research brief runs without a subject", () => {
+    const parsed = workflowRunInputSchema.safeParse({
+      playbook: "research-brief",
+      workspace: "DK",
+      options: {},
+    });
+
+    expect(parsed.success).toBe(false);
+  });
 });

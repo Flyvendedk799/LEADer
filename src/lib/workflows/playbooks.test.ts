@@ -7,6 +7,7 @@ import {
   type DailySweepResult,
   type OperatingDayResult,
   type PipelineRescueResult,
+  type ResearchBriefResult,
 } from "./playbooks";
 
 describe("workflowRunSummary", () => {
@@ -51,6 +52,27 @@ describe("workflowRunSummary", () => {
     };
 
     expect(workflowRunSummary(result)).toBe("3 hot candidates saved as deals, 1 already in pipeline.");
+  });
+
+  it("summarizes research brief results", () => {
+    const result: ResearchBriefResult = {
+      playbook: "research-brief",
+      workspace: "DK",
+      ranAt: "2026-06-23T00:00:00.000Z",
+      durationMs: 300,
+      subject: "Aarhus Kommune",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "standard",
+      createdTasks: 5,
+      skippedExistingTasks: 1,
+      taskIds: ["task-1"],
+      checklist: [],
+      linked: {},
+      log: [],
+    };
+
+    expect(workflowRunSummary(result)).toBe("5 research tasks created, 1 already existed for Aarhus Kommune.");
   });
 
   it("summarizes operating day results", () => {

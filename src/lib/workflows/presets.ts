@@ -2,12 +2,14 @@ import type { Prisma, WorkflowPreset } from "@prisma/client";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { workflowRunInputSchema, workflowRunOptionsSchema, type WorkflowRunInput, type WorkflowRunOptions } from "./types";
+import { workflowRunInputSchema, workflowRunOptionsSchema, type WorkflowRunOptions } from "./types";
+
+const workflowPresetPlaybookSchema = z.enum(["daily-sweep", "pipeline-rescue", "candidate-harvest", "operating-day"]);
 
 const workflowPresetFieldsSchema = z.object({
   name: z.string().trim().min(2).max(80),
   description: z.string().trim().max(500).optional().nullable(),
-  playbook: z.enum(["daily-sweep", "pipeline-rescue", "candidate-harvest", "operating-day"]),
+  playbook: workflowPresetPlaybookSchema,
   workspace: z.enum(["DK", "GLOBAL"]),
   options: workflowRunOptionsSchema,
   pinned: z.boolean(),
@@ -133,12 +135,16 @@ export const defaultWorkflowPresets: DefaultWorkflowPreset[] = [
   },
 ];
 
-export function presetToWorkflowInput(preset: Pick<WorkflowPreset, "playbook" | "workspace" | "options">): WorkflowRunInput {
-  return workflowRunInputSchema.parse({
+export function presetToWorkflowInput(preset: Pick<WorkflowPreset, "playbook" | "workspace" | "options">) {
+  const input = workflowRunInputSchema.parse({
     playbook: preset.playbook,
     workspace: preset.workspace,
     options: preset.options ?? undefined,
   });
+  return {
+    ...input,
+    playbook: workflowPresetPlaybookSchema.parse(input.playbook),
+  };
 }
 
 export function workflowPresetData(input: WorkflowPresetDataInput) {

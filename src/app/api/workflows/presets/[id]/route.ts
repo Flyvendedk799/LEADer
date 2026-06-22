@@ -7,11 +7,11 @@ import { db } from "@/lib/db";
 import {
   presetToWorkflowInput,
   workflowPresetData,
+  workflowPresetFormSchema,
   workflowPresetOptionSummary,
   workflowPresetScheduleSummary,
   workflowPresetUpdateSchema,
 } from "@/lib/workflows/presets";
-import { workflowRunInputSchema } from "@/lib/workflows/types";
 
 function presetPayload(preset: Awaited<ReturnType<typeof db.workflowPreset.findFirstOrThrow>>) {
   const input = presetToWorkflowInput(preset);
@@ -51,24 +51,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       scheduleNextRunAt:
         parsed.data.scheduleNextRunAt === undefined ? existing.scheduleNextRunAt : parsed.data.scheduleNextRunAt,
     };
-    const runInput = workflowRunInputSchema.safeParse({
-      playbook: merged.playbook,
-      workspace: merged.workspace,
-      options: merged.options,
-    });
-    if (!runInput.success) {
-      return NextResponse.json({ error: runInput.error.flatten() }, { status: 400 });
+    const presetInput = workflowPresetFormSchema.safeParse(merged);
+    if (!presetInput.success) {
+      return NextResponse.json({ error: presetInput.error.flatten() }, { status: 400 });
     }
 
     try {
       const preset = await db.workflowPreset.update({
         where: { id: existing.id },
-        data: workflowPresetData({
-          ...merged,
-          playbook: runInput.data.playbook,
-          workspace: runInput.data.workspace,
-          options: runInput.data.options ?? {},
-        }),
+        data: workflowPresetData(presetInput.data),
       });
       return NextResponse.json({ preset: presetPayload(preset) });
     } catch (error) {
