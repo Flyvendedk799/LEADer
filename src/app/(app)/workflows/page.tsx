@@ -25,6 +25,7 @@ import { WorkflowActivityFeed } from "@/components/workflows/workflow-activity-f
 import { WorkflowAlertQueue } from "@/components/workflows/workflow-alert-queue";
 import { WorkflowCandidateQueue } from "@/components/workflows/workflow-candidate-queue";
 import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
+import { WorkflowDiscoveryMissionQueue, type WorkflowDiscoveryMissionItem } from "@/components/workflows/workflow-discovery-mission-queue";
 import { WorkflowPresetPanel, type WorkflowPresetPanelItem } from "@/components/workflows/workflow-preset-panel";
 import { WorkflowRunQueue } from "@/components/workflows/workflow-run-queue";
 import { WorkflowSavedSearchQueue } from "@/components/workflows/workflow-saved-search-queue";
@@ -35,6 +36,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureDefaultDiscoveryLanes } from "@/lib/crm/lanes";
+import { recoverDiscoveryQueue } from "@/lib/crm/discovery-queue";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { isSourceDue } from "@/lib/ingestion";
@@ -50,21 +52,6 @@ export const dynamic = "force-dynamic";
 
 const OPEN_DEAL_STATUSES = ["DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION"] as const;
 const AUTOMATABLE_SOURCE_TYPES = new Set(["RSS", "NEWSLETTER", "PUBLIC_WEB", "PROCUREMENT", "ACCELERATOR", "API"]);
-
-function missionVariant(status: string) {
-  if (status === "SUCCESS") return "success";
-  if (status === "ERROR") return "warning";
-  if (status === "RUNNING" || status === "QUEUED") return "secondary";
-  return "outline";
-}
-
-function duration(start?: Date | null, end?: Date | null) {
-  if (!start) return "";
-  const endMs = end?.getTime() ?? Date.now();
-  const seconds = Math.max(0, Math.round((endMs - start.getTime()) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
-}
 
 function firstQuery(value = "") {
   return value.split("\n").map((item) => item.trim()).filter(Boolean)[0] || "Discovery mission";
@@ -91,6 +78,7 @@ export default async function WorkflowsPage() {
   const staleCutoff = new Date(now.getTime() - 14 * 86400000);
   await ensureDefaultDiscoveryLanes(ownerId);
   await ensureDefaultWorkflowPresets(ownerId);
+  const discoveryQueue = await recoverDiscoveryQueue(ownerId);
   const workflowQueue = await recoverWorkflowQueue(ownerId);
 
   const [
@@ -335,6 +323,18 @@ export default async function WorkflowsPage() {
       presetName: run.preset?.name ?? null,
     };
   });
+  const discoveryMissionItems: WorkflowDiscoveryMissionItem[] = missions.map((mission) => ({
+    id: mission.id,
+    status: mission.status,
+    provider: mission.provider,
+    startedAt: mission.startedAt.toISOString(),
+    finishedAt: mission.finishedAt?.toISOString() ?? null,
+    query: mission.query,
+    laneName: mission.lane.name,
+    warnings: mission.warnings,
+    log: mission.log,
+    candidateCount: mission._count.candidates,
+  }));
   const workflowPresetItems: WorkflowPresetPanelItem[] = await Promise.all(
     workflowPresets.map(async (preset) => {
       const input = presetToWorkflowInput(preset);
@@ -574,31 +574,8 @@ export default async function WorkflowsPage() {
                 Discovery runs
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {missions.map((mission) => (
-                <Link
-                  key={mission.id}
-                  href={discoveryMissionHref(mission.id)}
-                  className="grid gap-2 rounded-md border border-border bg-surface/40 p-3 hover:border-primary/50 md:grid-cols-[minmax(0,1fr)_auto]"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-medium">{mission.lane.name}</p>
-                      <Badge variant={missionVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
-                      {mission.provider ? <Badge variant="outline">{mission.provider}</Badge> : null}
-                    </div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">{firstQuery(mission.query)}</p>
-                    {mission.warnings.length ? (
-                      <p className="mt-1 truncate text-xs text-warning">{mission.warnings[0]}</p>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground md:justify-end">
-                    <span>{duration(mission.startedAt, mission.finishedAt)}</span>
-                    <span>{mission._count.candidates} candidates</span>
-                  </div>
-                </Link>
-              ))}
-              {missions.length === 0 ? <EmptyLine>No discovery runs yet.</EmptyLine> : null}
+            <CardContent>
+              <WorkflowDiscoveryMissionQueue missions={discoveryMissionItems} queue={discoveryQueue} />
             </CardContent>
           </Card>
 
