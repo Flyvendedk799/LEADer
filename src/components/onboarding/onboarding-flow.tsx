@@ -114,7 +114,7 @@ export function OnboardingFlow({ user }: { user: OnboardingUser }) {
           </div>
           <CardTitle>Set up LEADer</CardTitle>
           <CardDescription>
-            Add the profile context LEADer should score against, then connect OpenAI or Claude.
+            Add the profile context LEADer should score against, then choose an API key or local subscription provider.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -218,7 +218,7 @@ export function OnboardingFlow({ user }: { user: OnboardingUser }) {
             <div>
               <h2 className="text-sm font-semibold text-foreground">AI provider</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                API keys and local subscription providers can be changed later in Settings.
+                API keys, Codex subscription, and Claude Code subscription can be changed later in Settings.
               </p>
             </div>
             <AiProviderFields

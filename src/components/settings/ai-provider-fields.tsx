@@ -72,15 +72,15 @@ const PROVIDER_DEFAULTS: Record<
     requiresApiKey: true,
   },
   codex: {
-    label: "Codex/ChatGPT",
-    description: "Use the local Codex CLI ChatGPT subscription. No API key.",
+    label: "Codex subscription",
+    description: "Use your local Codex/ChatGPT subscription from the Codex CLI. No API key.",
     baseUrl: "https://chatgpt.com/backend-api",
     model: "gpt-5.5",
     embeddingModel: "text-embedding-3-small",
     requiresApiKey: false,
   },
   "claude-subscription": {
-    label: "Claude Code",
+    label: "Claude Code subscription",
     description: "Use the local Claude Code subscription from macOS Keychain. No API key.",
     baseUrl: "https://api.anthropic.com",
     model: "claude-opus-4-8",
@@ -161,6 +161,12 @@ export function AiProviderFields({
   const currentDefaults = PROVIDER_DEFAULTS[state.provider];
   const requiresApiKey = currentDefaults.requiresApiKey;
   const hasSavedKey = Boolean(aiKeys?.hasApiKey && !state.clearApiKey);
+  const subscriptionHint =
+    state.provider === "codex"
+      ? "Uses your Codex CLI login on this machine. Sign in to Codex first, then save this provider."
+      : state.provider === "claude-subscription"
+        ? "Uses your Claude Code login from macOS Keychain on this machine. Sign in to Claude Code first, then save this provider."
+        : "";
 
   function chooseProvider(provider: AiProvider) {
     const defaults = PROVIDER_DEFAULTS[provider];
@@ -208,6 +214,9 @@ export function AiProviderFields({
                   <span className="block text-sm font-semibold">{defaults.label}</span>
                   <span className="mt-1 block text-xs leading-5 text-muted-foreground">
                     {defaults.description}
+                  </span>
+                  <span className="mt-2 block text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
+                    {defaults.requiresApiKey ? "API key" : "Local subscription"}
                   </span>
                 </span>
               </button>
@@ -314,7 +323,7 @@ export function AiProviderFields({
         </div>
       ) : (
         <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted-foreground">
-          This provider uses your local subscription login on this machine.
+          {subscriptionHint}
         </div>
       )}
     </div>
