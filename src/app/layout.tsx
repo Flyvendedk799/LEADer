@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   title: "LEADer — Lead Intelligence",
   description:
     "Discover, track, evaluate, save and export funded startup work, voucher assignments and tender-like opportunities. Denmark-first, global-ready.",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
