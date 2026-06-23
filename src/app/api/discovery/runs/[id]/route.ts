@@ -5,16 +5,17 @@ import { requireOwnerId } from "@/lib/auth";
 import {
   discoveryMissionDisplayWarnings,
   discoveryMissionProviderLabel,
-  filterReviewableDiscoveryCandidates,
   hiddenDiscoveryCandidatesWarning,
+  splitReviewableDiscoveryCandidates,
 } from "@/lib/crm/discovery-display";
 import { visibleDiscoveryQueueSnapshotForOwner } from "@/lib/crm/discovery-queue";
 import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import { db } from "@/lib/db";
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
     const ownerId = await requireOwnerId();
+    const includeHidden = new URL(req.url).searchParams.get("includeHidden") === "1";
     await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
     const mission = await db.discoveryMission.findFirst({
       where: { id: params.id, ownerId },
@@ -27,7 +28,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       },
     });
     if (!mission) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const visible = filterReviewableDiscoveryCandidates(mission.lane, mission.candidates);
+    const visible = splitReviewableDiscoveryCandidates(mission.lane, mission.candidates);
     const baseWarnings = discoveryMissionDisplayWarnings(mission, mission.warnings);
     const hiddenWarning = hiddenDiscoveryCandidatesWarning(visible.removed, visible.reasons);
     const filteredMission = {
@@ -36,7 +37,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       candidates: visible.candidates,
       warnings: hiddenWarning ? [...baseWarnings, hiddenWarning] : baseWarnings,
     };
-    return NextResponse.json({ mission: filteredMission, queue: await visibleDiscoveryQueueSnapshotForOwner(ownerId) });
+    return NextResponse.json({
+      mission: filteredMission,
+      hiddenCandidateCount: visible.hidden.length,
+      hiddenCandidates: includeHidden ? visible.hidden : [],
+      queue: await visibleDiscoveryQueueSnapshotForOwner(ownerId),
+    });
   } catch (err) {
     return apiError(err);
   }

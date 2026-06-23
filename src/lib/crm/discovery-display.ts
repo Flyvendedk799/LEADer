@@ -1,6 +1,7 @@
-import { filterLaneCandidates, type CandidateLike, type LaneLike } from "@/lib/crm/lanes";
+import { laneCandidateGate, type CandidateLike, type LaneLike } from "@/lib/crm/lanes";
 
 const HIDDEN_REVIEW_STATUSES = new Set(["DISMISSED", "DUPLICATE"]);
+const STATUS_HIDDEN_GROUP = "dismissed or duplicate candidate";
 
 function hiddenStatusLabel(count: number) {
   return `${count} dismissed or duplicate ${count === 1 ? "candidate" : "candidates"}`;
@@ -35,20 +36,61 @@ export function filterReviewableDiscoveryCandidates<T extends CandidateLike & { 
   lane: LaneLike | null | undefined,
   candidates: T[],
 ) {
-  const laneFiltered = lane
-    ? filterLaneCandidates(lane, candidates)
-    : { candidates, removed: 0, reasons: [] as string[] };
-  const reviewable = laneFiltered.candidates.filter(
-    (candidate) => !HIDDEN_REVIEW_STATUSES.has(String(candidate.status ?? "").toUpperCase()),
-  );
-  const statusHidden = laneFiltered.candidates.length - reviewable.length;
+  const split = splitReviewableDiscoveryCandidates(lane, candidates);
+  return {
+    candidates: split.candidates,
+    removed: split.removed,
+    reasons: split.reasons,
+  };
+}
+
+function hiddenCandidateReason(lane: LaneLike | null | undefined, candidate: CandidateLike & { status?: string | null }) {
+  if (lane) {
+    const gate = laneCandidateGate(lane, candidate);
+    if (!gate.allowed) {
+      const reason = gate.reason ?? "off-lane result";
+      return { reason, group: reason };
+    }
+  }
+
+  const status = String(candidate.status ?? "").toUpperCase();
+  if (HIDDEN_REVIEW_STATUSES.has(status)) {
+    return {
+      reason: status === "DUPLICATE" ? "duplicate candidate" : "dismissed candidate",
+      group: STATUS_HIDDEN_GROUP,
+    };
+  }
+
+  return null;
+}
+
+export function splitReviewableDiscoveryCandidates<T extends CandidateLike & { status?: string | null }>(
+  lane: LaneLike | null | undefined,
+  candidates: T[],
+) {
+  const reasonCounts = new Map<string, number>();
+  const reviewable: T[] = [];
+  const hidden: Array<T & { hiddenReason: string }> = [];
+
+  for (const candidate of candidates) {
+    const hiddenReason = hiddenCandidateReason(lane, candidate);
+    if (!hiddenReason) {
+      reviewable.push(candidate);
+      continue;
+    }
+    reasonCounts.set(hiddenReason.group, (reasonCounts.get(hiddenReason.group) ?? 0) + 1);
+    hidden.push({ ...candidate, hiddenReason: hiddenReason.reason });
+  }
+
+  const reasons = [...reasonCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => (reason === STATUS_HIDDEN_GROUP ? hiddenStatusLabel(count) : `${count} ${reason}`));
+
   return {
     candidates: reviewable,
-    removed: laneFiltered.removed + statusHidden,
-    reasons: [
-      ...laneFiltered.reasons,
-      ...(statusHidden > 0 ? [hiddenStatusLabel(statusHidden)] : []),
-    ],
+    hidden,
+    removed: hidden.length,
+    reasons,
   };
 }
 

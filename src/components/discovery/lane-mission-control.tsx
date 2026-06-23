@@ -14,6 +14,7 @@ import {
   Link2,
   CopyX,
   Database,
+  Eye,
   ExternalLink,
   Globe2,
   History,
@@ -60,6 +61,7 @@ type Candidate = {
   provider?: string | null;
   query?: string | null;
   status: string;
+  hiddenReason?: string | null;
   category?: string | null;
   budgetMin?: number | null;
   budgetMax?: number | null;
@@ -88,6 +90,8 @@ type MissionResult = {
     log: string[];
     candidates: Candidate[];
   };
+  hiddenCandidateCount?: number;
+  hiddenCandidates?: Candidate[];
   providerConfigured?: boolean;
   queries?: string[];
   plan?: {
@@ -133,6 +137,8 @@ type MissionListResponse = {
 };
 
 type MissionDetailResponse = MissionResult & {
+  hiddenCandidateCount?: number;
+  hiddenCandidates?: Candidate[];
   queue?: Partial<DiscoveryQueueSnapshot>;
   error?: string;
 };
@@ -277,6 +283,7 @@ export function LaneMissionControl({
   const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
   const [activeMissionId, setActiveMissionId] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<MissionResult | null>(null);
+  const [showHiddenCandidates, setShowHiddenCandidates] = React.useState(false);
   const [busyMissionAction, setBusyMissionAction] = React.useState<string | null>(null);
   const selectedLane = lanes.find((lane) => lane.id === laneId);
   const officialTenderMode =
@@ -286,6 +293,8 @@ export function LaneMissionControl({
     searchMode !== "wide";
   const effectiveIncludeSources = officialTenderMode ? false : includeSources;
   const candidates = result?.mission.candidates ?? [];
+  const hiddenCandidateCount = result?.hiddenCandidateCount ?? 0;
+  const hiddenCandidates = result?.hiddenCandidates ?? [];
   const missionStatus = result?.mission.status ?? "";
   const missionRunning = missionStatus === "QUEUED" || missionStatus === "RUNNING";
   const liveQueue =
@@ -323,10 +332,10 @@ export function LaneMissionControl({
     if (officialTenderMode) setIncludeSources(false);
   }, [officialTenderMode]);
 
-  const loadMission = React.useCallback(async (id: string, quiet = false, syncUrl = true) => {
+  const loadMission = React.useCallback(async (id: string, quiet = false, syncUrl = true, includeHidden = showHiddenCandidates) => {
     if (!quiet) setRefreshing(true);
     try {
-      const res = await fetch(`/api/discovery/runs/${id}`, { cache: "no-store" });
+      const res = await fetch(`/api/discovery/runs/${id}${includeHidden ? "?includeHidden=1" : ""}`, { cache: "no-store" });
       const data = (await res.json()) as MissionDetailResponse;
       if (!res.ok) throw new Error(data?.error || "Could not load mission");
       setResult(data);
@@ -354,7 +363,7 @@ export function LaneMissionControl({
     } finally {
       if (!quiet) setRefreshing(false);
     }
-  }, [mergeMission, syncMissionUrl]);
+  }, [mergeMission, showHiddenCandidates, syncMissionUrl]);
 
   const loadMissions = React.useCallback(async (openLatest = false, quiet = false) => {
     if (!quiet) setRefreshing(true);
@@ -475,6 +484,14 @@ export function LaneMissionControl({
       toast.success("Mission link copied");
     } catch {
       toast.error("Could not copy link", "Your browser blocked clipboard access.");
+    }
+  }
+
+  async function toggleHiddenCandidates() {
+    const next = !showHiddenCandidates;
+    setShowHiddenCandidates(next);
+    if (activeMissionId) {
+      await loadMission(activeMissionId, false, true, next);
     }
   }
 
@@ -795,6 +812,18 @@ export function LaneMissionControl({
                     <Link2 className="h-4 w-4" />
                     Copy link
                   </Button>
+                  {hiddenCandidateCount > 0 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={toggleHiddenCandidates}
+                      disabled={refreshing || !activeMissionId}
+                    >
+                      <Eye className="h-4 w-4" />
+                      {showHiddenCandidates ? "Hide hidden" : `Hidden: ${hiddenCandidateCount}`}
+                    </Button>
+                  ) : null}
                   {["NEW", "REVIEWED", "SAVED", "DISMISSED", "DUPLICATE"].map((status) => (
                     counts[status] ? <Badge key={status} variant="outline">{status.toLowerCase()}: {counts[status]}</Badge> : null
                   ))}
@@ -813,6 +842,18 @@ export function LaneMissionControl({
                 <CandidateCard key={candidate.id} candidate={candidate} onAction={candidateAction} />
               ))
             )}
+
+            {showHiddenCandidates && hiddenCandidates.length > 0 ? (
+              <div className="space-y-2 rounded-lg border border-dashed border-border bg-surface/30 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Hidden candidates</p>
+                  <Badge variant="outline">{hiddenCandidates.length}</Badge>
+                </div>
+                {hiddenCandidates.map((candidate) => (
+                  <CandidateCard key={`hidden-${candidate.id}`} candidate={candidate} onAction={candidateAction} hidden />
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
       </div>
@@ -1136,9 +1177,11 @@ export function LaneMissionControl({
 function CandidateCard({
   candidate,
   onAction,
+  hidden = false,
 }: {
   candidate: Candidate;
   onAction: (id: string, action: CandidateAction) => void;
+  hidden?: boolean;
 }) {
   const saved = candidate.status === "SAVED" && candidate.deal;
   const closed = candidate.status === "DISMISSED" || candidate.status === "DUPLICATE";
@@ -1153,7 +1196,13 @@ function CandidateCard({
           : "default";
 
   return (
-    <article id={`candidate-${candidate.id}`} className="scroll-mt-24 rounded-lg border border-border bg-card p-4 shadow-sm">
+    <article
+      id={`candidate-${candidate.id}`}
+      className={cn(
+        "scroll-mt-24 rounded-lg border border-border bg-card p-4 shadow-sm",
+        hidden && "border-dashed bg-muted/30",
+      )}
+    >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -1164,6 +1213,7 @@ function CandidateCard({
               </a>
             )}
             <Badge variant={statusVariant}>{candidate.status.toLowerCase()}</Badge>
+            {candidate.hiddenReason ? <Badge variant="warning">{candidate.hiddenReason}</Badge> : null}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             {[candidate.organization, candidate.sourceName, candidate.category].filter(Boolean).join(" · ") || "Discovery candidate"}
@@ -1222,36 +1272,38 @@ function CandidateCard({
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
-        {saved ? (
-          <Button asChild size="sm">
-            <Link href={`/deals/${candidate.deal!.id}`}>
+      {!hidden ? (
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
+          {saved ? (
+            <Button asChild size="sm">
+              <Link href={`/deals/${candidate.deal!.id}`}>
+                <CheckCircle2 className="h-4 w-4" />
+                Open deal
+              </Link>
+            </Button>
+          ) : closed ? (
+            <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "review")}>
               <CheckCircle2 className="h-4 w-4" />
-              Open deal
-            </Link>
-          </Button>
-        ) : closed ? (
-          <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "review")}>
-            <CheckCircle2 className="h-4 w-4" />
-            Review
-          </Button>
-        ) : (
-          <>
-            <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "dismiss")}>
-              <XCircle className="h-4 w-4" />
-              Dismiss
+              Review
             </Button>
-            <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "duplicate")}>
-              <CopyX className="h-4 w-4" />
-              Duplicate
-            </Button>
-            <Button size="sm" onClick={() => onAction(candidate.id, "save")}>
-              <CheckCircle2 className="h-4 w-4" />
-              Save as deal
-            </Button>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "dismiss")}>
+                <XCircle className="h-4 w-4" />
+                Dismiss
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "duplicate")}>
+                <CopyX className="h-4 w-4" />
+                Duplicate
+              </Button>
+              <Button size="sm" onClick={() => onAction(candidate.id, "save")}>
+                <CheckCircle2 className="h-4 w-4" />
+                Save as deal
+              </Button>
+            </>
+          )}
+        </div>
+      ) : null}
     </article>
   );
 }
