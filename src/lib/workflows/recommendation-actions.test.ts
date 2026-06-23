@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  filterWorkflowRecommendationBatch,
   filterWorkflowRecommendations,
   workflowRecommendationBatchToast,
   workflowRecommendationBlockedByActiveRun,
@@ -65,6 +66,10 @@ describe("workflow recommendation actions", () => {
     expect(workflowRecommendationBatchToast("save", 0, 2)).toEqual({
       title: "No recommendations saved",
       description: "2 failed",
+    });
+    expect(workflowRecommendationBatchToast("queue", 1, 0, 2)).toEqual({
+      title: "Recommendations queued",
+      description: "1 recommended move queued for background runs - 2 overlapping skipped",
     });
   });
 
@@ -145,5 +150,71 @@ describe("workflow recommendation actions", () => {
         operatingDay,
       ),
     ).toBe(false);
+  });
+
+  it("dedupes overlapping queue-all recommendations before posting", () => {
+    const recommendations = [
+      {
+        title: "Run operating day",
+        reason: "Best next move.",
+        playbook: "operating-day",
+        options: {
+          operatingDay: {
+            dailySweep: true,
+            candidateHarvest: true,
+            pipelineRescue: true,
+          },
+        },
+      },
+      {
+        title: "Harvest hot candidates",
+        reason: "3 candidates need review.",
+        playbook: "candidate-harvest",
+      },
+      {
+        title: "Rescue pipeline",
+        reason: "2 stale deals need next actions.",
+        playbook: "pipeline-rescue",
+      },
+      {
+        title: "Sweep due sources",
+        reason: "Sources are due.",
+        playbook: "daily-sweep",
+      },
+    ];
+
+    expect(filterWorkflowRecommendationBatch(recommendations).map((item) => item.playbook)).toEqual(["operating-day"]);
+  });
+
+  it("keeps non-overlapping sub-playbooks when operating day disabled their phases", () => {
+    const recommendations = [
+      {
+        title: "Run operating day",
+        reason: "Best next move.",
+        playbook: "operating-day",
+        options: {
+          operatingDay: {
+            dailySweep: false,
+            candidateHarvest: true,
+            pipelineRescue: false,
+          },
+        },
+      },
+      {
+        title: "Rescue pipeline",
+        reason: "2 stale deals need next actions.",
+        playbook: "pipeline-rescue",
+      },
+      {
+        title: "Harvest hot candidates",
+        reason: "3 candidates need review.",
+        playbook: "candidate-harvest",
+      },
+    ];
+
+    expect(filterWorkflowRecommendationBatch(recommendations).map((item) => item.playbook)).toEqual([
+      "operating-day",
+      "pipeline-rescue",
+    ]);
   });
 });

@@ -81,6 +81,29 @@ export function filterWorkflowRecommendations<T extends WorkflowRecommendationAc
   );
 }
 
+export function filterWorkflowRecommendationBatch<T extends WorkflowRecommendationActionInput>(
+  recommendations: T[],
+) {
+  const selected: T[] = [];
+  const syntheticRuns: WorkflowRecommendationActiveRun[] = [];
+
+  for (const recommendation of recommendations) {
+    if (syntheticRuns.some((run) => workflowRecommendationBlockedByActiveRun(recommendation, run))) {
+      continue;
+    }
+    selected.push(recommendation);
+    syntheticRuns.push({
+      playbook: recommendation.playbook,
+      workspace: workflowRecommendationWorkspace(recommendation),
+      status: "QUEUED",
+      finishedAt: null,
+      input: workflowRecommendationRunPayload(recommendation),
+    });
+  }
+
+  return selected;
+}
+
 export function workflowRecommendationRunPayload(recommendation: WorkflowRecommendationActionInput) {
   return {
     playbook: recommendation.playbook,
@@ -111,13 +134,15 @@ export function workflowRecommendationBatchToast(
   action: WorkflowRecommendationBatchAction,
   succeeded: number,
   failed: number,
+  skipped = 0,
 ) {
   const verb = action === "queue" ? "queued" : "saved";
+  const skippedText = skipped > 0 ? ` - ${skipped} overlapping skipped` : "";
 
   if (succeeded > 0 && failed > 0) {
     return {
       title: "Some recommendations failed",
-      description: `${recommendedMoveCount(succeeded)} ${verb} - ${failed} failed`,
+      description: `${recommendedMoveCount(succeeded)} ${verb} - ${failed} failed${skippedText}`,
     };
   }
 
@@ -126,13 +151,13 @@ export function workflowRecommendationBatchToast(
       title: `Recommendations ${verb}`,
       description:
         action === "queue"
-          ? `${recommendedMoveCount(succeeded)} queued for background runs`
-          : `${recommendedMoveCount(succeeded)} saved as ${succeeded === 1 ? "a preset" : "presets"}`,
+          ? `${recommendedMoveCount(succeeded)} queued for background runs${skippedText}`
+          : `${recommendedMoveCount(succeeded)} saved as ${succeeded === 1 ? "a preset" : "presets"}${skippedText}`,
     };
   }
 
   return {
     title: action === "queue" ? "No recommendations queued" : "No recommendations saved",
-    description: failed > 0 ? `${failed} failed` : "No recommendations available",
+    description: skipped > 0 ? `${skipped} overlapping skipped` : failed > 0 ? `${failed} failed` : "No recommendations available",
   };
 }

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import {
+  filterWorkflowRecommendationBatch,
   type WorkflowRecommendationBatchAction,
   workflowRecommendationBatchToast,
   workflowRecommendationPresetPayload,
@@ -163,12 +164,16 @@ export function WorkflowRecommendationPanel({
 
   async function runRecommendationBatch(action: WorkflowRecommendationBatchAction) {
     setBusyId(`${action}-all`);
+    const batchRecommendations = action === "queue"
+      ? filterWorkflowRecommendationBatch(recommendations)
+      : recommendations;
+    const skipped = recommendations.length - batchRecommendations.length;
     let succeeded = 0;
     let failed = 0;
     const errors: string[] = [];
 
     try {
-      for (const recommendation of recommendations) {
+      for (const recommendation of batchRecommendations) {
         try {
           if (action === "queue") {
             await createRecommendationRun(recommendation);
@@ -182,7 +187,7 @@ export function WorkflowRecommendationPanel({
         }
       }
 
-      const summary = workflowRecommendationBatchToast(action, succeeded, failed);
+      const summary = workflowRecommendationBatchToast(action, succeeded, failed, skipped);
       const firstError = errors.find(Boolean);
       const description = firstError && failed ? `${summary.description} - ${firstError}` : summary.description;
 
