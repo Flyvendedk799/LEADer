@@ -264,7 +264,8 @@ export function WorkflowRunQueue({
         ) : null}
       </div>
       {orderedItems.map((run) => {
-        const latestLog = run.log.at(-1) ?? run.summary;
+        const latestLog = run.log.at(-1) ?? null;
+        const visibleLatestLog = latestLog && latestLog !== run.summary ? latestLog : null;
         const cancelable = ["QUEUED", "RUNNING"].includes(run.status);
         const cancelBusy = busyId === `CANCEL-${run.id}`;
         const rerunBusy = busyId === `RERUN-${run.id}`;
@@ -287,8 +288,11 @@ export function WorkflowRunQueue({
                 <Badge variant={run.trigger === "manual" ? "outline" : "secondary"}>{triggerLabel(run)}</Badge>
                 {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
               </div>
-              {latestLog ? (
-                <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{truncate(latestLog, 150)}</p>
+              {run.summary ? (
+                <p className="mt-1 truncate text-xs text-muted-foreground">{truncate(run.summary, 150)}</p>
+              ) : null}
+              {visibleLatestLog ? (
+                <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{truncate(visibleLatestLog, 150)}</p>
               ) : null}
             </Link>
             <div className="flex items-center justify-end gap-2">

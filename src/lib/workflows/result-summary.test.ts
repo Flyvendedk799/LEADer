@@ -33,4 +33,15 @@ describe("workflowRunResultSummary", () => {
       }),
     ).toBe("6 research tasks - 2 existing - Aarhus Kommune");
   });
+
+  it("surfaces worksheet sections for completed research briefs", () => {
+    expect(
+      workflowRunResultSummary("research-brief", {
+        subject: "Mette Jensen",
+        createdTasks: 0,
+        skippedExistingTasks: 0,
+        worksheet: [{ id: "identity" }, { id: "contact-route" }],
+      }),
+    ).toBe("2 worksheet sections - 0 research tasks - 0 existing - Mette Jensen");
+  });
 });

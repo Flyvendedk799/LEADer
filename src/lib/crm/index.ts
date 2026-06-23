@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
+import { HttpError } from "@/lib/api";
 import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
 import { runDiscoverySearch, type DiscoveryCandidateDto } from "@/lib/discovery";
@@ -870,8 +871,17 @@ export async function saveCandidateAsDeal(ownerId: string, candidateId: string) 
     where: { id: candidateId, ownerId },
     include: { lane: true, evidence: true, deal: true },
   });
-  if (!candidate) throw new Error("Candidate not found");
+  if (!candidate) throw new HttpError(404, "Candidate not found");
   if (candidate.deal) return { deal: candidate.deal, created: false };
+  if (candidate.lane) {
+    const gate = laneCandidateGate(candidate.lane, candidate);
+    if (!gate.allowed) {
+      throw new HttpError(
+        409,
+        `Candidate is no longer a valid ${candidate.lane.name} lead: ${gate.reason ?? "off-lane result"}`,
+      );
+    }
+  }
 
   const account = await ensureAccount(ownerId, {
     name: candidate.organization || candidate.sourceName || host(candidate.url) || candidate.title,

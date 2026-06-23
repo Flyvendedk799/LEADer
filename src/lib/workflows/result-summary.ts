@@ -6,6 +6,10 @@ function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function arrayCount(value: unknown) {
+  return Array.isArray(value) ? value.length : 0;
+}
+
 export function workflowRunResultSummary(playbook: string, result: unknown) {
   const payload = objectValue(result);
   if (!payload) return null;
@@ -32,7 +36,9 @@ export function workflowRunResultSummary(playbook: string, result: unknown) {
   }
 
   if (playbook === "research-brief") {
-    return `${numberValue(payload.createdTasks)} research tasks - ${numberValue(payload.skippedExistingTasks)} existing - ${subject}`;
+    const worksheetSections = arrayCount(payload.worksheet);
+    const worksheet = worksheetSections ? `${worksheetSections} worksheet sections - ` : "";
+    return `${worksheet}${numberValue(payload.createdTasks)} research tasks - ${numberValue(payload.skippedExistingTasks)} existing - ${subject}`;
   }
 
   if (playbook === "candidate-harvest") {
