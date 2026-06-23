@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Activity, ArrowLeft, BriefcaseBusiness, CalendarClock, CheckCircle2, Clock3, ListChecks, RotateCw, Search, Sparkles, Target } from "lucide-react";
+import { Activity, ArrowLeft, BriefcaseBusiness, CalendarClock, CheckCircle2, Clock3, ExternalLink, ListChecks, RotateCw, Search, Sparkles, Target } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatDate, truncate } from "@/lib/utils";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
+import { researchSearchHref, uniqueResearchPrompts } from "@/lib/workflows/research-links";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 import { workflowTaskHref } from "@/lib/workflows/task-links";
 
@@ -183,9 +184,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                 const title = typeof step.title === "string" ? step.title : `Research step ${index + 1}`;
                 const stage = typeof step.stage === "string" ? step.stage : "step";
                 const priority = typeof step.priority === "string" ? step.priority : "MEDIUM";
-                const prompts = Array.isArray(step.searchPrompts)
-                  ? step.searchPrompts.filter((prompt): prompt is string => typeof prompt === "string")
-                  : [];
+                const prompts = uniqueResearchPrompts(step.searchPrompts, 4);
                 const criteria = stringList(step.acceptanceCriteria);
                 const description = typeof step.description === "string" ? step.description : "";
                 return (
@@ -212,9 +211,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                         ))}
                       </ul>
                     ) : null}
-                    {prompts.length ? (
-                      <p className="mt-1 text-xs text-muted-foreground">{truncate(prompts.slice(0, 3).join(" · "), 140)}</p>
-                    ) : null}
+                    <SearchPromptLinks prompts={prompts} />
                   </div>
                 );
               })}
@@ -250,17 +247,13 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                         const label = typeof field.label === "string" ? field.label : `Field ${fieldIndex + 1}`;
                         const capture = typeof field.capture === "string" ? field.capture : "";
                         const evidence = typeof field.evidence === "string" ? field.evidence : "";
-                        const prompts = Array.isArray(field.sourcePrompts)
-                          ? field.sourcePrompts.filter((prompt): prompt is string => typeof prompt === "string")
-                          : [];
+                        const prompts = uniqueResearchPrompts(field.sourcePrompts, 3);
                         return (
                           <div key={`${label}-${fieldIndex}`} className="rounded-md border border-border/70 bg-background/45 p-2">
                             <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
                             {capture ? <p className="mt-1 text-sm leading-5">{capture}</p> : null}
                             {evidence ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{evidence}</p> : null}
-                            {prompts.length ? (
-                              <p className="mt-1 truncate text-[11px] text-muted-foreground">{prompts.slice(0, 3).join(" · ")}</p>
-                            ) : null}
+                            <SearchPromptLinks prompts={prompts} />
                           </div>
                         );
                       })}
@@ -396,6 +389,30 @@ function KeyValue({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-3 border-b border-border/60 py-2 last:border-b-0">
       <span className="text-muted-foreground">{label}</span>
       <span className="max-w-[14rem] truncate text-right font-medium">{value}</span>
+    </div>
+  );
+}
+
+function SearchPromptLinks({ prompts }: { prompts: unknown }) {
+  const items = uniqueResearchPrompts(prompts, 4);
+  if (!items.length) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {items.map((prompt) => (
+        <a
+          key={prompt}
+          href={researchSearchHref(prompt)}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-md border border-border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground transition hover:border-primary/50 hover:text-primary"
+          title={prompt}
+        >
+          <Search className="h-3 w-3 shrink-0" />
+          <span className="max-w-[15rem] truncate">{prompt}</span>
+          <ExternalLink className="h-3 w-3 shrink-0" />
+        </a>
+      ))}
     </div>
   );
 }
