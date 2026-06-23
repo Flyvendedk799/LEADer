@@ -9,6 +9,7 @@ import { discoveryMissionDisplayWarnings, discoveryMissionProviderLabel } from "
 import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import { discoveryLogEntry, discoveryQueueLogMessage } from "@/lib/crm/discovery-logging";
 import { filterLaneCandidates, type CandidateLike, type LaneLike } from "@/lib/crm/lanes";
+import { discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
 import {
   discoveryQueueSnapshot,
   enqueueDiscoveryMission,
@@ -224,6 +225,11 @@ export async function PATCH(req: Request) {
         mission: visibleMissionListRow(mission),
         queue: await visibleDiscoveryQueueSnapshotForOwner(ownerId),
       });
+    }
+
+    const rerunBlockedMessage = discoveryMissionRerunBlockedMessage(source.status);
+    if (rerunBlockedMessage) {
+      return NextResponse.json({ error: rerunBlockedMessage }, { status: 409 });
     }
 
     const input = discoveryRunCreateSchema.safeParse(source.input ?? {

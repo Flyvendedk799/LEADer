@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
+import { discoveryMissionCanRerun, discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
 import { formatDate, truncate } from "@/lib/utils";
 
 export type WorkflowDiscoveryMissionItem = {
@@ -281,6 +282,8 @@ export function WorkflowDiscoveryMissionQueue({
         const cancelable = mission.status === "QUEUED" || mission.status === "RUNNING";
         const cancelBusy = busyId === `CANCEL-${mission.id}`;
         const rerunBusy = busyId === `RERUN-${mission.id}`;
+        const rerunnable = discoveryMissionCanRerun(mission.status);
+        const rerunBlockedMessage = discoveryMissionRerunBlockedMessage(mission.status);
         const queuedIndex = queueState.queuedMissionIds.indexOf(mission.id);
         const moveable = mission.status === "QUEUED" && queuedIndex >= 0;
         const lastQueuedIndex = queueState.queuedMissionIds.length - 1;
@@ -381,10 +384,10 @@ export function WorkflowDiscoveryMissionQueue({
                 size="icon"
                 variant="outline"
                 className="h-8 w-8"
-                disabled={Boolean(busyId)}
+                disabled={Boolean(busyId) || !rerunnable}
                 onClick={() => controlMission(mission, "RERUN")}
-                aria-label="Rerun discovery mission"
-                title="Rerun discovery mission"
+                aria-label={rerunBlockedMessage ?? "Rerun discovery mission"}
+                title={rerunBlockedMessage ?? "Rerun discovery mission"}
               >
                 {rerunBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
               </Button>

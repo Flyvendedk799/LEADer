@@ -39,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
+import { discoveryMissionCanRerun, discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
 import type { Workspace } from "@/lib/types";
 import { cn, formatBudget, formatDate, truncate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -856,6 +857,8 @@ export function LaneMissionControl({
                 const moveable = mission.status === "QUEUED" && queuedIndex >= 0;
                 const lastQueuedIndex = queueState.queuedMissionIds.length - 1;
                 const cancelable = mission.status === "QUEUED" || mission.status === "RUNNING";
+                const rerunnable = discoveryMissionCanRerun(mission.status);
+                const rerunBlockedMessage = discoveryMissionRerunBlockedMessage(mission.status);
                 return (
                   <div
                     key={mission.id}
@@ -950,10 +953,10 @@ export function LaneMissionControl({
                         size="icon"
                         variant="outline"
                         className="h-7 w-7"
-                        disabled={Boolean(busyMissionAction)}
+                        disabled={Boolean(busyMissionAction) || !rerunnable}
                         onClick={() => controlMission(mission, "RERUN")}
-                        aria-label="Rerun discovery mission"
-                        title="Rerun discovery mission"
+                        aria-label={rerunBlockedMessage ?? "Rerun discovery mission"}
+                        title={rerunBlockedMessage ?? "Rerun discovery mission"}
                       >
                         {busyMissionAction === `RERUN-${mission.id}` ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
