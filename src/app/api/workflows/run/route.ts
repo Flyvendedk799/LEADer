@@ -138,7 +138,7 @@ export async function PATCH(req: Request) {
               log: {
                 push: workflowLogEntry(
                   active && !removed
-                    ? "Bulk cancel requested while worker was running; preserving canceled status when the current step returns."
+                    ? "Bulk cancel requested while worker was running; it will stop before the next side effect."
                     : "Bulk canceled before worker started.",
                 ),
               },
@@ -198,7 +198,7 @@ export async function PATCH(req: Request) {
           log: {
             push: workflowLogEntry(
               active && !removed
-                ? "Cancel requested while worker was running; preserving canceled status when the current step returns."
+                ? "Cancel requested while worker was running; it will stop before the next side effect."
                 : "Canceled before worker started.",
             ),
           },

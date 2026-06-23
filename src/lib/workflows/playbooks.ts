@@ -124,12 +124,29 @@ export type WorkflowPlaybookResult =
   | ResearchBriefResult;
 type WorkflowLogSink = (entry: string) => void | Promise<void>;
 export type WorkflowRunTrigger = "manual" | "preset" | "schedule" | "rerun";
+export type WorkflowExecutionContext = {
+  onLog?: WorkflowLogSink;
+  isCanceled?: () => Promise<boolean>;
+};
+
+export class WorkflowRunCanceledError extends Error {
+  constructor() {
+    super("Workflow run was canceled.");
+    this.name = "WorkflowRunCanceledError";
+  }
+}
 
 type WorkflowRunMetadata = {
   trigger?: WorkflowRunTrigger;
   presetId?: string | null;
   presetName?: string | null;
 };
+
+async function throwIfWorkflowCanceled(context?: WorkflowExecutionContext) {
+  if (await context?.isCanceled?.()) {
+    throw new WorkflowRunCanceledError();
+  }
+}
 
 function atNine(date: Date) {
   date.setHours(9, 0, 0, 0);
@@ -207,6 +224,13 @@ export async function createWorkflowRun(
 export async function executeWorkflowRun(ownerId: string, runId: string, input: WorkflowRunInput) {
   const workerStartedAt = Date.now();
   const persistedPlaybookLogs = new Set<string>();
+  const isCanceled = async () => {
+    const current = await db.workflowRun.findFirst({
+      where: { id: runId, ownerId },
+      select: { status: true },
+    });
+    return current?.status === "CANCELED";
+  };
   async function recordPlaybookLog(entry: string) {
     persistedPlaybookLogs.add(entry);
     await db.workflowRun.updateMany({
@@ -229,7 +253,10 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
       return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
     }
 
-    const result = await runWorkflowPlaybook(ownerId, input, recordPlaybookLog);
+    const result = await runWorkflowPlaybook(ownerId, input, {
+      onLog: recordPlaybookLog,
+      isCanceled,
+    });
     const current = await db.workflowRun.findFirst({ where: { id: runId, ownerId }, select: { status: true } });
     if (current?.status === "CANCELED") {
       return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
@@ -258,6 +285,20 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
     }
     return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
   } catch (error) {
+    if (error instanceof WorkflowRunCanceledError) {
+      await db.workflowRun.updateMany({
+        where: { id: runId, ownerId, status: "CANCELED" },
+        data: {
+          log: {
+            push: workflowLogEntry(
+              `Playbook stopped after cancellation before the next side effect after ${formatWorkflowElapsed(Date.now() - workerStartedAt)}.`,
+            ),
+          },
+        },
+      }).catch(() => {});
+      return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
+    }
+
     await db.workflowRun.updateMany({
       where: { id: runId, ownerId, status: { not: "CANCELED" } },
       data: {
@@ -289,6 +330,7 @@ export async function runDailySweep(
   ownerId: string,
   workspace: Workspace = "DK",
   options: DailySweepOptions = {},
+  context: WorkflowExecutionContext = {},
 ): Promise<DailySweepResult> {
   const startedAt = Date.now();
   const log = [workflowLogEntry(`Started daily sweep for ${workspace}.`)];
@@ -296,7 +338,9 @@ export async function runDailySweep(
   const includeSources = options?.includeSources !== false;
   const includeAlerts = options?.includeAlerts !== false;
 
+  await throwIfWorkflowCanceled(context);
   const sourceResults = includeSources ? await runDueDiscovery(ownerId) : [];
+  await throwIfWorkflowCanceled(context);
   const sourceSummary = summarizeSourceRuns(sourceResults);
   if (includeSources) {
     log.push(
@@ -311,6 +355,7 @@ export async function runDailySweep(
   const alerts = includeAlerts
     ? await dispatchForOwner(ownerId, { digest: true, workspace })
     : { reminders: emptyDispatchResult, digest: emptyDispatchResult };
+  await throwIfWorkflowCanceled(context);
   if (includeAlerts) {
     log.push(
       workflowLogEntry(
@@ -340,6 +385,7 @@ export async function runPipelineRescue(
   ownerId: string,
   workspace: Workspace = "DK",
   options: PipelineRescueOptions = {},
+  context: WorkflowExecutionContext = {},
 ): Promise<PipelineRescueResult> {
   const startedAt = Date.now();
   const now = new Date();
@@ -374,6 +420,7 @@ export async function runPipelineRescue(
       select: { id: true, title: true, accountId: true, deadline: true, nextAction: true },
     }),
   ]);
+  await throwIfWorkflowCanceled(context);
 
   const targetDealIds = [...new Set([...staleDeals.map((deal) => deal.id), ...deadlineDeals.map((deal) => deal.id)])];
   const existingTasks = targetDealIds.length
@@ -409,6 +456,7 @@ export async function runPipelineRescue(
     nextAction: string;
     kind: "stale" | "deadline";
   }) {
+    await throwIfWorkflowCanceled(context);
     const taskKey = `${dealId}:${title}`;
     if (existingTaskKeys.has(taskKey)) {
       skippedExistingTasks++;
@@ -431,6 +479,7 @@ export async function runPipelineRescue(
       if (kind === "deadline") deadlineTasksCreated++;
     }
 
+    await throwIfWorkflowCanceled(context);
     const updated = await db.deal.updateMany({
       where: { id: dealId, ownerId, OR: [{ nextAction: null }, { nextAction: { not: nextAction } }] },
       data: { nextAction },
@@ -439,6 +488,7 @@ export async function runPipelineRescue(
   }
 
   for (const deal of staleDeals) {
+    await throwIfWorkflowCanceled(context);
     await ensureTask({
       dealId: deal.id,
       accountId: deal.accountId,
@@ -452,6 +502,7 @@ export async function runPipelineRescue(
   }
 
   for (const deal of deadlineDeals) {
+    await throwIfWorkflowCanceled(context);
     await ensureTask({
       dealId: deal.id,
       accountId: deal.accountId,
@@ -502,6 +553,7 @@ export async function runCandidateHarvest(
   ownerId: string,
   workspace: Workspace = "DK",
   options: CandidateHarvestOptions = {},
+  context: WorkflowExecutionContext = {},
 ): Promise<CandidateHarvestResult> {
   const startedAt = Date.now();
   const minScore = options?.minScore ?? 70;
@@ -519,6 +571,7 @@ export async function runCandidateHarvest(
     include: { lane: true },
   });
   const candidates = filterVisibleLaneCandidates(rawCandidates).slice(0, limit);
+  await throwIfWorkflowCanceled(context);
 
   const candidateIds: string[] = [];
   const dealIds: string[] = [];
@@ -527,6 +580,7 @@ export async function runCandidateHarvest(
   let alreadyInPipeline = 0;
 
   for (const candidate of candidates) {
+    await throwIfWorkflowCanceled(context);
     const result = await saveCandidateAsDeal(ownerId, candidate.id);
     candidateIds.push(candidate.id);
     dealIds.push(result.deal.id);
@@ -538,6 +592,7 @@ export async function runCandidateHarvest(
       log.push(workflowLogEntry(`Candidate "${candidate.title}" was already in the pipeline.`));
     }
 
+    await throwIfWorkflowCanceled(context);
     const task = await db.task.findFirst({
       where: {
         ownerId,
@@ -601,6 +656,7 @@ export async function runResearchBrief(
   ownerId: string,
   workspace: Workspace = "DK",
   options: ResearchBriefOptions = undefined,
+  context: WorkflowExecutionContext = {},
 ): Promise<ResearchBriefResult> {
   const startedAt = Date.now();
   const normalized = normalizeResearchBriefOptions(options);
@@ -652,6 +708,7 @@ export async function runResearchBrief(
   let skippedExistingTasks = 0;
 
   if (normalized.createTasks) {
+    await throwIfWorkflowCanceled(context);
     const existingTasks = await db.task.findMany({
       where: researchTaskWhere(ownerId, checklist.map((step) => step.title), linked),
       select: { id: true, title: true },
@@ -659,6 +716,7 @@ export async function runResearchBrief(
     const existingTitles = new Set(existingTasks.map((task) => task.title));
 
     for (const step of checklist) {
+      await throwIfWorkflowCanceled(context);
       if (existingTitles.has(step.title)) {
         skippedExistingTasks++;
         continue;
@@ -720,7 +778,7 @@ export async function runOperatingDay(
   ownerId: string,
   workspace: Workspace = "DK",
   options: WorkflowRunOptions = {},
-  onLog?: WorkflowLogSink,
+  context: WorkflowExecutionContext = {},
 ): Promise<OperatingDayResult> {
   const startedAt = Date.now();
   const log: string[] = [];
@@ -732,14 +790,15 @@ export async function runOperatingDay(
 
   async function record(entry: string) {
     log.push(entry);
-    await onLog?.(entry);
+    await context.onLog?.(entry);
   }
 
   await record(workflowLogEntry(`Started operating day for ${workspace}.`));
 
   let dailySweep: DailySweepResult | undefined;
   if (phases.dailySweep) {
-    dailySweep = await runDailySweep(ownerId, workspace, options?.dailySweep);
+    await throwIfWorkflowCanceled(context);
+    dailySweep = await runDailySweep(ownerId, workspace, options?.dailySweep, context);
     for (const entry of dailySweep.log) {
       await record(`[daily-sweep] ${entry}`);
     }
@@ -750,7 +809,8 @@ export async function runOperatingDay(
 
   let candidateHarvest: CandidateHarvestResult | undefined;
   if (phases.candidateHarvest) {
-    candidateHarvest = await runCandidateHarvest(ownerId, workspace, options?.candidateHarvest);
+    await throwIfWorkflowCanceled(context);
+    candidateHarvest = await runCandidateHarvest(ownerId, workspace, options?.candidateHarvest, context);
     for (const entry of candidateHarvest.log) {
       await record(`[candidate-harvest] ${entry}`);
     }
@@ -761,7 +821,8 @@ export async function runOperatingDay(
 
   let pipelineRescue: PipelineRescueResult | undefined;
   if (phases.pipelineRescue) {
-    pipelineRescue = await runPipelineRescue(ownerId, workspace, options?.pipelineRescue);
+    await throwIfWorkflowCanceled(context);
+    pipelineRescue = await runPipelineRescue(ownerId, workspace, options?.pipelineRescue, context);
     for (const entry of pipelineRescue.log) {
       await record(`[pipeline-rescue] ${entry}`);
     }
@@ -791,19 +852,19 @@ export async function runOperatingDay(
 export async function runWorkflowPlaybook(
   ownerId: string,
   input: WorkflowRunInput,
-  onLog?: WorkflowLogSink,
+  context: WorkflowExecutionContext = {},
 ): Promise<WorkflowPlaybookResult> {
   switch (input.playbook) {
     case "research-brief":
-      return runResearchBrief(ownerId, input.workspace, input.options?.researchBrief);
+      return runResearchBrief(ownerId, input.workspace, input.options?.researchBrief, context);
     case "operating-day":
-      return runOperatingDay(ownerId, input.workspace, input.options, onLog);
+      return runOperatingDay(ownerId, input.workspace, input.options, context);
     case "candidate-harvest":
-      return runCandidateHarvest(ownerId, input.workspace, input.options?.candidateHarvest);
+      return runCandidateHarvest(ownerId, input.workspace, input.options?.candidateHarvest, context);
     case "pipeline-rescue":
-      return runPipelineRescue(ownerId, input.workspace, input.options?.pipelineRescue);
+      return runPipelineRescue(ownerId, input.workspace, input.options?.pipelineRescue, context);
     case "daily-sweep":
     default:
-      return runDailySweep(ownerId, input.workspace, input.options?.dailySweep);
+      return runDailySweep(ownerId, input.workspace, input.options?.dailySweep, context);
   }
 }
