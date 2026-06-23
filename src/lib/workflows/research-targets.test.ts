@@ -147,4 +147,58 @@ describe("workflow research targets", () => {
       }),
     ).toBeNull();
   });
+
+  it("dedupes active research briefs by email, phone, and domain pivots", () => {
+    const runs = [
+      {
+        id: "run-email",
+        status: "QUEUED",
+        input: {
+          playbook: "research-brief",
+          workspace: "DK",
+          options: { researchBrief: { subject: "Mette Jensen <mette.jensen@northwind.dk>", objective: "find-contact" } },
+        },
+      },
+      {
+        id: "run-domain",
+        status: "QUEUED",
+        input: {
+          playbook: "research-brief",
+          workspace: "DK",
+          options: { researchBrief: { subject: "https://www.northwind.dk/contact", objective: "qualify-lead" } },
+        },
+      },
+      {
+        id: "run-phone",
+        status: "QUEUED",
+        input: {
+          playbook: "research-brief",
+          workspace: "DK",
+          options: { researchBrief: { subject: "+45 12 34 56 78", objective: "find-contact" } },
+        },
+      },
+    ];
+
+    expect(
+      findActiveResearchBriefRun(runs, {
+        subject: "mette.jensen@northwind.dk",
+        objective: "find-contact",
+        workspace: "DK",
+      })?.id,
+    ).toBe("run-email");
+    expect(
+      findActiveResearchBriefRun(runs, {
+        subject: "northwind.dk",
+        objective: "qualify-lead",
+        workspace: "DK",
+      })?.id,
+    ).toBe("run-domain");
+    expect(
+      findActiveResearchBriefRun(runs, {
+        subject: "12 34 56 78",
+        objective: "find-contact",
+        workspace: "DK",
+      })?.id,
+    ).toBe("run-phone");
+  });
 });

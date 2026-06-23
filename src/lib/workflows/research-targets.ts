@@ -67,7 +67,38 @@ function stringValue(value: unknown) {
 }
 
 function normalizedSubject(value?: string | null) {
-  return value?.replace(/\s+/g, " ").trim().toLocaleLowerCase() || null;
+  const text = value?.replace(/\s+/g, " ").trim();
+  if (!text) return null;
+
+  const email = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0];
+  if (email) return `email:${email.toLocaleLowerCase()}`;
+
+  const phone = text.match(/(?:\+\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?){2,}\d{2,4}/)?.[0];
+  const phoneDigits = normalizePhoneDigits(phone);
+  if (phoneDigits && phoneDigits.length >= 7) return `phone:${phoneDigits}`;
+
+  const url = text.match(/https?:\/\/[^\s]+/i)?.[0];
+  const domain = url ? cleanSubjectDomain(url) : cleanSubjectDomain(text);
+  if (domain && /\.[a-z]{2,}$/i.test(domain)) return `domain:${domain}`;
+
+  return text.toLocaleLowerCase();
+}
+
+function cleanSubjectDomain(value: string) {
+  const raw = value.trim().toLocaleLowerCase();
+  try {
+    return new URL(raw.startsWith("http") ? raw : `https://${raw}`).hostname.replace(/^www\./, "");
+  } catch {
+    return raw.replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#\s]/)[0] ?? "";
+  }
+}
+
+function normalizePhoneDigits(value?: string | null) {
+  const digits = value?.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 12 && digits.startsWith("0045")) return digits.slice(4);
+  if (digits.length === 10 && digits.startsWith("45")) return digits.slice(2);
+  return digits;
 }
 
 export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIdentity {
