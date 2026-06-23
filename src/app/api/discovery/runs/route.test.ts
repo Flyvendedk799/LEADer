@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   dismissInvalidNewLaneCandidates: vi.fn(),
   discoveryMissionDisplayWarnings: vi.fn(),
   discoveryMissionProviderLabel: vi.fn(),
+  filterReviewableDiscoveryCandidates: vi.fn(),
+  hiddenDiscoveryCandidatesWarning: vi.fn(),
   filterLaneCandidates: vi.fn(),
   db: {
     discoveryMission: {
@@ -30,6 +32,8 @@ vi.mock("@/lib/crm", () => ({ createDiscoveryMission: mocks.createDiscoveryMissi
 vi.mock("@/lib/crm/discovery-display", () => ({
   discoveryMissionDisplayWarnings: mocks.discoveryMissionDisplayWarnings,
   discoveryMissionProviderLabel: mocks.discoveryMissionProviderLabel,
+  filterReviewableDiscoveryCandidates: mocks.filterReviewableDiscoveryCandidates,
+  hiddenDiscoveryCandidatesWarning: mocks.hiddenDiscoveryCandidatesWarning,
 }));
 vi.mock("@/lib/crm/lane-hygiene", () => ({
   dismissInvalidNewLaneCandidates: mocks.dismissInvalidNewLaneCandidates,
@@ -45,7 +49,7 @@ vi.mock("@/lib/crm/discovery-queue", () => ({
   visibleDiscoveryQueueSnapshotForOwner: mocks.visibleDiscoveryQueueSnapshotForOwner,
 }));
 
-import { PATCH } from "./route";
+import { GET, PATCH } from "./route";
 
 function patchRequest(body: unknown) {
   return new Request("http://localhost/api/discovery/runs", {
@@ -55,11 +59,69 @@ function patchRequest(body: unknown) {
   });
 }
 
+function getRequest(query = "") {
+  return new Request(`http://localhost/api/discovery/runs${query}`);
+}
+
 describe("discovery run API controls", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireOwnerId.mockResolvedValue("owner-1");
     mocks.recoverDiscoveryQueue.mockResolvedValue({ activeMissionId: null, queuedMissionIds: [] });
+    mocks.dismissInvalidNewLaneCandidates.mockResolvedValue(undefined);
+    mocks.discoveryMissionDisplayWarnings.mockImplementation((_mission, warnings) => warnings);
+    mocks.discoveryMissionProviderLabel.mockImplementation((mission) => mission.provider ?? "auto");
+    mocks.filterReviewableDiscoveryCandidates.mockImplementation((_lane, candidates) => ({
+      candidates,
+      removed: [],
+      reasons: [],
+    }));
+    mocks.hiddenDiscoveryCandidatesWarning.mockReturnValue(null);
+  });
+
+  it("loads expanded discovery history when requested", async () => {
+    mocks.db.discoveryMission.findMany.mockResolvedValue([
+      {
+        id: "mission-1",
+        provider: "auto",
+        lane: { id: "lane-1", name: "Tenders" },
+        candidates: [],
+        warnings: [],
+        _count: { candidates: 0 },
+      },
+    ]);
+
+    const response = await GET(getRequest("?limit=80"));
+
+    expect(response.status).toBe(200);
+    expect(mocks.db.discoveryMission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { ownerId: "owner-1" },
+        take: 80,
+      }),
+    );
+    await expect(response.json()).resolves.toEqual({
+      missions: [
+        expect.objectContaining({
+          id: "mission-1",
+          provider: "auto",
+          _count: { candidates: 0 },
+        }),
+      ],
+      queue: { activeMissionId: null, queuedMissionIds: [] },
+    });
+  });
+
+  it("caps expanded discovery history requests", async () => {
+    mocks.db.discoveryMission.findMany.mockResolvedValue([]);
+
+    await GET(getRequest("?limit=500"));
+
+    expect(mocks.db.discoveryMission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 100,
+      }),
+    );
   });
 
   it("blocks rerunning a live discovery mission", async () => {

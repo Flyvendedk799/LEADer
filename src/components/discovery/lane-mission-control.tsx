@@ -254,6 +254,33 @@ function queryPreview(value?: string) {
     .filter(Boolean)[0] || "Discovery mission";
 }
 
+function missionHistorySearchText(mission: MissionSummary) {
+  return [
+    mission.id,
+    mission.status,
+    mission.workspace,
+    mission.provider,
+    mission.lane?.name,
+    mission.query,
+    ...(mission.warnings ?? []),
+    ...(mission.log ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function missionMatchesHistorySearch(mission: MissionSummary, search: string) {
+  const terms = search
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = missionHistorySearchText(mission);
+  return terms.every((term) => haystack.includes(term));
+}
+
 export function LaneMissionControl({
   lanes,
   initialMissionId,
@@ -279,6 +306,8 @@ export function LaneMissionControl({
   const [loading, setLoading] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
   const [missions, setMissions] = React.useState<MissionSummary[]>([]);
+  const [historySearch, setHistorySearch] = React.useState("");
+  const [historyLimit, setHistoryLimit] = React.useState(20);
   const [queueState, setQueueState] = React.useState<DiscoveryQueueSnapshot>(() => normalizeQueue());
   const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
   const [activeMissionId, setActiveMissionId] = React.useState<string | null>(null);
@@ -303,6 +332,12 @@ export function LaneMissionControl({
     Boolean(queueState.activeMissionId) ||
     queueState.queuedMissionIds.length > 0;
   const orderedMissions = React.useMemo(() => sortMissionsWithQueue(missions, queueState), [missions, queueState]);
+  const filteredMissions = React.useMemo(
+    () => orderedMissions.filter((mission) => missionMatchesHistorySearch(mission, historySearch)),
+    [historySearch, orderedMissions],
+  );
+  const canLoadOlderMissions = missions.length >= historyLimit && historyLimit < 100;
+  const historySearchActive = historySearch.trim().length > 0;
   const activeQueueLabel = activeMissionId ? missionQueueLabel(activeMissionId, queueState) : null;
   const latestLog = result?.mission.log?.at(-1);
   const latestLogMessage = latestLog ? missionLogParts(latestLog).message : null;
@@ -365,10 +400,12 @@ export function LaneMissionControl({
     }
   }, [mergeMission, showHiddenCandidates, syncMissionUrl]);
 
-  const loadMissions = React.useCallback(async (openLatest = false, quiet = false) => {
+  const loadMissions = React.useCallback(async (openLatest = false, quiet = false, limitOverride?: number) => {
     if (!quiet) setRefreshing(true);
     try {
-      const res = await fetch("/api/discovery/runs", { cache: "no-store" });
+      const limit = limitOverride ?? historyLimit;
+      const params = new URLSearchParams({ limit: String(limit) });
+      const res = await fetch(`/api/discovery/runs?${params.toString()}`, { cache: "no-store" });
       const data = (await res.json()) as MissionListResponse;
       if (!res.ok) throw new Error(data?.error || "Could not load mission history");
       const loaded = (data.missions ?? []) as MissionSummary[];
@@ -383,7 +420,13 @@ export function LaneMissionControl({
     } finally {
       if (!quiet) setRefreshing(false);
     }
-  }, [loadMission]);
+  }, [historyLimit, loadMission]);
+
+  const loadOlderMissions = React.useCallback(() => {
+    const nextLimit = Math.min(100, historyLimit + 20);
+    setHistoryLimit(nextLimit);
+    void loadMissions(false, false, nextLimit);
+  }, [historyLimit, loadMissions]);
 
   React.useEffect(() => {
     const targetMissionId = initialMissionId?.trim() || null;
@@ -904,8 +947,38 @@ export function LaneMissionControl({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {orderedMissions.length ? (
-              orderedMissions.map((mission) => {
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={historySearch}
+                  onChange={(event) => setHistorySearch(event.target.value)}
+                  placeholder="Find old mission"
+                  className="pr-9 pl-8"
+                />
+                {historySearchActive ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                    onClick={() => setHistorySearch("")}
+                    aria-label="Clear mission history search"
+                    title="Clear"
+                  >
+                    <XCircle className="h-4 w-4" />
+                  </Button>
+                ) : null}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {historySearchActive
+                  ? `${filteredMissions.length} of ${orderedMissions.length} loaded missions match`
+                  : `${orderedMissions.length} missions loaded`}
+              </p>
+            </div>
+
+            {filteredMissions.length ? (
+              filteredMissions.map((mission) => {
                 const queueLabel = missionQueueLabel(mission.id, queueState);
                 const latestMissionLog = mission.log?.at(-1);
                 const latestMissionLogMessage = latestMissionLog ? missionLogParts(latestMissionLog).message : null;
@@ -1043,8 +1116,23 @@ export function LaneMissionControl({
                 );
               })
             ) : (
-              <p className="py-3 text-sm text-muted-foreground">No missions yet.</p>
+              <p className="py-3 text-sm text-muted-foreground">
+                {historySearchActive ? "No loaded missions match this search." : "No missions yet."}
+              </p>
             )}
+            {canLoadOlderMissions ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={refreshing}
+                onClick={loadOlderMissions}
+              >
+                {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
+                Load older missions
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
 

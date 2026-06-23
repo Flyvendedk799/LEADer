@@ -32,6 +32,13 @@ const discoveryRunActionSchema = z.object({
   action: z.enum(["CANCEL", "CANCEL_ALL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
 });
 
+function discoveryHistoryLimit(req: Request) {
+  const raw = new URL(req.url).searchParams.get("limit");
+  const parsed = raw ? Number(raw) : 20;
+  if (!Number.isFinite(parsed)) return 20;
+  return Math.min(100, Math.max(20, Math.floor(parsed)));
+}
+
 const candidateGateSelect = {
   title: true,
   description: true,
@@ -79,7 +86,7 @@ function visibleMissionListRow<T extends {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const ownerId = await requireOwnerId();
     await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
@@ -87,7 +94,7 @@ export async function GET() {
     const missions = await db.discoveryMission.findMany({
       where: { ownerId },
       orderBy: { startedAt: "desc" },
-      take: 20,
+      take: discoveryHistoryLimit(req),
       include: missionListInclude,
     });
     return NextResponse.json({ missions: missions.map(visibleMissionListRow), queue });
