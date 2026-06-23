@@ -65,6 +65,7 @@ describe("workflow playbook cancellation", () => {
     mocks.db.deal.findFirst.mockResolvedValue(null);
     mocks.db.discoveryCandidate.findFirst.mockResolvedValue({
       id: "candidate-1",
+      missionId: "mission-1",
       title: "Intranet",
       organization: "Metroselskabet I/S",
       sourceName: "udbud.dk",
@@ -95,6 +96,7 @@ describe("workflow playbook cancellation", () => {
 
     expect(result.linked).toMatchObject({
       candidateId: "candidate-1",
+      candidateMissionId: "mission-1",
       candidateTitle: "Intranet",
       candidateUrl: "https://udbud.dk/detaljevisning?noticeId=123",
     });

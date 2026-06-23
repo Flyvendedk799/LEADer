@@ -113,6 +113,7 @@ export type ResearchBriefResult = {
     dealId?: string;
     dealTitle?: string;
     candidateId?: string;
+    candidateMissionId?: string;
     candidateTitle?: string;
     candidateUrl?: string;
     candidateEvidence?: string;
@@ -721,6 +722,7 @@ export async function runResearchBrief(
           where: { id: normalized.candidateId, ownerId },
           select: {
             id: true,
+            missionId: true,
             title: true,
             organization: true,
             sourceName: true,
@@ -749,6 +751,7 @@ export async function runResearchBrief(
     dealId: deal?.id ?? candidate?.dealId ?? undefined,
     dealTitle: deal?.title,
     candidateId: candidate?.id,
+    candidateMissionId: candidate?.missionId ?? undefined,
     candidateTitle: candidate?.title,
     candidateUrl: candidate?.url ?? undefined,
     candidateEvidence: candidateEvidence?.slice(0, 1200),

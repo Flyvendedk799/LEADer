@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { WorkflowRunControls } from "@/components/workflows/workflow-run-controls";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { discoveryCandidateHref } from "@/lib/discovery-links";
 import { formatDate, truncate } from "@/lib/utils";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import { researchBriefRunbookFromResult, researchBriefWorksheetFromResult } from "@/lib/workflows/research-brief-result";
@@ -45,6 +46,10 @@ function stringList(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
 function compactJson(value: unknown) {
   if (!value || typeof value !== "object") return "Default";
   return JSON.stringify(value);
@@ -71,6 +76,15 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
   const dailySweep = objectValue(result?.dailySweep);
   const candidateHarvest = objectValue(result?.candidateHarvest);
   const pipelineRescue = objectValue(result?.pipelineRescue);
+  const linked = objectValue(result?.linked);
+  const linkedCandidateId = stringValue(linked?.candidateId);
+  const linkedCandidateMissionId = stringValue(linked?.candidateMissionId);
+  const linkedCandidateTitle = stringValue(linked?.candidateTitle);
+  const linkedCandidateUrl = stringValue(linked?.candidateUrl);
+  const linkedCandidateEvidence = stringValue(linked?.candidateEvidence);
+  const linkedCandidateHref = linkedCandidateId && linkedCandidateMissionId
+    ? discoveryCandidateHref(linkedCandidateMissionId, linkedCandidateId)
+    : "";
   const operatingSources = objectValue(dailySweep?.sources);
   const operatingDigest = objectValue(dailySweep?.digest);
   const operatingCandidates = objectValue(candidateHarvest?.candidates);
@@ -183,6 +197,46 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           <RunMetric label="Digests" value={numberValue(digest?.created)} icon={<ListChecks />} />
         </section>
       )}
+
+      {run.playbook === "research-brief" && (linkedCandidateId || linkedCandidateTitle || linkedCandidateUrl) ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Linked discovery candidate</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {linkedCandidateTitle || linkedCandidateId || "Discovery candidate"}
+                </p>
+                {linkedCandidateEvidence ? (
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    {truncate(linkedCandidateEvidence, 420)}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2 md:justify-end">
+                {linkedCandidateHref ? (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={linkedCandidateHref}>
+                      <Target className="h-4 w-4" />
+                      Open candidate
+                    </Link>
+                  </Button>
+                ) : null}
+                {linkedCandidateUrl ? (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={linkedCandidateUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                      Source
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {run.playbook === "research-brief" && runbook.length ? (
         <Card>
