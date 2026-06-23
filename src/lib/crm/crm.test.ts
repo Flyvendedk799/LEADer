@@ -172,6 +172,21 @@ describe("CRM discovery lanes", () => {
 
     expect(
       laneCandidateGate(lane, {
+        title: "EEA/CCE/TC/26/004 - Topic Centre on Sustainability and Decarbonisation of EU's Transport Sector",
+        description:
+          "Support for collecting, compiling, quality checking and verifying reported transport-sector data. Tilbudsfrist 29-06-2099.",
+        rawContent:
+          "Ordregiver: European Environment Agency. CPV: 73000000 Forsknings- og udviklingsvirksomhed. Topic Centre support for collecting, compiling, quality checking and verifying reported data under Regulation (EU). Tilbudsfrist 29-06-2099.",
+        url: "https://udbud.dk/detaljevisning?noticeId=3025d5d3-08f1-40bd-a54d-bd17344f1693&noticeVersion=01",
+        organization: "European Environment Agency",
+        candidateKind: "opportunity",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+      }),
+    ).toEqual({ allowed: false, reason: "research/policy services, not software delivery" });
+
+    expect(
+      laneCandidateGate(lane, {
         title:
           "Udbud med forhandling vedr. levering, implementering, vedligeholdelse, support og udvikling af IT-løsning til understøttelse af Tolkeportalen",
         description:

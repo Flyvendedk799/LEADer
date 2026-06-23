@@ -112,6 +112,28 @@ describe("udbud.dk discovery source", () => {
     expect(
       udbudDkResultToCandidate(
         {
+          noticeId: "3025d5d3-08f1-40bd-a54d-bd17344f1693",
+          noticeVersion: "01",
+          noticePublicationNumber: "00368106-2099",
+          dataDa: {
+            titel: "EEA/CCE/TC/26/004 - Topic Centre on Sustainability and Decarbonisation of EU's Transport Sector",
+            ordregiver: "European Environment Agency (EEA)",
+            publiceringsdato: "01-06-2099",
+            cpvKode: "73000000",
+            cpvTitel: "Forsknings- og udviklingsvirksomhed og hermed beslægtet konsulentvirksomhed",
+            tidsfrister: [deadline],
+            beskrivelse:
+              "Topic Centre support for collecting, compiling, quality checking, verifying reported data and maintaining procedures under Regulation (EU) for the transport sector.",
+            bkSubType: "Udbudsbekendtgørelse",
+          },
+        },
+        "software",
+      ),
+    ).toBeNull();
+
+    expect(
+      udbudDkResultToCandidate(
+        {
           noticeId: "a62bc6d6-f595-4eb3-9808-b6b6788cad7d",
           noticeVersion: "01",
           noticePublicationNumber: "00351588-2099",

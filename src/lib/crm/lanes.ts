@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { hasConcreteSoftwareTenderScope, isBroadFrameworkTender } from "@/lib/discovery/tender-quality";
+import { hasConcreteSoftwareTenderScope, isBroadFrameworkTender, isResearchPolicyTender } from "@/lib/discovery/tender-quality";
 import type { SourceType, Workspace } from "@/lib/types";
 
 export interface LaneDefinition {
@@ -528,6 +528,10 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
 
   if (isBroadFrameworkTender(text)) {
     return { allowed: false, reason: "broad framework agreement" };
+  }
+
+  if (isResearchPolicyTender(evidenceText)) {
+    return { allowed: false, reason: "research/policy services, not software delivery" };
   }
 
   if (!hasTenderConcreteCue(candidate, text, url, concreteTenderUrl)) {

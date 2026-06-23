@@ -24,7 +24,7 @@ import { detectApplicationRoute, extractBudget, extractDeadline } from "@/lib/in
 import { assertPublicUrl, safeFetch } from "@/lib/ingestion/net";
 import { fetchRssCandidates } from "@/lib/ingestion/rss";
 import { fetchWebCandidates } from "@/lib/ingestion/web";
-import { hasConcreteSoftwareTenderScope, isBroadFrameworkTender } from "./tender-quality";
+import { hasConcreteSoftwareTenderScope, isBroadFrameworkTender, isResearchPolicyTender } from "./tender-quality";
 export { DISCOVERY_PRESETS } from "./presets";
 
 export interface DiscoverySearchInput {
@@ -1494,6 +1494,7 @@ function udbudDkResultToCandidate(result: UdbudDkResult, query: string): Opportu
     5000,
   );
   if (!hasConcreteSoftwareTenderScope(rawContent)) return null;
+  if (isResearchPolicyTender(rawContent)) return null;
 
   return enrichCandidate({
     title,
