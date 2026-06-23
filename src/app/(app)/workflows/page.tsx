@@ -61,6 +61,7 @@ import { previewWorkflowRun } from "@/lib/workflows/preview";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import { filterWorkflowRecommendations } from "@/lib/workflows/recommendation-actions";
 import {
+  candidateContactResearchSubject,
   contactResearchReason,
   countReachablePeople,
   findActiveResearchBriefRun,
@@ -442,16 +443,31 @@ export default async function WorkflowsPage() {
     accountId: task.deal?.account?.id ?? task.account?.id ?? null,
     accountName: task.deal?.account?.name ?? task.account?.name ?? null,
   }));
-  const candidateItems = hotCandidates.map((candidate) => ({
-    id: candidate.id,
-    title: candidate.title,
-    missionId: candidate.missionId ?? null,
-    laneName: candidate.lane?.name ?? null,
-    organization: candidate.organization ?? null,
-    sourceName: candidate.sourceName ?? null,
-    evidenceSnippet: candidate.evidence[0]?.snippet ?? null,
-    pursuitScore: candidate.pursuitScore ?? null,
-  }));
+  const candidateItems = hotCandidates.map((candidate) => {
+    const researchSubject = candidateContactResearchSubject(candidate);
+    const researchSubjectType = candidate.organization ? "company" as const : "unknown" as const;
+    const activeResearchRun = findActiveResearchBriefRun(activeResearchBriefRuns, {
+      subject: researchSubject,
+      subjectType: researchSubjectType,
+      objective: "find-contact",
+      workspace: candidate.workspace,
+    });
+    return {
+      id: candidate.id,
+      title: candidate.title,
+      missionId: candidate.missionId ?? null,
+      laneName: candidate.lane?.name ?? null,
+      organization: candidate.organization ?? null,
+      sourceName: candidate.sourceName ?? null,
+      evidenceSnippet: candidate.evidence[0]?.snippet ?? null,
+      pursuitScore: candidate.pursuitScore ?? null,
+      workspace: candidate.workspace,
+      researchSubject,
+      researchSubjectType,
+      activeResearchRunId: activeResearchRun?.id ?? null,
+      activeResearchRunStatus: activeResearchRun?.status ?? null,
+    };
+  });
   const workflowDeal = (deal: (typeof staleDeals)[number]) => ({
     id: deal.id,
     title: deal.title,

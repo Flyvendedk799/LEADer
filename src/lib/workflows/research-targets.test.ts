@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   contactResearchReason,
   countReachablePeople,
+  candidateContactResearchSubject,
   findActiveResearchBriefRun,
   needsContactResearch,
   needsPersonContactResearch,
@@ -73,6 +74,22 @@ describe("workflow research targets", () => {
         latestDealTitle: "Intranet",
       }),
     ).toBe('Dennis Hansen (IT chef) at Kommune Nord for "Intranet" has no email, phone, or LinkedIn yet.');
+  });
+
+  it("builds candidate contact research subjects from the buyer before source labels", () => {
+    expect(
+      candidateContactResearchSubject({
+        title: "Intranet",
+        organization: "Metroselskabet I/S",
+        sourceName: "udbud.dk",
+      }),
+    ).toBe("Metroselskabet I/S");
+    expect(
+      candidateContactResearchSubject({
+        title: "Udbud med forhandling vedrørende ruteplanlægning",
+        sourceName: "udbud.dk",
+      }),
+    ).toBe("Udbud med forhandling vedrørende ruteplanlægning");
   });
 
   it("extracts linked research brief identity from workflow input", () => {

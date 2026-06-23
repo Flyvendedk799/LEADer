@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCheck, CheckCircle2, CopyX, ExternalLink, Loader2, MoreHorizontal, XCircle } from "lucide-react";
+import { CheckCheck, CheckCircle2, CopyX, ExternalLink, Loader2, MoreHorizontal, Search, XCircle } from "lucide-react";
 
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,10 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { discoveryCandidateHref } from "@/lib/discovery-links";
 import { truncate } from "@/lib/utils";
+import { researchBriefRunPayload } from "@/lib/workflows/usecase-actions";
+
+type Workspace = "DK" | "GLOBAL";
+type ResearchSubjectType = "person" | "company" | "unknown";
 
 export type WorkflowCandidateItem = {
   id: string;
@@ -26,18 +30,69 @@ export type WorkflowCandidateItem = {
   sourceName: string | null;
   evidenceSnippet: string | null;
   pursuitScore: number | null;
+  workspace: Workspace;
+  researchSubject: string;
+  researchSubjectType: ResearchSubjectType;
+  activeResearchRunId: string | null;
+  activeResearchRunStatus: string | null;
 };
 
 type CandidateAction = "review" | "save" | "dismiss" | "duplicate";
+type WorkflowRunResponse = {
+  run?: {
+    id: string;
+    status: string;
+  };
+  existing?: boolean;
+  error?: unknown;
+};
 
 export function WorkflowCandidateQueue({ candidates }: { candidates: WorkflowCandidateItem[] }) {
   const router = useRouter();
   const [items, setItems] = React.useState(candidates);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [researchRuns, setResearchRuns] = React.useState<Record<string, { id: string; status: string }>>({});
 
   React.useEffect(() => {
     setItems(candidates);
   }, [candidates]);
+
+  async function queueResearch(candidate: WorkflowCandidateItem) {
+    setBusyId(`research:${candidate.id}`);
+    try {
+      const res = await fetch("/api/workflows/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          researchBriefRunPayload({
+            subject: candidate.researchSubject,
+            subjectType: candidate.researchSubjectType,
+            objective: "find-contact",
+            depth: "standard",
+            createTasks: true,
+            workspace: candidate.workspace,
+          }),
+        ),
+      });
+      const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
+      if (!res.ok || !data?.run) throw new Error(String(data?.error || "Could not queue research brief"));
+      setResearchRuns((current) => ({
+        ...current,
+        [candidate.id]: { id: data.run!.id, status: data.run!.status },
+      }));
+      toast.success(
+        data.existing ? "Research brief already active" : "Research brief queued",
+        data.existing
+          ? `${candidate.researchSubject} already has an active workflow run.`
+          : `${candidate.researchSubject} will run in the workflow queue.`,
+      );
+      router.refresh();
+    } catch (err) {
+      toast.error("Could not queue research brief", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function act(candidate: WorkflowCandidateItem, action: CandidateAction) {
     const previous = items;
@@ -134,7 +189,13 @@ export function WorkflowCandidateQueue({ candidates }: { candidates: WorkflowCan
       </div>
       {items.map((candidate) => {
         const busy = busyId === candidate.id;
+        const researchBusy = busyId === `research:${candidate.id}`;
         const href = discoveryCandidateHref(candidate.missionId, candidate.id);
+        const researchRun =
+          researchRuns[candidate.id] ??
+          (candidate.activeResearchRunId
+            ? { id: candidate.activeResearchRunId, status: candidate.activeResearchRunStatus ?? "QUEUED" }
+            : null);
         return (
           <div
             key={candidate.id}
@@ -178,6 +239,19 @@ export function WorkflowCandidateQueue({ candidates }: { candidates: WorkflowCan
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  {researchRun ? (
+                    <DropdownMenuItem asChild>
+                      <Link href={`/workflows/runs/${researchRun.id}`}>
+                        <Search className="h-4 w-4" />
+                        Open research
+                      </Link>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={() => queueResearch(candidate)} disabled={researchBusy}>
+                      {researchBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                      Research contact
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={() => act(candidate, "review")}>
                     <CheckCircle2 className="h-4 w-4" />
                     Reviewed

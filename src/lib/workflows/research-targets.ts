@@ -94,6 +94,21 @@ export function personResearchSubject(input: {
   return [name, role ? `(${role})` : "", account ? `at ${account}` : ""].filter(Boolean).join(" ");
 }
 
+export function candidateContactResearchSubject(input: {
+  title?: string | null;
+  organization?: string | null;
+  sourceName?: string | null;
+}) {
+  const organization = input.organization?.replace(/\s+/g, " ").trim();
+  if (organization) return organization.slice(0, 160);
+
+  const title = input.title?.replace(/\s+/g, " ").trim();
+  if (title) return title.slice(0, 160);
+
+  const sourceName = input.sourceName?.replace(/\s+/g, " ").trim();
+  return (sourceName || "Discovery candidate").slice(0, 160);
+}
+
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
