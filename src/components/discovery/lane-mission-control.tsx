@@ -39,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
+import type { Workspace } from "@/lib/types";
 import { cn, formatBudget, formatDate, truncate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 
@@ -75,6 +76,7 @@ type MissionResult = {
   mission: {
     id: string;
     status: string;
+    workspace?: Workspace;
     provider?: string | null;
     startedAt?: string | Date;
     finishedAt?: string | Date | null;
@@ -105,6 +107,7 @@ type SearchMode = "focused" | "balanced" | "wide";
 type MissionSummary = {
   id: string;
   status: string;
+  workspace?: Workspace;
   provider?: string | null;
   startedAt: string | Date;
   finishedAt?: string | Date | null;
@@ -224,6 +227,7 @@ function apiMissionToSummary(mission: Partial<MissionSummary> & { id: string; ca
   return {
     id: mission.id,
     status: String(mission.status ?? "QUEUED"),
+    workspace: mission.workspace,
     provider: mission.provider,
     startedAt: mission.startedAt ?? new Date().toISOString(),
     finishedAt: mission.finishedAt,
@@ -246,13 +250,16 @@ function queryPreview(value?: string) {
 export function LaneMissionControl({
   lanes,
   initialMissionId,
+  initialWorkspace = "DK",
 }: {
   lanes: DiscoveryLane[];
   initialMissionId?: string | null;
+  initialWorkspace?: Workspace;
 }) {
   const router = useRouter();
   const initialMissionLoadedRef = React.useRef<string | null>(null);
   const [laneId, setLaneId] = React.useState(lanes[0]?.id ?? "");
+  const [workspace, setWorkspace] = React.useState<Workspace>(initialWorkspace);
   const [query, setQuery] = React.useState("");
   const [provider, setProvider] = React.useState<Provider>("auto");
   const [searchMode, setSearchMode] = React.useState<SearchMode>("balanced");
@@ -301,6 +308,10 @@ export function LaneMissionControl({
     window.history.replaceState(window.history.state, "", discoveryMissionHref(id));
   }, []);
 
+  React.useEffect(() => {
+    setWorkspace(initialWorkspace);
+  }, [initialWorkspace]);
+
   const loadMission = React.useCallback(async (id: string, quiet = false, syncUrl = true) => {
     if (!quiet) setRefreshing(true);
     try {
@@ -311,10 +322,12 @@ export function LaneMissionControl({
       setQueueState(normalizeQueue(data.queue));
       setLastUpdatedAt(new Date());
       setActiveMissionId(data.mission.id);
+      if (data.mission.workspace) setWorkspace(data.mission.workspace);
       if (syncUrl) syncMissionUrl(data.mission.id);
       mergeMission({
         id: data.mission.id,
         status: data.mission.status,
+        workspace: data.mission.workspace,
         provider: data.mission.provider,
         startedAt: data.mission.startedAt ?? new Date().toISOString(),
         finishedAt: data.mission.finishedAt,
@@ -402,6 +415,7 @@ export function LaneMissionControl({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           laneId,
+          workspace,
           query: query || undefined,
           freeformBrief: query || undefined,
           useAiPlanner,
@@ -424,6 +438,7 @@ export function LaneMissionControl({
       mergeMission({
         id: data.mission.id,
         status: data.mission.status,
+        workspace: data.mission.workspace ?? workspace,
         provider: data.mission.provider,
         startedAt: data.mission.startedAt ?? new Date().toISOString(),
         finishedAt: data.mission.finishedAt,
@@ -641,6 +656,20 @@ export function LaneMissionControl({
                   </Select>
                 </div>
                 <div className="space-y-1.5">
+                  <Label>Workspace</Label>
+                  <Select value={workspace} onValueChange={(value) => setWorkspace(value as Workspace)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DK">Denmark</SelectItem>
+                      <SelectItem value="GLOBAL">International</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
                   <Label htmlFor="mission-max">Results</Label>
                   <Input
                     id="mission-max"
@@ -651,19 +680,19 @@ export function LaneMissionControl({
                     onChange={(e) => setMaxResults(e.target.value)}
                   />
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Search style</Label>
-                <Select value={searchMode} onValueChange={(value) => setSearchMode(value as SearchMode)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="focused">Focused</SelectItem>
-                    <SelectItem value="balanced">Balanced</SelectItem>
-                    <SelectItem value="wide">Wide</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="space-y-1.5">
+                  <Label>Search style</Label>
+                  <Select value={searchMode} onValueChange={(value) => setSearchMode(value as SearchMode)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="focused">Focused</SelectItem>
+                      <SelectItem value="balanced">Balanced</SelectItem>
+                      <SelectItem value="wide">Wide</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/40 px-3 py-2">
                 <Label htmlFor="mission-ai" className="flex items-center gap-2">
@@ -721,6 +750,9 @@ export function LaneMissionControl({
                     {missionRunning ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : null}
                     {result.mission.lane?.name ?? "Discovery mission"}
                     <Badge variant={missionStatusVariant(result.mission.status)}>{result.mission.status.toLowerCase()}</Badge>
+                    {result.mission.workspace ? (
+                      <Badge variant="outline">{result.mission.workspace === "GLOBAL" ? "International" : "Denmark"}</Badge>
+                    ) : null}
                     {activeQueueLabel ? <Badge variant="secondary">{activeQueueLabel}</Badge> : null}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -841,6 +873,9 @@ export function LaneMissionControl({
                         <span className="truncate text-sm font-medium">{mission.lane?.name ?? "Discovery mission"}</span>
                         <span className="flex shrink-0 items-center gap-1">
                           {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
+                          {mission.workspace ? (
+                            <Badge variant="outline">{mission.workspace === "GLOBAL" ? "International" : "Denmark"}</Badge>
+                          ) : null}
                           <Badge variant={missionStatusVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
                         </span>
                       </div>

@@ -24,7 +24,7 @@ import { detectApplicationRoute, extractBudget, extractDeadline } from "@/lib/in
 import { assertPublicUrl, safeFetch } from "@/lib/ingestion/net";
 import { fetchRssCandidates } from "@/lib/ingestion/rss";
 import { fetchWebCandidates } from "@/lib/ingestion/web";
-import { isBroadFrameworkTender } from "./tender-quality";
+import { hasConcreteSoftwareTenderScope, isBroadFrameworkTender } from "./tender-quality";
 export { DISCOVERY_PRESETS } from "./presets";
 
 export interface DiscoverySearchInput {
@@ -1416,14 +1416,18 @@ function sanitizeUdbudDkQuery(value?: string | null) {
 function udbudDkSearchSeeds(query: string, queries: string[]) {
   return uniqueStrings(
     [
+      "software",
       sanitizeUdbudDkQuery(query),
       "software udvikling",
       ...queries.map((item) => sanitizeUdbudDkQuery(item)),
+      "it udvikling",
+      "app udvikling",
+      "it-drift support",
+      "data platform",
       "softwareudvikling",
       "it konsulent",
-      "digitalisering",
     ],
-    4,
+    6,
   );
 }
 
@@ -1490,6 +1494,7 @@ function udbudDkResultToCandidate(result: UdbudDkResult, query: string): Opportu
     ].join("\n"),
     5000,
   );
+  if (!hasConcreteSoftwareTenderScope(rawContent)) return null;
 
   return enrichCandidate({
     title,
@@ -1550,7 +1555,7 @@ async function udbudDkCandidates(
   const candidates: DiscoveryCandidateDto[] = [];
   const seen = new Set<string>();
   const seeds = udbudDkSearchSeeds(query, queries);
-  const perQuery = Math.max(6, Math.ceil(maxResults / Math.max(1, seeds.length)));
+  const perQuery = Math.min(25, Math.max(10, Math.ceil((maxResults * 2) / Math.max(1, seeds.length))));
 
   for (const seed of seeds) {
     if (candidates.length >= maxResults) break;

@@ -19,6 +19,9 @@ describe("udbud.dk discovery source", () => {
     expect(
       udbudDkSearchSeeds("site:mercell.com/da-dk/udbud software udvikling udbud", []),
     ).toContain("software udvikling");
+    expect(
+      udbudDkSearchSeeds("site:mercell.com/da-dk/udbud software udvikling udbud", []),
+    ).toContain("software");
   });
 
   it("maps active udbud.dk search results to concrete tender candidates", () => {
@@ -99,6 +102,31 @@ describe("udbud.dk discovery source", () => {
           },
         },
         "software udvikling",
+      ),
+    ).toBeNull();
+  });
+
+  it("drops official notices without concrete software scope", () => {
+    const deadline = new Date(Date.now() + 30 * 86400000).toISOString();
+
+    expect(
+      udbudDkResultToCandidate(
+        {
+          noticeId: "a62bc6d6-f595-4eb3-9808-b6b6788cad7d",
+          noticeVersion: "01",
+          noticePublicationNumber: "00351588-2099",
+          dataDa: {
+            titel: "100462 Cykelbro Østerbro - Refshaleøen",
+            ordregiver: "Københavns Kommune",
+            publiceringsdato: "01-06-2099",
+            cpvKode: "71000000",
+            cpvTitel: "Arkitekt-, konstruktions-, ingeniør- og inspektionsvirksomhed",
+            tidsfrister: [deadline],
+            beskrivelse: "Udbud vedrørende rådgivning, projektering og udvikling af brokoncept.",
+            bkSubType: "Udbudsbekendtgørelse",
+          },
+        },
+        "software",
       ),
     ).toBeNull();
   });

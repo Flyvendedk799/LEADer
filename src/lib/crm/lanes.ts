@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { isBroadFrameworkTender } from "@/lib/discovery/tender-quality";
+import { hasConcreteSoftwareTenderScope, isBroadFrameworkTender } from "@/lib/discovery/tender-quality";
 import type { SourceType, Workspace } from "@/lib/types";
 
 export interface LaneDefinition {
@@ -370,9 +370,7 @@ function hasTenderConcreteCue(candidate: CandidateLike, text: string, url: strin
 }
 
 function hasTechnicalTenderScope(text: string) {
-  return /\bit\b|software|softwareudvikling|udvikling|drift|vedligehold|webshop|webapp|\bapp\b|applikation|hjemmeside|digital|digitalisering|datafordeler|data|system|platform|integration|api|devops|sql|c#|java|linux|hosting|cloud|\bai\b|kunstig intelligens|automatisering/.test(
-    text,
-  );
+  return hasConcreteSoftwareTenderScope(text);
 }
 
 function isJobOrRecruitingResult(text: string, host: string, path: string) {

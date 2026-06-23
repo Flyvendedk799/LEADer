@@ -211,6 +211,21 @@ describe("CRM discovery lanes", () => {
         applicationRoute: "APPLICATION",
       }),
     ).toEqual({ allowed: false, reason: "missing software/technical scope" });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "100462 Cykelbro Østerbro - Refshaleøen",
+        description:
+          "Udbud vedrørende rådgivning, projektering og udvikling af brokoncept. Tilbudsfrist 24-07-2099.",
+        rawContent:
+          "Ordregiver: Københavns Kommune. CPV: 71000000 Arkitekt-, konstruktions-, ingeniør- og inspektionsvirksomhed. Udbud vedrørende rådgivning og udvikling af brokoncept. Tilbudsfrist 24-07-2099.",
+        url: "https://udbud.dk/detaljevisning?noticeId=a62bc6d6-f595-4eb3-9808-b6b6788cad7d&noticeVersion=01",
+        organization: "Københavns Kommune",
+        candidateKind: "opportunity",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+      }),
+    ).toEqual({ allowed: false, reason: "missing software/technical scope" });
   });
 
   it("blocks job-board spillover from direct startup missions", () => {

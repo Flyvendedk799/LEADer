@@ -5,6 +5,7 @@ import { normalizeWorkspace, workspaceFromRoute, workspaceLabel } from "./worksp
 describe("workspace context", () => {
   it("prefers explicit workspace query params", () => {
     expect(workspaceFromRoute("/board", new URLSearchParams("workspace=GLOBAL"))).toBe("GLOBAL");
+    expect(workspaceFromRoute("/discover", { workspace: "GLOBAL" })).toBe("GLOBAL");
     expect(workspaceFromRoute("/global", new URLSearchParams("workspace=DK"))).toBe("DK");
     expect(workspaceFromRoute("/workflows", "?workspace=GLOBAL")).toBe("GLOBAL");
   });
