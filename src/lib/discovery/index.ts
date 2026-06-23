@@ -1012,7 +1012,6 @@ function isConcreteOpportunityUrl(url?: string): boolean {
     const hasNoticeId = [...parsed.searchParams.keys()].some((key) => key.toLowerCase() === "noticeid");
     return (
       (hostname === "udbud.dk" && pathname === "/detaljevisning" && hasNoticeId) ||
-      (hostname.endsWith("udbud.dk") && /\/pages\/tenders\/showtender/.test(pathname)) ||
       (hostname === "eu.eu-supply.com" && /\/ctm\/supplier\/publicpurchase\/|\/app\/rfq\//.test(pathname)) ||
       (hostname.endsWith("mercell.com") && /\/udbud\/\d+\//.test(pathname)) ||
       (hostname.endsWith("ethics.dk") && /\/ethics\/eo#\/tender/.test(href)) ||

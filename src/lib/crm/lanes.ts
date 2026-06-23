@@ -306,7 +306,6 @@ function isConcreteTenderUrl(host: string, path: string, url: string) {
   const hasNoticeId = /[?&]noticeid=/.test(url);
   return (
     (host === "udbud.dk" && path === "/detaljevisning" && hasNoticeId) ||
-    (host.endsWith("udbud.dk") && /\/pages\/tenders\/showtender/.test(path)) ||
     (host === "eu.eu-supply.com" && /\/ctm\/supplier\/publicpurchase\/|\/app\/rfq\//.test(path)) ||
     (host.endsWith("mercell.com") && /\/udbud\/\d+\//.test(path)) ||
     (host.endsWith("ethics.dk") && /\/ethics\/eo#\/tender/.test(url)) ||
@@ -314,6 +313,14 @@ function isConcreteTenderUrl(host: string, path: string, url: string) {
     (host === "ted.europa.eu" && /\/notice\//.test(path)) ||
     /\/indkoeb\/tilbud\/indsend\/|\/indkøb\/tilbud\/indsend\/|\/tender\/\d+|\/rfp\/\d+/.test(path)
   );
+}
+
+function isLegacyUdbudTenderUrl(host: string, path: string) {
+  return host.endsWith("udbud.dk") && /\/pages\/tenders\/showtender/.test(path);
+}
+
+function isTenderAttachmentUrl(path: string, url: string) {
+  return /\/handlers\/file\.ashx|\/vedhaeftning\/|\.(?:pdf|docx?|xlsx?)(?:[?#]|$)/.test(`${path} ${url}`);
 }
 
 function isNonProductionTenderUrl(host: string) {
@@ -487,8 +494,12 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
     return { allowed: false, reason: "archived tender URL" };
   }
 
-  if (/\/pages\/tenders\/showtender/.test(path) && !candidate.deadline) {
-    return { allowed: false, reason: "legacy udbud.dk page without active deadline" };
+  if (isLegacyUdbudTenderUrl(host, path)) {
+    return { allowed: false, reason: "legacy udbud.dk archive URL" };
+  }
+
+  if (isTenderAttachmentUrl(path, url)) {
+    return { allowed: false, reason: "tender attachment, not notice page" };
   }
 
   if (candidate.candidateKind === "source" && !concreteTenderUrl) {

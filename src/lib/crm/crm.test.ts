@@ -145,16 +145,30 @@ describe("CRM discovery lanes", () => {
 
     expect(
       laneCandidateGate(lane, {
-        title: "udbud.dk detaljevisning",
+        title: "udbud.dk",
         description: "Beskrivelse: kontrakt om drift, vedligehold, support og udvikling af eksisterende webshopløsning. Tilbudsfrist.",
         rawContent:
           "Ordregivers eksisterende webshopløsning er baseret på Magento. Leverandøren vil være ansvarlig for hosting, drift, support, vedligehold og udvikling. Tilbudsfrist 30-06-2099.",
-        url: "https://udbud.dk/detaljevisning?noticeId=794e64fd-0135-4a5f-95e0-9decd15f2a99&noticePublicationNumber=00090691-2025",
+        url: "https://udbud.dk/Pages/Tenders/ShowTender?tenderid=61801",
         organization: "Offentlig ordregiver",
-        candidateKind: "source",
+        candidateKind: "opportunity",
         deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
       }),
-    ).toEqual({ allowed: true });
+    ).toEqual({ allowed: false, reason: "legacy udbud.dk archive URL" });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "UDVIKLING AF VESTKYST- APP",
+        description: "Mulig opgave/udbud: udvikling af Vestkyst-app. Tilbudsfrist 30-06-2099.",
+        rawContent: "Softwareudvikling. Tilbudsfrist 30-06-2099. Ordregiver: offentlig ordregiver.",
+        url: "https://www.udbud.dk/Handlers/File.ashx?fileid=73810",
+        organization: "Offentlig ordregiver",
+        candidateKind: "opportunity",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+      }),
+    ).toEqual({ allowed: false, reason: "tender attachment, not notice page" });
 
     expect(
       laneCandidateGate(lane, {

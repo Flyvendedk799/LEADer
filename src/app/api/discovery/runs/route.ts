@@ -6,6 +6,7 @@ import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createDiscoveryMission } from "@/lib/crm";
 import { discoveryMissionDisplayWarnings, discoveryMissionProviderLabel } from "@/lib/crm/discovery-display";
+import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import { discoveryLogEntry, discoveryQueueLogMessage } from "@/lib/crm/discovery-logging";
 import { filterLaneCandidates, type CandidateLike, type LaneLike } from "@/lib/crm/lanes";
 import {
@@ -82,6 +83,7 @@ function visibleMissionListRow<T extends {
 export async function GET() {
   try {
     const ownerId = await requireOwnerId();
+    await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
     const queue = await recoverDiscoveryQueue(ownerId);
     const missions = await db.discoveryMission.findMany({
       where: { ownerId },
