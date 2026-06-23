@@ -101,6 +101,18 @@ function normalizePhoneDigits(value?: string | null) {
   return digits;
 }
 
+function sameWhenBothPresent(a?: string | null, b?: string | null) {
+  return !a || !b || a === b;
+}
+
+function researchBriefModeMatches(runIdentity: ResearchBriefIdentity, identity: ResearchBriefIdentity) {
+  return (
+    sameWhenBothPresent(identity.workspace, runIdentity.workspace) &&
+    sameWhenBothPresent(identity.subjectType, runIdentity.subjectType) &&
+    sameWhenBothPresent(identity.objective, runIdentity.objective)
+  );
+}
+
 export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIdentity {
   const root = objectValue(input);
   const options = objectValue(root?.options);
@@ -118,14 +130,12 @@ export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIde
 
 export function researchBriefMatchesIdentity(run: ResearchBriefRunLike, identity: ResearchBriefIdentity) {
   const runIdentity = researchBriefIdentityFromInput(run.input);
+  if (!researchBriefModeMatches(runIdentity, identity)) return false;
   if (identity.dealId && runIdentity.dealId === identity.dealId) return true;
   if (identity.personId && runIdentity.personId === identity.personId) return true;
   if (identity.accountId && runIdentity.accountId === identity.accountId) return true;
   const subject = normalizedSubject(identity.subject);
   if (!subject || normalizedSubject(runIdentity.subject) !== subject) return false;
-  if (identity.workspace && runIdentity.workspace && runIdentity.workspace !== identity.workspace) return false;
-  if (identity.subjectType && runIdentity.subjectType && runIdentity.subjectType !== identity.subjectType) return false;
-  if (identity.objective && runIdentity.objective && runIdentity.objective !== identity.objective) return false;
   return true;
 }
 

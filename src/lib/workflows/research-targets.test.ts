@@ -88,6 +88,62 @@ describe("workflow research targets", () => {
     expect(findActiveResearchBriefRun(runs, {})).toBeNull();
   });
 
+  it("keeps linked research briefs distinct by objective and workspace", () => {
+    const runs = [
+      {
+        id: "run-map",
+        status: "RUNNING",
+        input: {
+          playbook: "research-brief",
+          workspace: "DK",
+          options: {
+            researchBrief: {
+              accountId: "account-1",
+              subject: "Northwind",
+              subjectType: "company",
+              objective: "map-opportunity",
+            },
+          },
+        },
+      },
+      {
+        id: "run-global-contact",
+        status: "QUEUED",
+        input: {
+          playbook: "research-brief",
+          workspace: "GLOBAL",
+          options: {
+            researchBrief: {
+              accountId: "account-1",
+              subject: "Northwind",
+              subjectType: "company",
+              objective: "find-contact",
+            },
+          },
+        },
+      },
+    ];
+
+    expect(
+      findActiveResearchBriefRun(runs, {
+        accountId: "account-1",
+        subject: "Northwind",
+        subjectType: "company",
+        objective: "find-contact",
+        workspace: "DK",
+      }),
+    ).toBeNull();
+    expect(
+      findActiveResearchBriefRun(runs, {
+        accountId: "account-1",
+        subject: "Northwind",
+        subjectType: "company",
+        objective: "find-contact",
+        workspace: "GLOBAL",
+      })?.id,
+    ).toBe("run-global-contact");
+  });
+
   it("finds active freeform research briefs by normalized subject and mode", () => {
     const runs = [
       {
