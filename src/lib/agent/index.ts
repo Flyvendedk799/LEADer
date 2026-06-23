@@ -2,7 +2,7 @@ import type { User } from "@prisma/client";
 import { z } from "zod";
 
 import { AGENT_TOOL_CATALOG, executeAgentTool, type AgentToolCall, type AgentToolResult } from "@/lib/agent/tools";
-import { aiConfig, chat, hasLlm } from "@/lib/ai/provider";
+import { aiConfig, chat, hasLlm, isMissingSubscriptionLoginError } from "@/lib/ai/provider";
 
 export interface AgentHistoryMessage {
   role: "user" | "assistant";
@@ -232,10 +232,19 @@ export async function runPlatformAgent(input: AgentRunInput): Promise<AgentRunRe
   const message = clean(input.message, 2000);
   if (!message) throw new Error("Message is required");
 
-  const canUseLlm = hasLlm(input.user.aiKeys);
-  const plan = canUseLlm
-    ? await planWithLlm(input.user, message, input.history ?? [])
-    : { answer: undefined, toolCalls: planMockToolCalls(message) };
+  let usedLlm = hasLlm(input.user.aiKeys);
+  let plan: { answer?: string; toolCalls: AgentToolCall[] };
+  if (usedLlm) {
+    try {
+      plan = await planWithLlm(input.user, message, input.history ?? []);
+    } catch (error) {
+      if (!isMissingSubscriptionLoginError(error)) throw error;
+      usedLlm = false;
+      plan = { answer: undefined, toolCalls: planMockToolCalls(message) };
+    }
+  } else {
+    plan = { answer: undefined, toolCalls: planMockToolCalls(message) };
+  }
   const toolCalls = plan.toolCalls.slice(0, 5);
   const toolResults: AgentToolResult[] = [];
 
@@ -252,18 +261,27 @@ export async function runPlatformAgent(input: AgentRunInput): Promise<AgentRunRe
     }
   }
 
-  const answer = toolResults.length
-    ? canUseLlm
-      ? await synthesizeWithLlm(input.user, message, toolResults)
-      : deterministicAnswer(message, toolResults)
-    : plan.answer || "I can help with CRM data, discovery, tasks, touchpoints, deals, and conversion assets.";
+  let answer: string;
+  if (!toolResults.length) {
+    answer = plan.answer || "I can help with CRM data, discovery, tasks, touchpoints, deals, and conversion assets.";
+  } else if (usedLlm) {
+    try {
+      answer = await synthesizeWithLlm(input.user, message, toolResults);
+    } catch (error) {
+      if (!isMissingSubscriptionLoginError(error)) throw error;
+      usedLlm = false;
+      answer = deterministicAnswer(message, toolResults);
+    }
+  } else {
+    answer = deterministicAnswer(message, toolResults);
+  }
 
   return {
     answer: answer.trim(),
     toolCalls,
     toolResults,
     mutated: toolResults.some((result) => result.mutated),
-    mocked: !canUseLlm,
-    model: canUseLlm ? aiConfig(input.user.aiKeys).model : "mock-agent",
+    mocked: !usedLlm,
+    model: usedLlm ? aiConfig(input.user.aiKeys).model : "mock-agent",
   };
 }

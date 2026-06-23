@@ -39,4 +39,16 @@ describe("AI gateway", () => {
     expect(queryText).toMatch(/dansk|fjernarbejde|softwareudvikling|leverandør/);
     expect(queryText).not.toMatch(/\bdenmark\b/);
   });
+
+  it("falls back to mock output when a selected Codex subscription is not logged in", async () => {
+    process.env.CODEX_AUTH_FILE = "/tmp/leader-missing-codex-auth.json";
+    const result = await runAi({
+      action: "planDiscoverySearch",
+      aiKeys: { provider: "codex" },
+      context: "Freeform brief:\nFind danske udbud om softwareudvikling.",
+    });
+
+    expect(result.mocked).toBe(true);
+    expect(result.model).toBe("mock-llm");
+  });
 });

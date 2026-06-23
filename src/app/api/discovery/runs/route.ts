@@ -5,10 +5,15 @@ import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createDiscoveryMission } from "@/lib/crm";
-import { discoveryMissionDisplayWarnings, discoveryMissionProviderLabel } from "@/lib/crm/discovery-display";
+import {
+  discoveryMissionDisplayWarnings,
+  discoveryMissionProviderLabel,
+  filterReviewableDiscoveryCandidates,
+  hiddenDiscoveryCandidatesWarning,
+} from "@/lib/crm/discovery-display";
 import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import { discoveryLogEntry, discoveryQueueLogMessage } from "@/lib/crm/discovery-logging";
-import { filterLaneCandidates, type CandidateLike, type LaneLike } from "@/lib/crm/lanes";
+import { type CandidateLike, type LaneLike } from "@/lib/crm/lanes";
 import { discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
 import {
   discoveryQueueSnapshot,
@@ -39,6 +44,7 @@ const candidateGateSelect = {
   budgetMin: true,
   budgetMax: true,
   deadline: true,
+  status: true,
   applicationRoute: true,
 } satisfies Partial<Record<keyof CandidateLike, true>>;
 
@@ -59,21 +65,13 @@ function visibleMissionListRow<T extends {
   _count: { candidates: number };
 }>(mission: T) {
   const { candidates, ...rest } = mission;
-  if (!mission.lane) {
-    return {
-      ...rest,
-      provider: discoveryMissionProviderLabel(mission),
-      warnings: discoveryMissionDisplayWarnings(mission, rest.warnings),
-    };
-  }
-  const visible = filterLaneCandidates(mission.lane, candidates);
+  const visible = filterReviewableDiscoveryCandidates(mission.lane, candidates);
   const baseWarnings = discoveryMissionDisplayWarnings(mission, rest.warnings);
+  const hiddenWarning = hiddenDiscoveryCandidatesWarning(visible.removed, visible.reasons);
   return {
     ...rest,
     provider: discoveryMissionProviderLabel(mission),
-    warnings: visible.removed > 0
-      ? [...baseWarnings, `${visible.removed} stale or off-lane candidates hidden from this mission: ${visible.reasons.slice(0, 3).join("; ")}.`]
-      : baseWarnings,
+    warnings: hiddenWarning ? [...baseWarnings, hiddenWarning] : baseWarnings,
     _count: {
       ...rest._count,
       candidates: visible.candidates.length,

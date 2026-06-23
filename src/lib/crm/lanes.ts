@@ -39,6 +39,7 @@ export type CandidateLike = {
   budgetMax?: number | null;
   deadline?: string | Date | null;
   candidateKind?: string | null;
+  status?: string | null;
   applicationRoute?: string | null;
 };
 
@@ -144,6 +145,7 @@ export const DEFAULT_DISCOVERY_LANES: LaneDefinition[] = [
       "rammeaftale",
       "recruitment",
       "the hub",
+      "udbud.co",
     ],
     scoringConfig: { formalFit: 1, scopeFit: 1, deadline: 1 },
     evidenceRequirements: ["scope", "submission route", "deadline", "buyer"],
@@ -302,7 +304,7 @@ function candidateUrlParts(url?: string | null) {
 }
 
 function isConcreteTenderUrl(host: string, path: string, url: string) {
-  if (!url || /\/arkiv\/|\/archive\//.test(url)) return false;
+  if (!url || /\/(?:arkiv|archive)(?:\/|$)/.test(url)) return false;
   const hasNoticeId = /[?&]noticeid=/.test(url);
   return (
     (host === "udbud.dk" && path === "/detaljevisning" && hasNoticeId) ||
@@ -442,7 +444,7 @@ function hasStartupOpportunityIntent(candidate: CandidateLike, text: string, hos
 }
 
 function isGenericTenderSource(text: string, host: string, path: string) {
-  return /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen|info\.mercell/.test(host) ||
+  return /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen|info\.mercell|(?:^|\.)udbud\.co$/.test(host) ||
     /\/$|\/alle\/?$|\/sources?\/?$|\/kilder?\/?$|\/udbud\/?$|\/indkoeb\/alle\/?$|\/indkøb\/alle\/?$/.test(path) ||
     /find tenders?|tender portal|procurement platform|udbudsportal|udbudsliste|alle udbud|liste over|oversigt over|database|markedsplads|offentlige udbud|søg efter udbud|soeg efter udbud|komplette guide|guide til offentlige indkøb|udbudsindsigter/.test(
       text,
@@ -490,7 +492,7 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
     return { allowed: false, reason: "non-production tender URL" };
   }
 
-  if (/\/arkiv\/|\/archive\//.test(url)) {
+  if (/\/(?:arkiv|archive)(?:\/|$)/.test(url)) {
     return { allowed: false, reason: "archived tender URL" };
   }
 

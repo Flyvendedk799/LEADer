@@ -36,10 +36,14 @@ import { WorkflowUsecaseLauncher } from "@/components/workflows/workflow-usecase
 import { PageHeader } from "@/components/shared/page-header";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { discoveryMissionDisplayWarnings, discoveryMissionProviderLabel } from "@/lib/crm/discovery-display";
+import {
+  discoveryMissionDisplayWarnings,
+  discoveryMissionProviderLabel,
+  filterReviewableDiscoveryCandidates,
+  hiddenDiscoveryCandidatesWarning,
+} from "@/lib/crm/discovery-display";
 import {
   ensureDefaultDiscoveryLanes,
-  filterLaneCandidates,
   filterVisibleLaneCandidates,
   type CandidateLike,
   type LaneLike,
@@ -75,6 +79,7 @@ const missionCandidateGateSelect = {
   budgetMin: true,
   budgetMax: true,
   deadline: true,
+  status: true,
   applicationRoute: true,
 } satisfies Partial<Record<keyof CandidateLike, true>>;
 
@@ -90,16 +95,12 @@ function visibleMissionCandidateMeta(mission: {
   warnings: string[];
   _count: { candidates: number };
 }) {
-  if (!mission.lane) {
-    return { candidateCount: mission._count.candidates, warnings: discoveryMissionDisplayWarnings(mission, mission.warnings) };
-  }
-  const visible = filterLaneCandidates(mission.lane, mission.candidates);
+  const visible = filterReviewableDiscoveryCandidates(mission.lane, mission.candidates);
   const baseWarnings = discoveryMissionDisplayWarnings(mission, mission.warnings);
+  const hiddenWarning = hiddenDiscoveryCandidatesWarning(visible.removed, visible.reasons);
   return {
     candidateCount: visible.candidates.length,
-    warnings: visible.removed > 0
-      ? [...baseWarnings, `${visible.removed} stale or off-lane candidates hidden from this mission: ${visible.reasons.slice(0, 3).join("; ")}.`]
-      : baseWarnings,
+    warnings: hiddenWarning ? [...baseWarnings, hiddenWarning] : baseWarnings,
   };
 }
 

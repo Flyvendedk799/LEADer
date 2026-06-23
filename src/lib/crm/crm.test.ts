@@ -86,6 +86,24 @@ describe("CRM discovery lanes", () => {
 
     expect(
       laneCandidateGate(lane, {
+        title: "Software udbud archive",
+        description: "Archive listing for software tenders.",
+        url: "https://udbud.co/archive",
+        candidateKind: "opportunity",
+      }),
+    ).toEqual({ allowed: false, reason: "archived tender URL" });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "Udbud.co - software tenders",
+        description: "Search and browse public tender archive entries.",
+        url: "https://udbud.co/software-tenders",
+        candidateKind: "opportunity",
+      }),
+    ).toEqual({ allowed: false, reason: "generic tender source, not a concrete opportunity" });
+
+    expect(
+      laneCandidateGate(lane, {
         title: "Latest IT-Software Tenders & Government Contracts",
         description: "A tender portal and database of IT tenders with alerts, buyers and deadlines.",
         url: "https://tenderimpulse.com/it-software-tenders",

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { discoveryMissionDisplayWarnings, discoveryMissionProviderLabel } from "./discovery-display";
+import {
+  discoveryMissionDisplayWarnings,
+  discoveryMissionProviderLabel,
+  filterReviewableDiscoveryCandidates,
+  hiddenDiscoveryCandidatesWarning,
+} from "./discovery-display";
+import { DEFAULT_DISCOVERY_LANES } from "./lanes";
 
 describe("discovery display helpers", () => {
   it("labels focused official tender missions as udbud.dk instead of none", () => {
@@ -37,5 +43,55 @@ describe("discovery display helpers", () => {
         ],
       ),
     ).toEqual(["2 stale or off-lane candidates hidden from this mission: 2 broad framework agreement."]);
+  });
+
+  it("hides dismissed, duplicate, and off-lane rows from mission review output", () => {
+    const lane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "tenders-procurement")!;
+    const activeDeadline = new Date(Date.now() + 30 * 86400000).toISOString();
+
+    const result = filterReviewableDiscoveryCandidates(lane, [
+      {
+        title: "Intranet",
+        description: "Aktivt udbud om softwareudvikling, drift og support. Tilbudsfrist 30-07-2099.",
+        rawContent: "Ordregiver: Metroselskabet. CPV: 72000000. Tilbudsfrist 30-07-2099.",
+        url: "https://udbud.dk/detaljevisning?noticeId=4ccaf6e0-67d2-4f9e-8482-e6563f2b16d9",
+        organization: "Metroselskabet",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+        status: "NEW",
+      },
+      {
+        title: "Archived tender",
+        description: "Software tender archive entry.",
+        url: "https://udbud.co/archive",
+        status: "NEW",
+      },
+      {
+        title: "Dismissed but otherwise valid",
+        description: "Aktivt udbud om softwareudvikling. Tilbudsfrist 30-07-2099.",
+        rawContent: "Ordregiver: Kommune. CPV: 72000000. Softwareudvikling. Tilbudsfrist 30-07-2099.",
+        url: "https://udbud.dk/detaljevisning?noticeId=11111111-1111-4111-8111-111111111111",
+        organization: "Kommune",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+        status: "DISMISSED",
+      },
+      {
+        title: "Duplicate but otherwise valid",
+        description: "Aktivt udbud om softwareudvikling. Tilbudsfrist 30-07-2099.",
+        rawContent: "Ordregiver: Region. CPV: 72000000. Softwareudvikling. Tilbudsfrist 30-07-2099.",
+        url: "https://udbud.dk/detaljevisning?noticeId=22222222-2222-4222-8222-222222222222",
+        organization: "Region",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+        status: "DUPLICATE",
+      },
+    ]);
+
+    expect(result.candidates.map((candidate) => candidate.title)).toEqual(["Intranet"]);
+    expect(result.removed).toBe(3);
+    expect(hiddenDiscoveryCandidatesWarning(result.removed, result.reasons)).toContain(
+      "3 dismissed, duplicate, stale or off-lane candidates hidden",
+    );
   });
 });

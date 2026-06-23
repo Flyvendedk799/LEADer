@@ -1,5 +1,5 @@
 import type { AiAction, AiExtractResult, AiResult } from "@/lib/types";
-import { aiConfig, chat, hasLlm } from "./provider";
+import { aiConfig, chat, hasLlm, isMissingSubscriptionLoginError } from "./provider";
 import { buildPrompt } from "./prompts";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -26,14 +26,22 @@ export async function runAi(args: RunAiArgs): Promise<AiResult> {
   }
 
   const { system, user, json } = buildPrompt(action, { profile, context, extra });
-  const raw = await chat(
-    [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-    { json },
-    cfg,
-  );
+  let raw: string;
+  try {
+    raw = await chat(
+      [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      { json },
+      cfg,
+    );
+  } catch (error) {
+    if (isMissingSubscriptionLoginError(error)) {
+      return mockResult(action, context);
+    }
+    throw error;
+  }
 
   if (json) {
     let data: unknown = {};

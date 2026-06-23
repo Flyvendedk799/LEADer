@@ -69,6 +69,11 @@ export function hasLlm(aiKeys?: unknown): boolean {
   return isSubscriptionProvider(cfg.provider) || Boolean(cfg.apiKey);
 }
 
+export function isMissingSubscriptionLoginError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /No (?:Codex\/ChatGPT|Claude Code) subscription login found/i.test(message);
+}
+
 /**
  * Single chat entry point for supported hosted providers.
  * Throws if no key/subscription login is configured — callers gate on hasLlm()
