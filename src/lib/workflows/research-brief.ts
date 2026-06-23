@@ -62,6 +62,14 @@ type ResearchStepTemplate = [
   searchPrompts: string[],
 ];
 
+type SubjectClues = {
+  emails: string[];
+  phones: string[];
+  domains: string[];
+  handles: string[];
+  nameHints: string[];
+};
+
 const SUBJECT_TYPES = new Set<ResearchSubjectType>(["person", "company", "unknown"]);
 const OBJECTIVES = new Set<ResearchObjective>([
   "find-contact",
@@ -87,7 +95,100 @@ function quoted(subject: string) {
   return `"${subject.replace(/"/g, "")}"`;
 }
 
+function cleanDomain(value?: string | null) {
+  const raw = value?.trim().toLowerCase();
+  if (!raw) return "";
+  try {
+    return new URL(raw.startsWith("http") ? raw : `https://${raw}`).hostname.replace(/^www\./, "");
+  } catch {
+    return raw.replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#\s]/)[0] ?? "";
+  }
+}
+
+function subjectClues(subject: string): SubjectClues {
+  const emails = uniqueLoose(
+    [...subject.matchAll(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi)].map((match) => match[0].toLowerCase()),
+    3,
+  );
+  const urlDomains = [...subject.matchAll(/https?:\/\/[^\s]+/gi)]
+    .map((match) => cleanDomain(match[0]))
+    .filter(Boolean);
+  const bareDomains = [...subject.matchAll(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/gi)]
+    .filter((match) => {
+      const index = match.index ?? 0;
+      const before = subject[index - 1] ?? "";
+      const after = subject[index + match[0].length] ?? "";
+      return before !== "@" && after !== "@";
+    })
+    .map((match) => cleanDomain(match[0]))
+    .filter((domain) => domain && !emails.some((email) => email.endsWith(`@${domain}`)));
+  const domains = uniqueLoose([...emails.map((email) => email.split("@")[1]), ...urlDomains, ...bareDomains], 4);
+  const phones = uniqueLoose(
+    [...subject.matchAll(/(?:\+\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?){2,}\d{2,4}/g)]
+      .map((match) => match[0].replace(/\s+/g, " ").trim())
+      .filter((value) => value.replace(/\D/g, "").length >= 7),
+    3,
+  );
+  const handles = uniqueLoose(
+    emails
+      .map((email) => email.split("@")[0])
+      .map((handle) => handle.replace(/[._%+-]+/g, " ").trim())
+      .filter((handle) => handle.length >= 2),
+    3,
+  );
+  const nameHints = uniqueLoose(
+    handles
+      .map((handle) => handle.replace(/\d+/g, "").replace(/\s+/g, " ").trim())
+      .filter((handle) => /[a-z]/i.test(handle) && handle.length >= 3),
+    3,
+  );
+  return { emails, phones, domains, handles, nameHints };
+}
+
+function uniqueLoose(values: (string | undefined | null)[], limit = values.length) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const cleaned = cleanText(value, 120);
+    const key = cleaned.toLowerCase();
+    if (!cleaned || seen.has(key)) continue;
+    seen.add(key);
+    out.push(cleaned);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function cluePrompts(subject: string, workspace: Workspace) {
+  const clues = subjectClues(subject);
+  return uniqueLoose([
+    ...clues.emails.map((email) => quoted(email)),
+    ...clues.phones.map((phone) => quoted(phone)),
+    ...clues.domains.flatMap((domain) => [
+      `site:${domain}`,
+      `${domain} contact`,
+      workspace === "DK" ? `${domain} kontakt` : `${domain} team`,
+    ]),
+    ...clues.nameHints.flatMap((name) => [
+      quoted(name),
+      ...clues.domains.map((domain) => `${quoted(name)} site:${domain}`),
+    ]),
+  ], 10);
+}
+
+function clueCapture(subject: string) {
+  const clues = subjectClues(subject);
+  const parts = [
+    clues.emails.length ? `email: ${clues.emails.join(", ")}` : "",
+    clues.phones.length ? `phone: ${clues.phones.join(", ")}` : "",
+    clues.domains.length ? `domain: ${clues.domains.join(", ")}` : "",
+    clues.nameHints.length ? `name hint: ${clues.nameHints.join(", ")}` : "",
+  ].filter(Boolean);
+  return parts.length ? `Structured input pivots (${parts.join("; ")})` : "";
+}
+
 function officialPrompts(subject: string, workspace: Workspace, subjectType: ResearchSubjectType) {
+  const pivots = cluePrompts(subject, workspace);
   const base = workspace === "DK"
     ? [
         `${quoted(subject)} officiel hjemmeside`,
@@ -99,6 +200,9 @@ function officialPrompts(subject: string, workspace: Workspace, subjectType: Res
         `${quoted(subject)} contact`,
         `${quoted(subject)} LinkedIn`,
       ];
+  if (pivots.length) {
+    base.unshift(...pivots);
+  }
   if (workspace === "DK") {
     base.push(`${quoted(subject)} CVR`, `${quoted(subject)} virk.dk`);
   }
@@ -115,9 +219,11 @@ function officialPrompts(subject: string, workspace: Workspace, subjectType: Res
 }
 
 function contactPrompts(subject: string, workspace: Workspace) {
+  const pivots = cluePrompts(subject, workspace);
   return [
     `${quoted(subject)} kontakt`,
     `${quoted(subject)} email`,
+    ...pivots,
     `${quoted(subject)} phone`,
     `${quoted(subject)} telefon`,
     `${quoted(subject)} contact form`,
@@ -127,6 +233,7 @@ function contactPrompts(subject: string, workspace: Workspace) {
 }
 
 function affiliationPrompts(subject: string, workspace: Workspace) {
+  const pivots = cluePrompts(subject, workspace);
   const base = workspace === "DK"
     ? [
         `${quoted(subject)} LinkedIn`,
@@ -143,6 +250,7 @@ function affiliationPrompts(subject: string, workspace: Workspace) {
         `${quoted(subject)} company`,
         `${quoted(subject)} email site:linkedin.com/in`,
       ];
+  base.push(...pivots);
   if (workspace === "DK") {
     base.push(`${quoted(subject)} proff`, `${quoted(subject)} CVR`);
   }
@@ -150,12 +258,14 @@ function affiliationPrompts(subject: string, workspace: Workspace) {
 }
 
 function opportunityPrompts(subject: string, workspace: Workspace) {
+  const clues = subjectClues(subject);
   return [
     `${quoted(subject)} digitalisering`,
     `${quoted(subject)} software`,
     `${quoted(subject)} automation`,
     workspace === "DK" ? `${quoted(subject)} udbud` : `${quoted(subject)} tender`,
     workspace === "DK" ? `${quoted(subject)} offentligt indkøb` : `${quoted(subject)} procurement`,
+    ...clues.domains.map((domain) => (workspace === "DK" ? `${domain} udbud` : `${domain} procurement`)),
   ];
 }
 
@@ -446,6 +556,7 @@ export function buildResearchWorksheet(
   workspace: Workspace,
 ): ResearchWorksheetSection[] {
   const { subject, subjectType, objective, depth } = options;
+  const inputClue = clueCapture(subject);
   const prompts = {
     official: officialPrompts(subject, workspace, subjectType),
     affiliation: affiliationPrompts(subject, workspace),
@@ -458,6 +569,17 @@ export function buildResearchWorksheet(
       title: "Identity decision",
       purpose: "Resolve the exact person, company, or clue before trusting contact details.",
       fields: [
+        ...(inputClue
+          ? [
+              worksheetField(
+                "input-pivots",
+                "Input pivots",
+                `${inputClue}. Treat each pivot as a lead to verify, not a fact to trust blindly.`,
+                "Each email, phone, domain, handle, or name hint is tied back to an official or intentionally public source before use.",
+                cluePrompts(subject, workspace),
+              ),
+            ]
+          : []),
         worksheetField(
           "canonical-subject",
           "Confirmed subject",
@@ -679,6 +801,7 @@ export function buildResearchRunbook(
   workspace: Workspace,
 ): ResearchRunbookStep[] {
   const { subject, subjectType, objective, depth } = options;
+  const inputClue = clueCapture(subject);
   const prompts = {
     official: officialPrompts(subject, workspace, subjectType),
     affiliation: affiliationPrompts(subject, workspace),
@@ -692,6 +815,7 @@ export function buildResearchRunbook(
       "Avoid chasing the wrong same-name person, company, or stale profile.",
       prompts.official,
       [
+        ...(inputClue ? [inputClue] : []),
         "Canonical name and country",
         subjectType === "person" ? "Current organization and role" : "Official domain or legal entity",
         "Two confirming public signals",

@@ -115,6 +115,33 @@ describe("research brief workflow helpers", () => {
     expect(fields.find((field) => field.id === "recommended-action")?.capture).toContain("stop");
   });
 
+  it("extracts structured pivots from an email clue", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "mette.jensen@northwind.dk",
+      objective: "find-contact",
+      depth: "standard",
+    });
+
+    const worksheet = buildResearchWorksheet(options, "DK");
+    const fields = worksheet.flatMap((section) => section.fields);
+    const inputPivots = fields.find((field) => field.id === "input-pivots");
+
+    expect(inputPivots?.capture).toContain("email: mette.jensen@northwind.dk");
+    expect(inputPivots?.capture).toContain("domain: northwind.dk");
+    expect(inputPivots?.capture).toContain("name hint: mette jensen");
+    expect(inputPivots?.sourcePrompts).toEqual(
+      expect.arrayContaining(['"mette.jensen@northwind.dk"', "site:northwind.dk", '"mette jensen"']),
+    );
+
+    const runbook = buildResearchRunbook(options, "DK");
+    expect(runbook.find((step) => step.id === "resolve-subject")?.capture.join(" ")).toContain(
+      "Structured input pivots",
+    );
+    expect(runbook.flatMap((step) => step.searchPrompts)).toEqual(
+      expect.arrayContaining(["site:northwind.dk", "northwind.dk kontakt"]),
+    );
+  });
+
   it("builds an operator runbook for practical name-to-contact lookup", () => {
     const options = normalizeResearchBriefOptions({
       subject: "Mette Jensen",
