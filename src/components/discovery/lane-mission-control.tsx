@@ -279,6 +279,12 @@ export function LaneMissionControl({
   const [result, setResult] = React.useState<MissionResult | null>(null);
   const [busyMissionAction, setBusyMissionAction] = React.useState<string | null>(null);
   const selectedLane = lanes.find((lane) => lane.id === laneId);
+  const officialTenderMode =
+    selectedLane?.slug === "tenders-procurement" &&
+    workspace === "DK" &&
+    provider === "auto" &&
+    searchMode !== "wide";
+  const effectiveIncludeSources = officialTenderMode ? false : includeSources;
   const candidates = result?.mission.candidates ?? [];
   const missionStatus = result?.mission.status ?? "";
   const missionRunning = missionStatus === "QUEUED" || missionStatus === "RUNNING";
@@ -312,6 +318,10 @@ export function LaneMissionControl({
   React.useEffect(() => {
     setWorkspace(initialWorkspace);
   }, [initialWorkspace]);
+
+  React.useEffect(() => {
+    if (officialTenderMode) setIncludeSources(false);
+  }, [officialTenderMode]);
 
   const loadMission = React.useCallback(async (id: string, quiet = false, syncUrl = true) => {
     if (!quiet) setRefreshing(true);
@@ -425,7 +435,7 @@ export function LaneMissionControl({
           excludedTerms: listFromInput(excludedTerms),
           provider,
           includeWeb,
-          includeSources,
+          includeSources: effectiveIncludeSources,
           maxResults: Number(maxResults) || 16,
         }),
       });
@@ -732,9 +742,14 @@ export function LaneMissionControl({
                   <Database className="h-4 w-4" />
                   Sources
                 </Label>
-                <Switch id="mission-sources" checked={includeSources} onCheckedChange={setIncludeSources} />
+                <Switch
+                  id="mission-sources"
+                  checked={effectiveIncludeSources}
+                  disabled={officialTenderMode}
+                  onCheckedChange={setIncludeSources}
+                />
               </div>
-              <Button type="submit" disabled={loading || !laneId || (!includeWeb && !includeSources)} className="w-full">
+              <Button type="submit" disabled={loading || !laneId || (!includeWeb && !effectiveIncludeSources)} className="w-full">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                 Queue lane
               </Button>

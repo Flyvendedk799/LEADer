@@ -588,15 +588,17 @@ export async function executeDiscoveryMission(
     }
 
     const phaseStartedAt = Date.now();
-    const broadWebProvider =
+    const officialOnlyTenderMode =
       prepared.lane.slug === "tenders-procurement" &&
       prepared.workspace === "DK" &&
       input.provider === "auto" &&
-      input.searchMode !== "wide"
-        ? "none"
-        : input.provider;
-    if (broadWebProvider !== input.provider) {
-      await appendLog("Tender lane using official udbud.dk index; choose Wide or an explicit provider for broad web expansion.");
+      input.searchMode !== "wide";
+    const broadWebProvider = officialOnlyTenderMode ? "none" : input.provider;
+    const includeSources = officialOnlyTenderMode ? false : input.includeSources;
+    if (officialOnlyTenderMode) {
+      await appendLog(
+        "Tender lane using official udbud.dk active notices only; choose Wide or an explicit provider for broad web and source expansion.",
+      );
     }
 
     const result = await runDiscoverySearch(ownerId, {
@@ -607,7 +609,7 @@ export async function executeDiscoveryMission(
       workspace: prepared.workspace,
       maxResults: input.maxResults,
       includeWeb: input.includeWeb,
-      includeSources: input.includeSources,
+      includeSources,
       provider: broadWebProvider,
       resultKind: prepared.lane.slug === "tenders-procurement" ? "opportunities" : undefined,
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,

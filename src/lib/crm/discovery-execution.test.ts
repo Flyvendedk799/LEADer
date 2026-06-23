@@ -242,19 +242,19 @@ describe("discovery mission execution", () => {
       searchMode: "focused",
       maxResults: 8,
       includeWeb: true,
-      includeSources: false,
+      includeSources: true,
       provider: "auto",
     });
 
     expect(mocks.runDiscoverySearch).toHaveBeenCalledWith(
       "owner-1",
-      expect.objectContaining({ provider: "none", resultKind: "opportunities" }),
+      expect.objectContaining({ includeSources: false, provider: "none", resultKind: "opportunities" }),
     );
     expect(mocks.db.discoveryMission.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           log: expect.objectContaining({
-            push: expect.stringContaining("official udbud.dk index"),
+            push: expect.stringContaining("official udbud.dk active notices only"),
           }),
         }),
       }),
