@@ -19,6 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import { workflowRunCanRerun, workflowRunRerunBlockedMessage } from "@/lib/workflows/run-actions";
 import { formatDate, truncate } from "@/lib/utils";
 
 export type WorkflowRunQueueItem = {
@@ -267,6 +268,8 @@ export function WorkflowRunQueue({
         const latestLog = run.log.at(-1) ?? null;
         const visibleLatestLog = latestLog && latestLog !== run.summary ? latestLog : null;
         const cancelable = ["QUEUED", "RUNNING"].includes(run.status);
+        const rerunnable = workflowRunCanRerun(run.status);
+        const rerunBlockedMessage = workflowRunRerunBlockedMessage(run.status);
         const cancelBusy = busyId === `CANCEL-${run.id}`;
         const rerunBusy = busyId === `RERUN-${run.id}`;
         const queuedIndex = queueState.queuedRunIds.indexOf(run.id);
@@ -370,10 +373,10 @@ export function WorkflowRunQueue({
                 size="icon"
                 variant="outline"
                 className="h-8 w-8"
-                disabled={Boolean(busyId)}
+                disabled={Boolean(busyId) || !rerunnable}
                 onClick={() => controlRun(run, "RERUN")}
-                aria-label="Rerun workflow"
-                title="Rerun workflow"
+                aria-label={rerunBlockedMessage ?? "Rerun workflow"}
+                title={rerunBlockedMessage ?? "Rerun workflow"}
               >
                 {rerunBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
               </Button>

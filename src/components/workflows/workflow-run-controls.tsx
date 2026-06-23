@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import { workflowRunCanRerun, workflowRunRerunBlockedMessage } from "@/lib/workflows/run-actions";
 import { formatDate, truncate } from "@/lib/utils";
 import {
   ArrowDown,
@@ -200,6 +201,8 @@ export function WorkflowRunControls({
   const queuedIndex = queueState.queuedRunIds.indexOf(item.id);
   const queueLabel = queueState.activeRunId === item.id ? "active" : queuedIndex >= 0 ? `queued #${queuedIndex + 1}` : null;
   const cancelable = item.status === "QUEUED" || item.status === "RUNNING";
+  const rerunnable = workflowRunCanRerun(item.status);
+  const rerunBlockedMessage = workflowRunRerunBlockedMessage(item.status);
   const moveable = item.status === "QUEUED" && queuedIndex >= 0;
   const lastQueuedIndex = queueState.queuedRunIds.length - 1;
 
@@ -280,8 +283,9 @@ export function WorkflowRunControls({
           <Button
             type="button"
             variant="outline"
-            disabled={Boolean(busyAction)}
+            disabled={Boolean(busyAction) || !rerunnable}
             onClick={() => controlRun("RERUN")}
+            title={rerunBlockedMessage ?? "Rerun workflow"}
           >
             {busyAction === "RERUN" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
             Rerun

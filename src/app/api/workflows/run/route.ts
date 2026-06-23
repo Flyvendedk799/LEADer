@@ -18,6 +18,7 @@ import {
   type WorkflowQueueMoveAction,
 } from "@/lib/workflows/queue";
 import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
+import { workflowRunRerunBlockedMessage } from "@/lib/workflows/run-actions";
 import { findActiveResearchBriefRun, researchBriefIdentityFromInput } from "@/lib/workflows/research-targets";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 import { workflowRunInputSchema } from "@/lib/workflows/types";
@@ -204,6 +205,11 @@ export async function PATCH(req: Request) {
         },
       });
       return NextResponse.json({ run: workflowRunPayload(run), queue: await visibleWorkflowQueueSnapshotForOwner(ownerId) });
+    }
+
+    const rerunBlockedMessage = workflowRunRerunBlockedMessage(source.status);
+    if (rerunBlockedMessage) {
+      return NextResponse.json({ error: rerunBlockedMessage }, { status: 409 });
     }
 
     const input = workflowRunInputSchema.safeParse(source.input ?? {
