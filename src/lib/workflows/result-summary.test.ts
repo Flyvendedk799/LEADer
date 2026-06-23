@@ -31,7 +31,7 @@ describe("workflowRunResultSummary", () => {
         createdTasks: 6,
         skippedExistingTasks: 2,
       }),
-    ).toBe("6 research tasks - 2 existing - Aarhus Kommune");
+    ).toBe("3 runbook steps - 4 worksheet sections - 6 research tasks - 2 existing - Aarhus Kommune");
   });
 
   it("surfaces worksheet sections for completed research briefs", () => {

@@ -11,6 +11,7 @@ import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatDate, truncate } from "@/lib/utils";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
+import { researchBriefRunbookFromResult, researchBriefWorksheetFromResult } from "@/lib/workflows/research-brief-result";
 import { researchSearchHref, uniqueResearchPrompts } from "@/lib/workflows/research-links";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 import { workflowTaskHref } from "@/lib/workflows/task-links";
@@ -78,8 +79,18 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
   const operatingRescueTasks =
     numberValue(operatingStaleDeals?.tasksCreated) + numberValue(operatingDeadlines?.tasksCreated);
   const checklist = Array.isArray(result?.checklist) ? result.checklist.filter((item) => objectValue(item)) : [];
-  const worksheet = Array.isArray(result?.worksheet) ? result.worksheet.filter((item) => objectValue(item)) : [];
-  const runbook = Array.isArray(result?.runbook) ? result.runbook.filter((item) => objectValue(item)) : [];
+  const worksheet =
+    run.playbook === "research-brief"
+      ? researchBriefWorksheetFromResult(result, run.workspace, input)
+      : Array.isArray(result?.worksheet)
+        ? result.worksheet.filter((item) => objectValue(item))
+        : [];
+  const runbook =
+    run.playbook === "research-brief"
+      ? researchBriefRunbookFromResult(result, run.workspace, input)
+      : Array.isArray(result?.runbook)
+        ? result.runbook.filter((item) => objectValue(item))
+        : [];
   const taskIds = stringList(result?.taskIds);
   const dealIds = stringList(result?.dealIds);
   const tasks = taskIds.length

@@ -1,3 +1,5 @@
+import { researchBriefRunbookFromResult, researchBriefWorksheetFromResult } from "./research-brief-result";
+
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
@@ -36,8 +38,8 @@ export function workflowRunResultSummary(playbook: string, result: unknown) {
   }
 
   if (playbook === "research-brief") {
-    const runbookSteps = arrayCount(payload.runbook);
-    const worksheetSections = arrayCount(payload.worksheet);
+    const runbookSteps = researchBriefRunbookFromResult(payload).length || arrayCount(payload.runbook);
+    const worksheetSections = researchBriefWorksheetFromResult(payload).length || arrayCount(payload.worksheet);
     const runbook = runbookSteps ? `${runbookSteps} runbook steps - ` : "";
     const worksheet = worksheetSections ? `${worksheetSections} worksheet sections - ` : "";
     return `${runbook}${worksheet}${numberValue(payload.createdTasks)} research tasks - ${numberValue(payload.skippedExistingTasks)} existing - ${subject}`;
