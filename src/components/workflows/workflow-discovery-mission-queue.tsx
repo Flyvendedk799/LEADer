@@ -10,14 +10,17 @@ import {
   CheckCircle2,
   Clock3,
   ExternalLink,
+  History,
   Loader2,
   Radar,
   RotateCw,
+  Search,
   XCircle,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
@@ -137,6 +140,32 @@ function sortMissionsWithQueue(items: WorkflowDiscoveryMissionItem[], queue: Dis
   });
 }
 
+function missionSearchText(mission: WorkflowDiscoveryMissionItem) {
+  return [
+    mission.id,
+    mission.status,
+    mission.provider,
+    mission.laneName,
+    mission.query,
+    ...(mission.warnings ?? []),
+    ...(mission.log ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function missionMatchesSearch(mission: WorkflowDiscoveryMissionItem, search: string) {
+  const terms = search
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = missionSearchText(mission);
+  return terms.every((term) => haystack.includes(term));
+}
+
 export function WorkflowDiscoveryMissionQueue({
   missions,
   queue = { activeMissionId: null, queuedMissionIds: [] },
@@ -146,10 +175,18 @@ export function WorkflowDiscoveryMissionQueue({
 }) {
   const router = useRouter();
   const [items, setItems] = React.useState(missions);
+  const [historySearch, setHistorySearch] = React.useState("");
+  const [historyLimit, setHistoryLimit] = React.useState(20);
   const [queueState, setQueueState] = React.useState(() => normalizeQueue(queue));
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
   const orderedItems = React.useMemo(() => sortMissionsWithQueue(items, queueState), [items, queueState]);
+  const filteredItems = React.useMemo(
+    () => orderedItems.filter((mission) => missionMatchesSearch(mission, historySearch)),
+    [historySearch, orderedItems],
+  );
+  const historySearchActive = historySearch.trim().length > 0;
+  const canLoadOlderMissions = items.length >= historyLimit && historyLimit < 100;
 
   React.useEffect(() => {
     setItems(missions);
@@ -173,7 +210,8 @@ export function WorkflowDiscoveryMissionQueue({
 
     async function refreshMissions() {
       try {
-        const res = await fetch("/api/discovery/runs", { cache: "no-store" });
+        const params = new URLSearchParams({ limit: String(historyLimit) });
+        const res = await fetch(`/api/discovery/runs?${params.toString()}`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as MissionListResponse | null;
         if (!res.ok || !data || stopped) return;
         if (Array.isArray(data.missions)) {
@@ -192,7 +230,23 @@ export function WorkflowDiscoveryMissionQueue({
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [live]);
+  }, [historyLimit, live]);
+
+  const loadOlderMissions = React.useCallback(async () => {
+    const nextLimit = Math.min(100, historyLimit + 20);
+    setHistoryLimit(nextLimit);
+    try {
+      const params = new URLSearchParams({ limit: String(nextLimit) });
+      const res = await fetch(`/api/discovery/runs?${params.toString()}`, { cache: "no-store" });
+      const data = (await res.json().catch(() => null)) as MissionListResponse | null;
+      if (!res.ok || !data) throw new Error(data?.error || "Could not load discovery history");
+      if (Array.isArray(data.missions)) setItems(data.missions.map(apiMissionToItem));
+      setQueueState(normalizeQueue(data.queue));
+      setLastUpdatedAt(new Date());
+    } catch (err) {
+      toast.error("Could not load discovery history", err instanceof Error ? err.message : "Try again");
+    }
+  }, [historyLimit]);
 
   async function controlMission(mission: WorkflowDiscoveryMissionItem, action: MissionAction) {
     setBusyId(`${action}-${mission.id}`);
@@ -209,6 +263,7 @@ export function WorkflowDiscoveryMissionQueue({
       const updated = apiMissionToItem(data.mission);
       if (action === "RERUN") {
         setItems((current) => [updated, ...current]);
+        setHistorySearch("");
         toast.success("Discovery mission queued", firstQuery(updated.query));
       } else if (action === "CANCEL") {
         setItems((current) => current.map((item) => (item.id === mission.id ? { ...item, ...updated } : item)));
@@ -277,138 +332,188 @@ export function WorkflowDiscoveryMissionQueue({
           <span>Updated {formatDate(lastUpdatedAt.toISOString())}</span>
         ) : null}
       </div>
-      {orderedItems.map((mission) => {
-        const latestLog = mission.log.at(-1) ?? mission.warnings.at(0);
-        const cancelable = mission.status === "QUEUED" || mission.status === "RUNNING";
-        const cancelBusy = busyId === `CANCEL-${mission.id}`;
-        const rerunBusy = busyId === `RERUN-${mission.id}`;
-        const rerunnable = discoveryMissionCanRerun(mission.status);
-        const rerunBlockedMessage = discoveryMissionRerunBlockedMessage(mission.status);
-        const queuedIndex = queueState.queuedMissionIds.indexOf(mission.id);
-        const moveable = mission.status === "QUEUED" && queuedIndex >= 0;
-        const lastQueuedIndex = queueState.queuedMissionIds.length - 1;
-        const queueLabel =
-          queueState.activeMissionId === mission.id ? "active" : queuedIndex >= 0 ? `queued #${queuedIndex + 1}` : null;
+      <div className="space-y-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={historySearch}
+            onChange={(event) => setHistorySearch(event.target.value)}
+            placeholder="Find old discovery run"
+            className="pr-9 pl-8"
+          />
+          {historySearchActive ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+              onClick={() => setHistorySearch("")}
+              aria-label="Clear discovery run search"
+              title="Clear"
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          {historySearchActive
+            ? `${filteredItems.length} of ${orderedItems.length} loaded discovery runs match`
+            : `${orderedItems.length} discovery runs loaded`}
+        </p>
+      </div>
+      {filteredItems.length ? (
+        filteredItems.map((mission) => {
+          const latestLog = mission.log.at(-1) ?? mission.warnings.at(0);
+          const cancelable = mission.status === "QUEUED" || mission.status === "RUNNING";
+          const cancelBusy = busyId === `CANCEL-${mission.id}`;
+          const rerunBusy = busyId === `RERUN-${mission.id}`;
+          const rerunnable = discoveryMissionCanRerun(mission.status);
+          const rerunBlockedMessage = discoveryMissionRerunBlockedMessage(mission.status);
+          const queuedIndex = queueState.queuedMissionIds.indexOf(mission.id);
+          const moveable = mission.status === "QUEUED" && queuedIndex >= 0;
+          const lastQueuedIndex = queueState.queuedMissionIds.length - 1;
+          const queueLabel =
+            queueState.activeMissionId === mission.id ? "active" : queuedIndex >= 0 ? `queued #${queuedIndex + 1}` : null;
 
-        return (
-          <div
-            key={mission.id}
-            className="grid gap-3 rounded-md border border-border bg-surface/40 p-3 md:grid-cols-[minmax(0,1fr)_auto]"
-          >
-            <Link href={discoveryMissionHref(mission.id)} className="min-w-0 hover:text-primary">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusIcon status={mission.status} />
-                <p className="truncate text-sm font-medium">{mission.laneName}</p>
-                <Badge variant={statusVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
-                {mission.provider ? <Badge variant="outline">{mission.provider}</Badge> : null}
-                {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
-              </div>
-              <p className="mt-1 truncate text-xs text-muted-foreground">{firstQuery(mission.query)}</p>
-              {latestLog ? (
-                <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{truncate(latestLog, 150)}</p>
-              ) : null}
-            </Link>
-            <div className="flex items-center justify-end gap-2">
-              <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
-                <Radar className="h-3.5 w-3.5" />
-                <span className="whitespace-nowrap">{missionDuration(mission.startedAt, mission.finishedAt)}</span>
-                <span className="whitespace-nowrap">{mission.candidateCount} candidates</span>
-              </div>
-              {moveable ? (
-                <>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-8 w-8"
-                    disabled={Boolean(busyId) || queuedIndex === 0}
-                    onClick={() => controlMission(mission, "MOVE_TOP")}
-                    aria-label="Move discovery mission to top"
-                    title="Move discovery mission to top"
-                  >
-                    {busyId === `MOVE_TOP-${mission.id}` ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArrowUpToLine className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-8 w-8"
-                    disabled={Boolean(busyId) || queuedIndex === 0}
-                    onClick={() => controlMission(mission, "MOVE_UP")}
-                    aria-label="Move discovery mission up"
-                    title="Move discovery mission up"
-                  >
-                    {busyId === `MOVE_UP-${mission.id}` ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArrowUp className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-8 w-8"
-                    disabled={Boolean(busyId) || queuedIndex === lastQueuedIndex}
-                    onClick={() => controlMission(mission, "MOVE_DOWN")}
-                    aria-label="Move discovery mission down"
-                    title="Move discovery mission down"
-                  >
-                    {busyId === `MOVE_DOWN-${mission.id}` ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArrowDown className="h-4 w-4" />
-                    )}
-                  </Button>
-                </>
-              ) : null}
-              <Button
-                asChild
-                type="button"
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                aria-label="Inspect discovery mission"
-                title="Inspect discovery mission"
-              >
-                <Link href={discoveryMissionHref(mission.id)}>
-                  <ExternalLink className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                disabled={Boolean(busyId) || !rerunnable}
-                onClick={() => controlMission(mission, "RERUN")}
-                aria-label={rerunBlockedMessage ?? "Rerun discovery mission"}
-                title={rerunBlockedMessage ?? "Rerun discovery mission"}
-              >
-                {rerunBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-              </Button>
-              {cancelable ? (
+          return (
+            <div
+              key={mission.id}
+              className="grid gap-3 rounded-md border border-border bg-surface/40 p-3 md:grid-cols-[minmax(0,1fr)_auto]"
+            >
+              <Link href={discoveryMissionHref(mission.id)} className="min-w-0 hover:text-primary">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusIcon status={mission.status} />
+                  <p className="truncate text-sm font-medium">{mission.laneName}</p>
+                  <Badge variant={statusVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
+                  {mission.provider ? <Badge variant="outline">{mission.provider}</Badge> : null}
+                  {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
+                </div>
+                <p className="mt-1 truncate text-xs text-muted-foreground">{firstQuery(mission.query)}</p>
+                {latestLog ? (
+                  <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                    {truncate(latestLog, 150)}
+                  </p>
+                ) : null}
+              </Link>
+              <div className="flex items-center justify-end gap-2">
+                <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
+                  <Radar className="h-3.5 w-3.5" />
+                  <span className="whitespace-nowrap">{missionDuration(mission.startedAt, mission.finishedAt)}</span>
+                  <span className="whitespace-nowrap">{mission.candidateCount} candidates</span>
+                </div>
+                {moveable ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      disabled={Boolean(busyId) || queuedIndex === 0}
+                      onClick={() => controlMission(mission, "MOVE_TOP")}
+                      aria-label="Move discovery mission to top"
+                      title="Move discovery mission to top"
+                    >
+                      {busyId === `MOVE_TOP-${mission.id}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowUpToLine className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      disabled={Boolean(busyId) || queuedIndex === 0}
+                      onClick={() => controlMission(mission, "MOVE_UP")}
+                      aria-label="Move discovery mission up"
+                      title="Move discovery mission up"
+                    >
+                      {busyId === `MOVE_UP-${mission.id}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowUp className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      disabled={Boolean(busyId) || queuedIndex === lastQueuedIndex}
+                      onClick={() => controlMission(mission, "MOVE_DOWN")}
+                      aria-label="Move discovery mission down"
+                      title="Move discovery mission down"
+                    >
+                      {busyId === `MOVE_DOWN-${mission.id}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowDown className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </>
+                ) : null}
+                <Button
+                  asChild
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8"
+                  aria-label="Inspect discovery mission"
+                  title="Inspect discovery mission"
+                >
+                  <Link href={discoveryMissionHref(mission.id)}>
+                    <ExternalLink className="h-4 w-4" />
+                  </Link>
+                </Button>
                 <Button
                   type="button"
                   size="icon"
                   variant="outline"
                   className="h-8 w-8"
-                  disabled={Boolean(busyId)}
-                  onClick={() => controlMission(mission, "CANCEL")}
-                  aria-label="Cancel discovery mission"
-                  title="Cancel discovery mission"
+                  disabled={Boolean(busyId) || !rerunnable}
+                  onClick={() => controlMission(mission, "RERUN")}
+                  aria-label={rerunBlockedMessage ?? "Rerun discovery mission"}
+                  title={rerunBlockedMessage ?? "Rerun discovery mission"}
                 >
-                  {cancelBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                  {rerunBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
                 </Button>
-              ) : null}
+                {cancelable ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    disabled={Boolean(busyId)}
+                    onClick={() => controlMission(mission, "CANCEL")}
+                    aria-label="Cancel discovery mission"
+                    title="Cancel discovery mission"
+                  >
+                    {cancelBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })
+      ) : (
+        <p className="py-3 text-center text-sm text-muted-foreground">
+          {historySearchActive ? "No loaded discovery runs match this search." : "No discovery runs yet."}
+        </p>
+      )}
+      {canLoadOlderMissions ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full"
+          disabled={Boolean(busyId)}
+          onClick={loadOlderMissions}
+        >
+          <History className="h-4 w-4" />
+          Load older discovery runs
+        </Button>
+      ) : null}
     </div>
   );
 }

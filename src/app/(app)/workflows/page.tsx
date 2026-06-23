@@ -176,7 +176,7 @@ export default async function WorkflowsPage() {
         _count: { select: { candidates: true } },
       },
       orderBy: { startedAt: "desc" },
-      take: 8,
+      take: 20,
     }),
     db.workflowRun.findMany({
       where: { ownerId },
