@@ -14,7 +14,7 @@ import {
 import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import { discoveryLogEntry, discoveryQueueLogMessage } from "@/lib/crm/discovery-logging";
 import { type CandidateLike, type LaneLike } from "@/lib/crm/lanes";
-import { discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
+import { discoveryMissionInputMatchesActiveRun, discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
 import {
   discoveryQueueSnapshot,
   enqueueDiscoveryMission,
@@ -63,6 +63,14 @@ const missionListInclude = {
   _count: { select: { candidates: true } },
 };
 
+const missionDetailInclude = {
+  lane: true,
+  candidates: {
+    include: { evidence: true, deal: true, account: true },
+    orderBy: [{ pursuitScore: "desc" as const }, { createdAt: "desc" as const }],
+  },
+};
+
 function visibleMissionListRow<T extends {
   lane: LaneLike | null;
   candidates: CandidateLike[];
@@ -78,11 +86,31 @@ function visibleMissionListRow<T extends {
   return {
     ...rest,
     provider: discoveryMissionProviderLabel(mission),
+    hiddenCandidateCount: visible.removed,
     warnings: hiddenWarning ? [...baseWarnings, hiddenWarning] : baseWarnings,
     _count: {
       ...rest._count,
       candidates: visible.candidates.length,
     },
+  };
+}
+
+function visibleMissionDetail<T extends {
+  lane: LaneLike | null;
+  candidates: (CandidateLike & { status?: string | null })[];
+  provider?: string | null;
+  log?: string[];
+  warnings: string[];
+}>(mission: T) {
+  const visible = filterReviewableDiscoveryCandidates(mission.lane, mission.candidates);
+  const baseWarnings = discoveryMissionDisplayWarnings(mission, mission.warnings);
+  const hiddenWarning = hiddenDiscoveryCandidatesWarning(visible.removed, visible.reasons);
+  return {
+    ...mission,
+    provider: discoveryMissionProviderLabel(mission),
+    candidates: visible.candidates,
+    warnings: hiddenWarning ? [...baseWarnings, hiddenWarning] : baseWarnings,
+    hiddenCandidateCount: visible.removed,
   };
 }
 
@@ -109,6 +137,30 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const parsed = discoveryRunCreateSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+
+    const queueBeforeCreate = await recoverDiscoveryQueue(ownerId);
+    const activeMissions = await db.discoveryMission.findMany({
+      where: { ownerId, status: { in: ["QUEUED", "RUNNING"] }, finishedAt: null },
+      select: { id: true, status: true, finishedAt: true, workspace: true, input: true },
+      orderBy: [{ queuePriority: "desc" }, { startedAt: "asc" }],
+      take: 50,
+    });
+    const existing = activeMissions.find((mission) => discoveryMissionInputMatchesActiveRun(parsed.data, mission));
+    if (existing) {
+      const mission = await db.discoveryMission.findFirst({
+        where: { id: existing.id, ownerId },
+        include: missionDetailInclude,
+      });
+      const visibleMission = mission ? visibleMissionDetail(mission) : mission;
+      return NextResponse.json({
+        mission: visibleMission,
+        hiddenCandidateCount: visibleMission?.hiddenCandidateCount ?? 0,
+        queued: false,
+        existing: true,
+        queue: queueBeforeCreate,
+      });
+    }
+
     const mission = await createDiscoveryMission(ownerId, parsed.data, "QUEUED");
     enqueueDiscoveryMission(ownerId, mission.id, parsed.data);
     const queue = discoveryQueueSnapshot(ownerId);

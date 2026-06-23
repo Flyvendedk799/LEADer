@@ -23,6 +23,7 @@ export type WorkflowSavedSearchItem = {
 type QueuedSearchResult = {
   searchId: string;
   missionId: string;
+  existing?: boolean;
 };
 
 export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSavedSearchItem[] }) {
@@ -73,7 +74,7 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
     });
     const data = await res.json().catch(() => null);
     if (!res.ok || !data?.mission?.id) throw new Error(data?.error || "Could not queue discovery");
-    return String(data.mission.id);
+    return { missionId: String(data.mission.id), existing: Boolean(data.existing) };
   }
 
   async function runSearch(search: WorkflowSavedSearchItem) {
@@ -81,10 +82,10 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
     setQueuedResults([]);
     setFailedCount(0);
     try {
-      const missionId = await queueSearch(search);
-      if (!missionId) return;
-      toast.success("Discovery mission queued", search.name);
-      router.push(discoveryMissionHref(missionId));
+      const result = await queueSearch(search);
+      if (!result) return;
+      toast.success(result.existing ? "Discovery mission already active" : "Discovery mission queued", search.name);
+      router.push(discoveryMissionHref(result.missionId));
       router.refresh();
     } catch (err) {
       toast.error("Could not queue discovery", err instanceof Error ? err.message : "Try again");
@@ -103,8 +104,8 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
     try {
       for (const search of queueableItems) {
         try {
-          const missionId = await queueSearch(search);
-          if (missionId) queued.push({ searchId: search.id, missionId });
+          const result = await queueSearch(search);
+          if (result) queued.push({ searchId: search.id, missionId: result.missionId, existing: result.existing });
         } catch {
           failed += 1;
         }
@@ -112,10 +113,15 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
 
       setQueuedResults(queued);
       setFailedCount(failed);
+      const existing = queued.filter((item) => item.existing).length;
+      const created = queued.length - existing;
       if (queued.length && failed) {
-        toast.error("Some saved searches failed", `${queued.length} queued - ${failed} failed`);
+        toast.error("Some saved searches failed", `${created} queued${existing ? ` - ${existing} already active` : ""} - ${failed} failed`);
       } else if (queued.length) {
-        toast.success("Saved searches queued", `${queued.length} discovery missions queued`);
+        toast.success(
+          existing ? "Saved searches checked" : "Saved searches queued",
+          `${created} queued${existing ? ` - ${existing} already active` : ""}`,
+        );
       } else {
         toast.error("No saved searches queued", failed ? `${failed} failed` : "No queueable saved searches");
       }
@@ -134,7 +140,11 @@ export function WorkflowSavedSearchQueue({ searches }: { searches: WorkflowSaved
       <div className="flex flex-wrap items-center justify-end gap-2">
         {queuedResults.length || failedCount ? (
           <p className={failedCount ? "mr-auto text-xs text-warning" : "mr-auto text-xs text-success"}>
-            {queuedResults.length} queued{failedCount ? ` - ${failedCount} failed` : ""}
+            {queuedResults.filter((item) => !item.existing).length} queued
+            {queuedResults.some((item) => item.existing)
+              ? ` - ${queuedResults.filter((item) => item.existing).length} already active`
+              : ""}
+            {failedCount ? ` - ${failedCount} failed` : ""}
             {latestQueuedResult ? (
               <>
                 {" - "}

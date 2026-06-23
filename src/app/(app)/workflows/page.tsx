@@ -109,6 +109,7 @@ function visibleMissionCandidateMeta(mission: {
   const hiddenWarning = hiddenDiscoveryCandidatesWarning(visible.removed, visible.reasons);
   return {
     candidateCount: visible.candidates.length,
+    hiddenCandidateCount: visible.removed,
     warnings: hiddenWarning ? [...baseWarnings, hiddenWarning] : baseWarnings,
   };
 }
@@ -546,6 +547,7 @@ export default async function WorkflowsPage() {
       warnings: visible.warnings,
       log: mission.log,
       candidateCount: visible.candidateCount,
+      hiddenCandidateCount: visible.hiddenCandidateCount,
     };
   });
   const workflowPresetItems: WorkflowPresetPanelItem[] = await Promise.all(

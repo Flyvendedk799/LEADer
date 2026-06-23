@@ -38,6 +38,7 @@ export type WorkflowDiscoveryMissionItem = {
   warnings: string[];
   log: string[];
   candidateCount: number;
+  hiddenCandidateCount?: number;
 };
 
 type DiscoveryQueueSnapshot = {
@@ -108,6 +109,8 @@ function apiMissionToItem(mission: ApiMission): WorkflowDiscoveryMissionItem {
         : typeof mission._count?.candidates === "number"
           ? mission._count.candidates
           : 0,
+    hiddenCandidateCount:
+      typeof mission.hiddenCandidateCount === "number" ? mission.hiddenCandidateCount : 0,
   };
 }
 
@@ -147,6 +150,8 @@ function missionSearchText(mission: WorkflowDiscoveryMissionItem) {
     mission.provider,
     mission.laneName,
     mission.query,
+    mission.candidateCount ? `${mission.candidateCount} reviewable` : "",
+    mission.hiddenCandidateCount ? `${mission.hiddenCandidateCount} hidden` : "",
     ...(mission.warnings ?? []),
     ...(mission.log ?? []),
   ]
@@ -399,7 +404,14 @@ export function WorkflowDiscoveryMissionQueue({
                 <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
                   <Radar className="h-3.5 w-3.5" />
                   <span className="whitespace-nowrap">{missionDuration(mission.startedAt, mission.finishedAt)}</span>
-                  <span className="whitespace-nowrap">{mission.candidateCount} candidates</span>
+                  <span className="whitespace-nowrap">
+                    {mission.hiddenCandidateCount
+                      ? `${mission.candidateCount} reviewable`
+                      : `${mission.candidateCount} candidates`}
+                  </span>
+                  {mission.hiddenCandidateCount ? (
+                    <span className="whitespace-nowrap">{mission.hiddenCandidateCount} hidden</span>
+                  ) : null}
                 </div>
                 {moveable ? (
                   <>

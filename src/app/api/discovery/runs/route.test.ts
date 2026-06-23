@@ -49,11 +49,19 @@ vi.mock("@/lib/crm/discovery-queue", () => ({
   visibleDiscoveryQueueSnapshotForOwner: mocks.visibleDiscoveryQueueSnapshotForOwner,
 }));
 
-import { GET, PATCH } from "./route";
+import { GET, PATCH, POST } from "./route";
 
 function patchRequest(body: unknown) {
   return new Request("http://localhost/api/discovery/runs", {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function postRequest(body: unknown) {
+  return new Request("http://localhost/api/discovery/runs", {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -73,7 +81,7 @@ describe("discovery run API controls", () => {
     mocks.discoveryMissionProviderLabel.mockImplementation((mission) => mission.provider ?? "auto");
     mocks.filterReviewableDiscoveryCandidates.mockImplementation((_lane, candidates) => ({
       candidates,
-      removed: [],
+      removed: 0,
       reasons: [],
     }));
     mocks.hiddenDiscoveryCandidatesWarning.mockReturnValue(null);
@@ -105,6 +113,7 @@ describe("discovery run API controls", () => {
         expect.objectContaining({
           id: "mission-1",
           provider: "auto",
+          hiddenCandidateCount: 0,
           _count: { candidates: 0 },
         }),
       ],
@@ -152,5 +161,103 @@ describe("discovery run API controls", () => {
     });
     expect(mocks.createDiscoveryMission).not.toHaveBeenCalled();
     expect(mocks.enqueueDiscoveryMission).not.toHaveBeenCalled();
+  });
+
+  it("returns an existing active discovery mission instead of queueing a duplicate", async () => {
+    mocks.db.discoveryMission.findMany.mockResolvedValue([
+      {
+        id: "mission-1",
+        status: "RUNNING",
+        finishedAt: null,
+        workspace: "DK",
+        input: {
+          laneId: "lane-1",
+          query: "software udbud",
+          workspace: "DK",
+          maxResults: 8,
+          includeWeb: true,
+          includeSources: false,
+          provider: "none",
+        },
+      },
+    ]);
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({
+      id: "mission-1",
+      status: "RUNNING",
+      lane: { id: "lane-1", name: "Tenders" },
+      candidates: [],
+      warnings: [],
+    });
+
+    const response = await POST(postRequest({
+      laneId: "lane-1",
+      query: " software   udbud ",
+      workspace: "DK",
+      maxResults: 8,
+      includeWeb: true,
+      includeSources: false,
+      provider: "none",
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      mission: expect.objectContaining({ id: "mission-1" }),
+      hiddenCandidateCount: 0,
+      queued: false,
+      existing: true,
+      queue: { activeMissionId: null, queuedMissionIds: [] },
+    });
+    expect(mocks.createDiscoveryMission).not.toHaveBeenCalled();
+    expect(mocks.enqueueDiscoveryMission).not.toHaveBeenCalled();
+  });
+
+  it("queues a new discovery mission when no active input matches", async () => {
+    mocks.db.discoveryMission.findMany.mockResolvedValue([]);
+    mocks.createDiscoveryMission.mockResolvedValue({
+      id: "mission-2",
+      status: "QUEUED",
+      lane: { id: "lane-1", name: "Tenders" },
+      candidates: [],
+      warnings: [],
+    });
+    mocks.discoveryQueueSnapshot.mockReturnValue({ activeMissionId: null, queuedMissionIds: ["mission-2"] });
+    mocks.db.discoveryMission.update.mockResolvedValue({});
+
+    const response = await POST(postRequest({
+      laneId: "lane-1",
+      query: "software udbud",
+      workspace: "DK",
+      maxResults: 8,
+      includeWeb: true,
+      includeSources: false,
+      provider: "none",
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(202);
+    expect(body).toEqual({
+      mission: expect.objectContaining({ id: "mission-2" }),
+      queued: true,
+      queue: { activeMissionId: null, queuedMissionIds: ["mission-2"] },
+    });
+    expect(mocks.createDiscoveryMission).toHaveBeenCalledWith(
+      "owner-1",
+      expect.objectContaining({
+        laneId: "lane-1",
+        query: "software udbud",
+        workspace: "DK",
+        maxResults: 8,
+        includeWeb: true,
+        includeSources: false,
+        provider: "none",
+      }),
+      "QUEUED",
+    );
+    expect(mocks.enqueueDiscoveryMission).toHaveBeenCalledWith(
+      "owner-1",
+      "mission-2",
+      expect.objectContaining({ laneId: "lane-1", query: "software udbud" }),
+    );
   });
 });

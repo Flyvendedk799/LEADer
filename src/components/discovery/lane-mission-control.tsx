@@ -140,6 +140,8 @@ type MissionDetailResponse = MissionResult & {
   hiddenCandidateCount?: number;
   hiddenCandidates?: Candidate[];
   queue?: Partial<DiscoveryQueueSnapshot>;
+  existing?: boolean;
+  queued?: boolean;
   error?: string;
 };
 
@@ -512,7 +514,10 @@ export function LaneMissionControl({
         sourceScanCount: data.mission.sourceScanCount,
         _count: { candidates: data.mission.candidates?.length ?? 0 },
       });
-      toast.success("Discovery mission queued");
+      toast.success(
+        data.existing ? "Discovery mission already active" : "Discovery mission queued",
+        data.existing ? "Opening the active background mission." : undefined,
+      );
     } catch (err) {
       toast.error("Discovery failed", err instanceof Error ? err.message : "Could not run the lane");
     } finally {

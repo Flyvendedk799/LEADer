@@ -212,7 +212,10 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "Could not queue discovery");
-      toast.success("Discovery mission queued", "Opening the running mission.");
+      toast.success(
+        data?.existing ? "Discovery mission already active" : "Discovery mission queued",
+        data?.existing ? "Opening the active background mission." : "Opening the running mission.",
+      );
       router.push(discoveryMissionHref(data.mission?.id));
       router.refresh();
     } catch (err) {
