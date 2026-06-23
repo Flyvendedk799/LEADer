@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Search } from "lucide-react";
+import { Building2, Loader2, MapPinned, Search, ShieldCheck, UserSearch } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,48 @@ type WorkflowRunResponse = {
   };
   error?: unknown;
 };
+
+export const RESEARCH_BRIEF_STARTERS = [
+  {
+    id: "name-contact",
+    label: "Name to contact",
+    subjectType: "person",
+    objective: "find-contact",
+    depth: "standard",
+    icon: UserSearch,
+  },
+  {
+    id: "company-contact",
+    label: "Company contact",
+    subjectType: "company",
+    objective: "find-contact",
+    depth: "standard",
+    icon: Building2,
+  },
+  {
+    id: "opportunity-map",
+    label: "Opportunity map",
+    subjectType: "company",
+    objective: "map-opportunity",
+    depth: "deep",
+    icon: MapPinned,
+  },
+  {
+    id: "verify-match",
+    label: "Verify match",
+    subjectType: "unknown",
+    objective: "verify-identity",
+    depth: "standard",
+    icon: ShieldCheck,
+  },
+] satisfies Array<{
+  id: string;
+  label: string;
+  subjectType: ResearchSubjectType;
+  objective: ResearchObjective;
+  depth: ResearchDepth;
+  icon: React.ComponentType<{ className?: string }>;
+}>;
 
 export function ResearchBriefLauncher({
   defaultSubject = "",
@@ -92,6 +134,12 @@ export function ResearchBriefLauncher({
     }
   }
 
+  function applyStarter(starter: (typeof RESEARCH_BRIEF_STARTERS)[number]) {
+    setSelectedType(starter.subjectType);
+    setSelectedObjective(starter.objective);
+    setSelectedDepth(starter.depth);
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -108,6 +156,29 @@ export function ResearchBriefLauncher({
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
           {buttonLabel}
         </Button>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {RESEARCH_BRIEF_STARTERS.map((starter) => {
+          const Icon = starter.icon;
+          const active =
+            selectedType === starter.subjectType &&
+            selectedObjective === starter.objective &&
+            selectedDepth === starter.depth;
+          return (
+            <Button
+              key={starter.id}
+              type="button"
+              variant={active ? "secondary" : "outline"}
+              size="sm"
+              className="justify-start"
+              onClick={() => applyStarter(starter)}
+            >
+              <Icon className="h-4 w-4" />
+              {starter.label}
+            </Button>
+          );
+        })}
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
