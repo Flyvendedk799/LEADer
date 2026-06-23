@@ -34,6 +34,13 @@ const workflowRunActionSchema = z.object({
   action: z.enum(["CANCEL", "CANCEL_ALL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
 });
 
+function workflowRunHistoryLimit(req: Request) {
+  const raw = new URL(req.url).searchParams.get("limit");
+  const parsed = raw ? Number(raw) : 20;
+  if (!Number.isFinite(parsed)) return 20;
+  return Math.min(100, Math.max(20, Math.floor(parsed)));
+}
+
 function workflowRunPayload(run: WorkflowRunPayload | null) {
   if (!run) return null;
   return {
@@ -43,7 +50,7 @@ function workflowRunPayload(run: WorkflowRunPayload | null) {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const ownerId = await requireOwnerId();
     const queue = await recoverWorkflowQueue(ownerId);
@@ -51,7 +58,7 @@ export async function GET() {
       where: { ownerId },
       include: { preset: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: workflowRunHistoryLimit(req),
     });
     return NextResponse.json({ runs: runs.map(workflowRunPayload), queue });
   } catch (err) {

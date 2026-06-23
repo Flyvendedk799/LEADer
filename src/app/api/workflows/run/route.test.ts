@@ -44,7 +44,11 @@ vi.mock("@/lib/workflows/research-targets", () => ({
   researchBriefIdentityFromInput: mocks.researchBriefIdentityFromInput,
 }));
 
-import { PATCH } from "./route";
+import { GET, PATCH } from "./route";
+
+function getRequest(query = "") {
+  return new Request(`http://localhost/api/workflows/run${query}`);
+}
 
 function patchRequest(body: unknown) {
   return new Request("http://localhost/api/workflows/run", {
@@ -59,6 +63,51 @@ describe("workflow run API controls", () => {
     vi.clearAllMocks();
     mocks.requireOwnerId.mockResolvedValue("owner-1");
     mocks.recoverWorkflowQueue.mockResolvedValue({ activeRunId: null, queuedRunIds: [] });
+  });
+
+  it("loads expanded workflow run history when requested", async () => {
+    mocks.db.workflowRun.findMany.mockResolvedValue([
+      {
+        id: "run-1",
+        playbook: "research-brief",
+        workspace: "DK",
+        status: "SUCCESS",
+        result: { subject: "Mette Jensen", createdTasks: 2 },
+        preset: { name: "Contact research" },
+      },
+    ]);
+
+    const response = await GET(getRequest("?limit=80"));
+
+    expect(response.status).toBe(200);
+    expect(mocks.db.workflowRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { ownerId: "owner-1" },
+        take: 80,
+      }),
+    );
+    await expect(response.json()).resolves.toEqual({
+      runs: [
+        expect.objectContaining({
+          id: "run-1",
+          presetName: "Contact research",
+          summary: expect.any(String),
+        }),
+      ],
+      queue: { activeRunId: null, queuedRunIds: [] },
+    });
+  });
+
+  it("caps expanded workflow run history requests", async () => {
+    mocks.db.workflowRun.findMany.mockResolvedValue([]);
+
+    await GET(getRequest("?limit=500"));
+
+    expect(mocks.db.workflowRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 100,
+      }),
+    );
   });
 
   it("blocks rerunning a live workflow run", async () => {

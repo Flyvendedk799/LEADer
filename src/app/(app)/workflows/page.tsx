@@ -182,7 +182,7 @@ export default async function WorkflowsPage() {
       where: { ownerId },
       include: { preset: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
-      take: 8,
+      take: 20,
     }),
     db.workflowPreset.findMany({
       where: { ownerId },

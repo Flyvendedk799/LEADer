@@ -10,14 +10,17 @@ import {
   CheckCircle2,
   Clock3,
   ExternalLink,
+  History,
   Loader2,
   PlayCircle,
   RotateCw,
+  Search,
   XCircle,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import { workflowRunCanRerun, workflowRunRerunBlockedMessage } from "@/lib/workflows/run-actions";
 import { formatDate, truncate } from "@/lib/utils";
@@ -120,6 +123,34 @@ function sortRunsWithQueue(items: WorkflowRunQueueItem[], queue: WorkflowQueueSn
   });
 }
 
+function workflowRunSearchText(run: WorkflowRunQueueItem) {
+  return [
+    run.id,
+    run.playbook,
+    playbookLabel(run.playbook),
+    run.workspace,
+    run.status,
+    run.trigger,
+    run.presetName,
+    run.summary,
+    ...(run.log ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function workflowRunMatchesSearch(run: WorkflowRunQueueItem, search: string) {
+  const terms = search
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = workflowRunSearchText(run);
+  return terms.every((term) => haystack.includes(term));
+}
+
 export function WorkflowRunQueue({
   runs,
   queue = { activeRunId: null, queuedRunIds: [] },
@@ -129,10 +160,18 @@ export function WorkflowRunQueue({
 }) {
   const router = useRouter();
   const [items, setItems] = React.useState(runs);
+  const [historySearch, setHistorySearch] = React.useState("");
+  const [historyLimit, setHistoryLimit] = React.useState(20);
   const [queueState, setQueueState] = React.useState(() => normalizeQueue(queue));
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
   const orderedItems = React.useMemo(() => sortRunsWithQueue(items, queueState), [items, queueState]);
+  const filteredItems = React.useMemo(
+    () => orderedItems.filter((run) => workflowRunMatchesSearch(run, historySearch)),
+    [historySearch, orderedItems],
+  );
+  const historySearchActive = historySearch.trim().length > 0;
+  const canLoadOlderRuns = items.length >= historyLimit && historyLimit < 100;
 
   React.useEffect(() => {
     setItems(runs);
@@ -156,7 +195,8 @@ export function WorkflowRunQueue({
 
     async function refreshRuns() {
       try {
-        const res = await fetch("/api/workflows/run", { cache: "no-store" });
+        const params = new URLSearchParams({ limit: String(historyLimit) });
+        const res = await fetch(`/api/workflows/run?${params.toString()}`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as WorkflowRunQueueResponse | null;
         if (!res.ok || !data) return;
         if (stopped) return;
@@ -176,7 +216,23 @@ export function WorkflowRunQueue({
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [live]);
+  }, [historyLimit, live]);
+
+  const loadOlderRuns = React.useCallback(async () => {
+    const nextLimit = Math.min(100, historyLimit + 20);
+    setHistoryLimit(nextLimit);
+    try {
+      const params = new URLSearchParams({ limit: String(nextLimit) });
+      const res = await fetch(`/api/workflows/run?${params.toString()}`, { cache: "no-store" });
+      const data = (await res.json().catch(() => null)) as WorkflowRunQueueResponse | null;
+      if (!res.ok || !data) throw new Error(data?.error || "Could not load workflow history");
+      if (Array.isArray(data.runs)) setItems(data.runs.map(apiRunToItem));
+      setQueueState(normalizeQueue(data.queue));
+      setLastUpdatedAt(new Date());
+    } catch (err) {
+      toast.error("Could not load workflow history", err instanceof Error ? err.message : "Try again");
+    }
+  }, [historyLimit]);
 
   async function controlRun(run: WorkflowRunQueueItem, action: WorkflowRunAction) {
     setBusyId(`${action}-${run.id}`);
@@ -198,6 +254,7 @@ export function WorkflowRunQueue({
         const rerun = apiRunToItem(data.run);
         if (data.queue) setQueueState(normalizeQueue(data.queue));
         setItems((current) => [rerun, ...current]);
+        setHistorySearch("");
         toast.success("Workflow run queued", playbookLabel(run.playbook));
       } else {
         const updated = apiRunToItem(data.run);
@@ -264,140 +321,183 @@ export function WorkflowRunQueue({
           <span>Updated {formatDate(lastUpdatedAt.toISOString())}</span>
         ) : null}
       </div>
-      {orderedItems.map((run) => {
-        const latestLog = run.log.at(-1) ?? null;
-        const visibleLatestLog = latestLog && latestLog !== run.summary ? latestLog : null;
-        const cancelable = ["QUEUED", "RUNNING"].includes(run.status);
-        const rerunnable = workflowRunCanRerun(run.status);
-        const rerunBlockedMessage = workflowRunRerunBlockedMessage(run.status);
-        const cancelBusy = busyId === `CANCEL-${run.id}`;
-        const rerunBusy = busyId === `RERUN-${run.id}`;
-        const queuedIndex = queueState.queuedRunIds.indexOf(run.id);
-        const moveable = run.status === "QUEUED" && queuedIndex >= 0;
-        const lastQueuedIndex = queueState.queuedRunIds.length - 1;
-        const queueLabel =
-          queueState.activeRunId === run.id ? "active" : queuedIndex >= 0 ? `queued #${queuedIndex + 1}` : null;
-        return (
-          <div
-            key={run.id}
-            className="grid gap-3 rounded-md border border-border bg-surface/40 p-3 md:grid-cols-[minmax(0,1fr)_auto]"
-          >
-            <Link href={`/workflows/runs/${run.id}`} className="min-w-0 hover:text-primary">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusIcon status={run.status} />
-                <p className="truncate text-sm font-medium">{playbookLabel(run.playbook)}</p>
-                <Badge variant={statusVariant(run.status)}>{run.status.toLowerCase()}</Badge>
-                <Badge variant="outline">{run.workspace}</Badge>
-                <Badge variant={run.trigger === "manual" ? "outline" : "secondary"}>{triggerLabel(run)}</Badge>
-                {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
-              </div>
-              {run.summary ? (
-                <p className="mt-1 truncate text-xs text-muted-foreground">{truncate(run.summary, 150)}</p>
-              ) : null}
-              {visibleLatestLog ? (
-                <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{truncate(visibleLatestLog, 150)}</p>
-              ) : null}
-            </Link>
-            <div className="flex items-center justify-end gap-2">
-              <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
-                <PlayCircle className="h-3.5 w-3.5" />
-                <span className="whitespace-nowrap">{formatDate(run.finishedAt ?? run.startedAt ?? run.createdAt)}</span>
-              </div>
-              {moveable ? (
-                <>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-8 w-8"
-                    disabled={Boolean(busyId) || queuedIndex === 0}
-                    onClick={() => controlRun(run, "MOVE_TOP")}
-                    aria-label="Move workflow to top"
-                    title="Move workflow to top"
-                  >
-                    {busyId === `MOVE_TOP-${run.id}` ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArrowUpToLine className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-8 w-8"
-                    disabled={Boolean(busyId) || queuedIndex === 0}
-                    onClick={() => controlRun(run, "MOVE_UP")}
-                    aria-label="Move workflow up"
-                    title="Move workflow up"
-                  >
-                    {busyId === `MOVE_UP-${run.id}` ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArrowUp className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-8 w-8"
-                    disabled={Boolean(busyId) || queuedIndex === lastQueuedIndex}
-                    onClick={() => controlRun(run, "MOVE_DOWN")}
-                    aria-label="Move workflow down"
-                    title="Move workflow down"
-                  >
-                    {busyId === `MOVE_DOWN-${run.id}` ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArrowDown className="h-4 w-4" />
-                    )}
-                  </Button>
-                </>
-              ) : null}
-              <Button
-                asChild
-                type="button"
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                aria-label="Inspect workflow"
-                title="Inspect workflow"
-              >
-                <Link href={`/workflows/runs/${run.id}`}>
-                  <ExternalLink className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                disabled={Boolean(busyId) || !rerunnable}
-                onClick={() => controlRun(run, "RERUN")}
-                aria-label={rerunBlockedMessage ?? "Rerun workflow"}
-                title={rerunBlockedMessage ?? "Rerun workflow"}
-              >
-                {rerunBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-              </Button>
-              {cancelable ? (
+      <div className="space-y-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={historySearch}
+            onChange={(event) => setHistorySearch(event.target.value)}
+            placeholder="Find old playbook run"
+            className="pr-9 pl-8"
+          />
+          {historySearchActive ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+              onClick={() => setHistorySearch("")}
+              aria-label="Clear playbook run search"
+              title="Clear"
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          {historySearchActive
+            ? `${filteredItems.length} of ${orderedItems.length} loaded playbook runs match`
+            : `${orderedItems.length} playbook runs loaded`}
+        </p>
+      </div>
+      {filteredItems.length ? (
+        filteredItems.map((run) => {
+          const latestLog = run.log.at(-1) ?? null;
+          const visibleLatestLog = latestLog && latestLog !== run.summary ? latestLog : null;
+          const cancelable = ["QUEUED", "RUNNING"].includes(run.status);
+          const rerunnable = workflowRunCanRerun(run.status);
+          const rerunBlockedMessage = workflowRunRerunBlockedMessage(run.status);
+          const cancelBusy = busyId === `CANCEL-${run.id}`;
+          const rerunBusy = busyId === `RERUN-${run.id}`;
+          const queuedIndex = queueState.queuedRunIds.indexOf(run.id);
+          const moveable = run.status === "QUEUED" && queuedIndex >= 0;
+          const lastQueuedIndex = queueState.queuedRunIds.length - 1;
+          const queueLabel =
+            queueState.activeRunId === run.id ? "active" : queuedIndex >= 0 ? `queued #${queuedIndex + 1}` : null;
+          return (
+            <div
+              key={run.id}
+              className="grid gap-3 rounded-md border border-border bg-surface/40 p-3 md:grid-cols-[minmax(0,1fr)_auto]"
+            >
+              <Link href={`/workflows/runs/${run.id}`} className="min-w-0 hover:text-primary">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusIcon status={run.status} />
+                  <p className="truncate text-sm font-medium">{playbookLabel(run.playbook)}</p>
+                  <Badge variant={statusVariant(run.status)}>{run.status.toLowerCase()}</Badge>
+                  <Badge variant="outline">{run.workspace}</Badge>
+                  <Badge variant={run.trigger === "manual" ? "outline" : "secondary"}>{triggerLabel(run)}</Badge>
+                  {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
+                </div>
+                {run.summary ? (
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{truncate(run.summary, 150)}</p>
+                ) : null}
+                {visibleLatestLog ? (
+                  <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                    {truncate(visibleLatestLog, 150)}
+                  </p>
+                ) : null}
+              </Link>
+              <div className="flex items-center justify-end gap-2">
+                <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
+                  <PlayCircle className="h-3.5 w-3.5" />
+                  <span className="whitespace-nowrap">{formatDate(run.finishedAt ?? run.startedAt ?? run.createdAt)}</span>
+                </div>
+                {moveable ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      disabled={Boolean(busyId) || queuedIndex === 0}
+                      onClick={() => controlRun(run, "MOVE_TOP")}
+                      aria-label="Move workflow to top"
+                      title="Move workflow to top"
+                    >
+                      {busyId === `MOVE_TOP-${run.id}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowUpToLine className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      disabled={Boolean(busyId) || queuedIndex === 0}
+                      onClick={() => controlRun(run, "MOVE_UP")}
+                      aria-label="Move workflow up"
+                      title="Move workflow up"
+                    >
+                      {busyId === `MOVE_UP-${run.id}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowUp className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      disabled={Boolean(busyId) || queuedIndex === lastQueuedIndex}
+                      onClick={() => controlRun(run, "MOVE_DOWN")}
+                      aria-label="Move workflow down"
+                      title="Move workflow down"
+                    >
+                      {busyId === `MOVE_DOWN-${run.id}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowDown className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </>
+                ) : null}
+                <Button
+                  asChild
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8"
+                  aria-label="Inspect workflow"
+                  title="Inspect workflow"
+                >
+                  <Link href={`/workflows/runs/${run.id}`}>
+                    <ExternalLink className="h-4 w-4" />
+                  </Link>
+                </Button>
                 <Button
                   type="button"
                   size="icon"
                   variant="outline"
                   className="h-8 w-8"
-                  disabled={Boolean(busyId)}
-                  onClick={() => controlRun(run, "CANCEL")}
-                  aria-label="Cancel workflow"
-                  title="Cancel workflow"
+                  disabled={Boolean(busyId) || !rerunnable}
+                  onClick={() => controlRun(run, "RERUN")}
+                  aria-label={rerunBlockedMessage ?? "Rerun workflow"}
+                  title={rerunBlockedMessage ?? "Rerun workflow"}
                 >
-                  {cancelBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                  {rerunBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
                 </Button>
-              ) : null}
+                {cancelable ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    disabled={Boolean(busyId)}
+                    onClick={() => controlRun(run, "CANCEL")}
+                    aria-label="Cancel workflow"
+                    title="Cancel workflow"
+                  >
+                    {cancelBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })
+      ) : (
+        <p className="py-3 text-center text-sm text-muted-foreground">
+          {historySearchActive ? "No loaded playbook runs match this search." : "No playbook runs yet."}
+        </p>
+      )}
+      {canLoadOlderRuns ? (
+        <Button type="button" variant="outline" size="sm" className="w-full" disabled={Boolean(busyId)} onClick={loadOlderRuns}>
+          <History className="h-4 w-4" />
+          Load older playbook runs
+        </Button>
+      ) : null}
     </div>
   );
 }
