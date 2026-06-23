@@ -177,6 +177,46 @@ function cluePrompts(subject: string, workspace: Workspace) {
   ], 10);
 }
 
+function domainSurfacePrompts(subject: string, workspace: Workspace) {
+  const clues = subjectClues(subject);
+  return uniqueLoose(
+    clues.domains.flatMap((domain) => [
+      `site:${domain} ${quoted(subject)}`,
+      ...clues.nameHints.map((name) => `${quoted(name)} site:${domain}`),
+      workspace === "DK" ? `site:${domain} kontakt` : `site:${domain} contact`,
+      workspace === "DK" ? `site:${domain} medarbejdere` : `site:${domain} team`,
+      workspace === "DK" ? `site:${domain} presse` : `site:${domain} press`,
+      workspace === "DK" ? `${domain} telefon` : `${domain} phone`,
+      `${domain} email pattern`,
+    ]),
+    12,
+  );
+}
+
+function personSurfacePrompts(subject: string, workspace: Workspace) {
+  const publicSurfaces =
+    workspace === "DK"
+      ? [
+          `${quoted(subject)} site:linkedin.com/in`,
+          `${quoted(subject)} LinkedIn nuværende organisation`,
+          `${quoted(subject)} medarbejder`,
+          `${quoted(subject)} team`,
+          `${quoted(subject)} organisation`,
+          `${quoted(subject)} site:proff.dk`,
+          `${quoted(subject)} site:datacvr.virk.dk`,
+        ]
+      : [
+          `${quoted(subject)} site:linkedin.com/in`,
+          `${quoted(subject)} LinkedIn current organization`,
+          `${quoted(subject)} current employer`,
+          `${quoted(subject)} staff`,
+          `${quoted(subject)} team`,
+          `${quoted(subject)} organization`,
+          `${quoted(subject)} professional profile`,
+        ];
+  return uniqueLoose([...publicSurfaces, ...domainSurfacePrompts(subject, workspace), ...cluePrompts(subject, workspace)], 14);
+}
+
 function clueCapture(subject: string) {
   const clues = subjectClues(subject);
   const parts = [
@@ -221,16 +261,17 @@ function officialPrompts(subject: string, workspace: Workspace, subjectType: Res
 
 function contactPrompts(subject: string, workspace: Workspace) {
   const pivots = cluePrompts(subject, workspace);
-  return [
+  return uniqueLoose([
     `${quoted(subject)} kontakt`,
     `${quoted(subject)} email`,
     ...pivots,
+    ...domainSurfacePrompts(subject, workspace),
     `${quoted(subject)} phone`,
     `${quoted(subject)} telefon`,
     `${quoted(subject)} contact form`,
     `${quoted(subject)} switchboard`,
     workspace === "DK" ? `${quoted(subject)} CVR telefon` : `${quoted(subject)} company switchboard`,
-  ];
+  ], 18);
 }
 
 function affiliationPrompts(subject: string, workspace: Workspace) {
@@ -339,6 +380,7 @@ function acceptanceCriteria(stage: string, objective: ResearchObjective, workspa
     ],
     "route-validation": [
       "Each candidate phone/email/profile is tied back to the right organization or role.",
+      "Domain/email pattern candidates are marked unverified unless a public source confirms ownership.",
       "A primary route and fallback route are chosen, with confidence noted.",
     ],
     context: [
@@ -435,6 +477,7 @@ export function buildResearchChecklist(
     affiliation: affiliationPrompts(subject, workspace),
     contact: contactPrompts(subject, workspace),
     opportunity: opportunityPrompts(subject, workspace),
+    surface: subjectType === "person" ? personSurfacePrompts(subject, workspace) : domainSurfacePrompts(subject, workspace),
   };
 
   const steps: ResearchStepTemplate[] = [
@@ -459,23 +502,23 @@ export function buildResearchChecklist(
     [
       "sources",
       "Map authoritative public sources",
-      "Record the official website, public registry/profile, company page, and any relevant source URL with the date checked.",
+      "Record the official website, organization domain, registry/profile, staff/team page, public profile, and any relevant source URL with the date checked.",
       "HIGH",
-      [...prompts.official, `${quoted(subject)} site:proff.dk OR site:datacvr.virk.dk`],
+      [...prompts.surface, ...prompts.official, `${quoted(subject)} site:proff.dk OR site:datacvr.virk.dk`],
     ],
     [
       "contact",
       "Find compliant contact routes",
-      "Build a route ladder: official switchboard or form first, then role inbox, public professional profile, and only then intentionally published direct phone/email. Do not use private leaked or scraped-only personal data.",
+      "Build a route ladder: official switchboard or form first, then staff/team or department page, role inbox, public professional profile, and only then intentionally published direct phone/email. Do not use private leaked or scraped-only personal data.",
       objective === "find-contact" ? "URGENT" : "HIGH",
       prompts.contact,
     ],
     [
       "route-validation",
       "Validate contact ownership",
-      "Check that each possible email, phone number, profile, or department route belongs to the exact subject and current organization before using it.",
+      "Check that each possible email, phone number, profile, domain pattern, or department route belongs to the exact subject and current organization before using it.",
       objective === "find-contact" ? "URGENT" : "HIGH",
-      [...prompts.contact, `${quoted(subject)} role`, `${quoted(subject)} department`],
+      [...prompts.contact, ...prompts.surface, `${quoted(subject)} role`, `${quoted(subject)} department`],
     ],
     [
       "context",
@@ -564,6 +607,7 @@ export function buildResearchWorksheet(
     affiliation: affiliationPrompts(subject, workspace),
     contact: contactPrompts(subject, workspace),
     opportunity: opportunityPrompts(subject, workspace),
+    surface: subjectType === "person" ? personSurfacePrompts(subject, workspace) : domainSurfacePrompts(subject, workspace),
   };
   const sections: ResearchWorksheetSection[] = [
     {
@@ -613,9 +657,9 @@ export function buildResearchWorksheet(
         worksheetField(
           "authoritative-sources",
           "Authoritative sources",
-          "Official website, registry, company page, public profile, and dated source URLs.",
+          "Official website, organization domain, registry, staff/team page, public profile, and dated source URLs.",
           "Every source notes what it proves, date checked, and confidence.",
-          [...prompts.official, `${quoted(subject)} official`],
+          [...prompts.surface, ...prompts.official, `${quoted(subject)} official`],
         ),
         worksheetField(
           "dead-ends",
@@ -661,9 +705,23 @@ export function buildResearchWorksheet(
         worksheetField(
           "primary-route",
           "Primary route",
-          "Official switchboard, contact form, role inbox, or public professional profile to use first.",
+          "Official switchboard, contact form, staff/team page, role inbox, or public professional profile to use first.",
           "The route appears on an official or intentionally public professional source.",
           prompts.contact,
+        ),
+        worksheetField(
+          "route-owner",
+          "Route ownership",
+          "Why the route belongs to this exact person, role, organization, or department instead of a same-name match.",
+          "Ownership is tied back to current affiliation, official domain, staff page, or public professional profile.",
+          [...prompts.surface, ...prompts.contact],
+        ),
+        worksheetField(
+          "domain-pattern",
+          "Domain or email pattern",
+          "Official domain, public email pattern seen on staff/role pages, and whether the pattern is confirmed or only a candidate.",
+          "Patterns are inferred only from public organization pages and remain unverified until a public direct address or accepted route confirms them.",
+          domainSurfacePrompts(subject, workspace).length ? domainSurfacePrompts(subject, workspace) : prompts.contact,
         ),
         worksheetField(
           "phone",
@@ -684,7 +742,7 @@ export function buildResearchWorksheet(
           "Fallback route",
           "Second-best channel and when to use it.",
           "Fallback is public, role-relevant, and does not rely on private/leaked data.",
-          [`${quoted(subject)} LinkedIn`, `${quoted(subject)} team`, `${quoted(subject)} switchboard`],
+          [`${quoted(subject)} LinkedIn`, `${quoted(subject)} team`, `${quoted(subject)} switchboard`, ...prompts.surface],
         ),
       ],
     });
@@ -809,6 +867,7 @@ export function buildResearchRunbook(
     affiliation: affiliationPrompts(subject, workspace),
     contact: contactPrompts(subject, workspace),
     opportunity: opportunityPrompts(subject, workspace),
+    surface: subjectType === "person" ? personSurfacePrompts(subject, workspace) : domainSurfacePrompts(subject, workspace),
   };
   const steps: ResearchRunbookStep[] = [
     runbookStep(
@@ -845,6 +904,25 @@ export function buildResearchRunbook(
     );
   }
 
+  if ((subjectType === "person" || prompts.surface.length > 0) && (objective === "find-contact" || objective === "general")) {
+    steps.push(
+      runbookStep(
+        "search-public-surfaces",
+        "Search public surfaces",
+        "Work through official organization pages, staff/team pages, registries, and public professional profiles before generic web hits.",
+        prompts.surface.length ? prompts.surface : [...prompts.affiliation, ...prompts.contact],
+        [
+          "Official organization domain",
+          "Staff/team, press, or department page",
+          "Public professional profile tied to the current organization",
+          "Same-name false positives ruled out",
+          "Domain/email pattern candidates marked unverified",
+        ],
+        "Stop when you have the current organization domain and at least one official or professional page, or mark the search unresolved.",
+      ),
+    );
+  }
+
   if (objective === "find-contact" || objective === "general") {
     steps.push(
       runbookStep(
@@ -861,9 +939,9 @@ export function buildResearchRunbook(
         ],
         "Stop when there is one public primary route, one fallback route, and a reason not to use weaker hits.",
         [
-          "Official switchboard or contact form",
-          "Role inbox or department page",
-          "Public professional profile",
+          "Official organization contact page or switchboard",
+          "Staff/team page, role inbox, or department page",
+          "Public professional profile tied to current organization",
           "Direct phone/email only when intentionally public and tied to the exact subject",
         ],
       ),
@@ -917,6 +995,12 @@ export function buildResearchRunbook(
       "Stop when the next action is a single sentence with channel, reason, and confidence.",
     ),
   );
+
+  if (depth === "quick" && subjectType === "person" && (objective === "find-contact" || objective === "general")) {
+    return steps.filter((step) =>
+      ["resolve-subject", "current-affiliation", "search-public-surfaces", "contact-route-ladder"].includes(step.id),
+    );
+  }
 
   return depth === "quick" ? steps.slice(0, Math.min(3, steps.length)) : steps;
 }

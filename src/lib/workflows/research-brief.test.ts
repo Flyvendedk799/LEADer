@@ -106,12 +106,22 @@ describe("research brief workflow helpers", () => {
       expect.arrayContaining(["identity", "affiliation", "source-ledger", "contact-route", "next-action"]),
     );
     expect(fields.map((field) => field.id)).toEqual(
-      expect.arrayContaining(["false-positives", "phone", "email", "fallback-route", "recommended-action"]),
+      expect.arrayContaining([
+        "false-positives",
+        "route-owner",
+        "domain-pattern",
+        "phone",
+        "email",
+        "fallback-route",
+        "recommended-action",
+      ]),
     );
     expect(fields.find((field) => field.id === "phone")?.sourcePrompts).toEqual(
       expect.arrayContaining(['"Mette Jensen" phone', '"Mette Jensen" telefon']),
     );
     expect(fields.find((field) => field.id === "primary-route")?.evidence).toContain("official");
+    expect(fields.find((field) => field.id === "route-owner")?.capture).toContain("same-name match");
+    expect(fields.find((field) => field.id === "domain-pattern")?.evidence).toContain("unverified");
     expect(fields.find((field) => field.id === "recommended-action")?.capture).toContain("stop");
   });
 
@@ -132,13 +142,20 @@ describe("research brief workflow helpers", () => {
     expect(inputPivots?.sourcePrompts).toEqual(
       expect.arrayContaining(['"mette.jensen@northwind.dk"', "site:northwind.dk", '"mette jensen"']),
     );
+    const domainPattern = fields.find((field) => field.id === "domain-pattern");
+    expect(domainPattern?.sourcePrompts).toEqual(
+      expect.arrayContaining(['site:northwind.dk "mette.jensen@northwind.dk"', '"mette jensen" site:northwind.dk']),
+    );
 
     const runbook = buildResearchRunbook(options, "DK");
     expect(runbook.find((step) => step.id === "resolve-subject")?.capture.join(" ")).toContain(
       "Structured input pivots",
     );
+    expect(runbook.find((step) => step.id === "search-public-surfaces")?.capture.join(" ")).toContain(
+      "Domain/email pattern candidates marked unverified",
+    );
     expect(runbook.flatMap((step) => step.searchPrompts)).toEqual(
-      expect.arrayContaining(["site:northwind.dk", "northwind.dk kontakt"]),
+      expect.arrayContaining(["site:northwind.dk", "northwind.dk kontakt", "site:northwind.dk kontakt"]),
     );
   });
 
@@ -155,19 +172,48 @@ describe("research brief workflow helpers", () => {
     expect(runbook.map((step) => step.id)).toEqual([
       "resolve-subject",
       "current-affiliation",
+      "search-public-surfaces",
       "contact-route-ladder",
       "next-action",
     ]);
+    expect(runbook.find((step) => step.id === "search-public-surfaces")?.capture).toEqual(
+      expect.arrayContaining([
+        "Official organization domain",
+        "Staff/team, press, or department page",
+        "Same-name false positives ruled out",
+      ]),
+    );
+    expect(runbook.find((step) => step.id === "search-public-surfaces")?.searchPrompts).toEqual(
+      expect.arrayContaining(['"Mette Jensen" site:linkedin.com/in', '"Mette Jensen" medarbejder']),
+    );
     expect(runbook.find((step) => step.id === "contact-route-ladder")?.routePriority).toEqual([
-      "Official switchboard or contact form",
-      "Role inbox or department page",
-      "Public professional profile",
+      "Official organization contact page or switchboard",
+      "Staff/team page, role inbox, or department page",
+      "Public professional profile tied to current organization",
       "Direct phone/email only when intentionally public and tied to the exact subject",
     ]);
     expect(runbook.flatMap((step) => step.searchPrompts)).toEqual(
       expect.arrayContaining(['"Mette Jensen" kontakt', '"Mette Jensen" telefon']),
     );
     expect(runbook.find((step) => step.id === "next-action")?.stopWhen).toContain("single sentence");
+  });
+
+  it("keeps quick person contact runbooks practical without dropping the route decision", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+      depth: "quick",
+    });
+
+    const runbook = buildResearchRunbook(options, "DK");
+
+    expect(runbook.map((step) => step.id)).toEqual([
+      "resolve-subject",
+      "current-affiliation",
+      "search-public-surfaces",
+      "contact-route-ladder",
+    ]);
   });
 
   it("adds opportunity worksheet fields for deep company mapping", () => {

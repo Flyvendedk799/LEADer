@@ -15,6 +15,7 @@ describe("research brief result fallbacks", () => {
     expect(runbook.map((step) => step.id)).toEqual([
       "resolve-subject",
       "current-affiliation",
+      "search-public-surfaces",
       "contact-route-ladder",
       "next-action",
     ]);
