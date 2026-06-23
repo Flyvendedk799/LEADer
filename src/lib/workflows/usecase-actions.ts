@@ -38,6 +38,7 @@ export function researchBriefRunPayload({
   accountId,
   personId,
   dealId,
+  candidateId,
 }: {
   subject: string;
   subjectType?: "person" | "company" | "unknown";
@@ -48,6 +49,7 @@ export function researchBriefRunPayload({
   accountId?: string | null;
   personId?: string | null;
   dealId?: string | null;
+  candidateId?: string | null;
 }) {
   return {
     playbook: "research-brief",
@@ -62,6 +64,7 @@ export function researchBriefRunPayload({
         ...(accountId ? { accountId } : {}),
         ...(personId ? { personId } : {}),
         ...(dealId ? { dealId } : {}),
+        ...(candidateId ? { candidateId } : {}),
       },
     },
   };

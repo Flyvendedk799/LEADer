@@ -447,6 +447,7 @@ export default async function WorkflowsPage() {
     const researchSubject = candidateContactResearchSubject(candidate);
     const researchSubjectType = candidate.organization ? "company" as const : "unknown" as const;
     const activeResearchRun = findActiveResearchBriefRun(activeResearchBriefRuns, {
+      candidateId: candidate.id,
       subject: researchSubject,
       subjectType: researchSubjectType,
       objective: "find-contact",
@@ -464,6 +465,7 @@ export default async function WorkflowsPage() {
       workspace: candidate.workspace,
       researchSubject,
       researchSubjectType,
+      researchCandidateId: candidate.id,
       activeResearchRunId: activeResearchRun?.id ?? null,
       activeResearchRunStatus: activeResearchRun?.status ?? null,
     };

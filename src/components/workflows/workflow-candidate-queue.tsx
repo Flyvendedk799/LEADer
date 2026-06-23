@@ -33,6 +33,7 @@ export type WorkflowCandidateItem = {
   workspace: Workspace;
   researchSubject: string;
   researchSubjectType: ResearchSubjectType;
+  researchCandidateId: string;
   activeResearchRunId: string | null;
   activeResearchRunStatus: string | null;
 };
@@ -71,6 +72,7 @@ export function WorkflowCandidateQueue({ candidates }: { candidates: WorkflowCan
             depth: "standard",
             createTasks: true,
             workspace: candidate.workspace,
+            candidateId: candidate.researchCandidateId,
           }),
         ),
       });

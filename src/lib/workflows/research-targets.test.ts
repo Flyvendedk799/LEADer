@@ -104,6 +104,7 @@ describe("workflow research targets", () => {
             objective: "map-opportunity",
             accountId: "account-1",
             dealId: "deal-1",
+            candidateId: "candidate-1",
           },
         },
       }),
@@ -111,6 +112,7 @@ describe("workflow research targets", () => {
       accountId: "account-1",
       personId: null,
       dealId: "deal-1",
+      candidateId: "candidate-1",
       subject: "Acme",
       subjectType: "company",
       objective: "map-opportunity",
@@ -130,10 +132,16 @@ describe("workflow research targets", () => {
         status: "RUNNING",
         input: { options: { researchBrief: { accountId: "account-2", dealId: "deal-2" } } },
       },
+      {
+        id: "run-candidate",
+        status: "RUNNING",
+        input: { options: { researchBrief: { candidateId: "candidate-1", objective: "find-contact" } } },
+      },
     ];
 
     expect(findActiveResearchBriefRun(runs, { accountId: "account-1" })?.id).toBe("run-account");
     expect(findActiveResearchBriefRun(runs, { accountId: "account-2", dealId: "deal-2" })?.id).toBe("run-deal");
+    expect(findActiveResearchBriefRun(runs, { candidateId: "candidate-1", objective: "find-contact" })?.id).toBe("run-candidate");
     expect(findActiveResearchBriefRun(runs, { accountId: "missing" })).toBeNull();
     expect(findActiveResearchBriefRun(runs, {})).toBeNull();
   });

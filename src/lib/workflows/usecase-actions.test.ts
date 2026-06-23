@@ -54,6 +54,7 @@ describe("workflow usecase actions", () => {
         workspace: "DK",
         accountId: "account-1",
         dealId: "deal-1",
+        candidateId: "candidate-1",
       }),
     ).toEqual({
       playbook: "research-brief",
@@ -67,6 +68,7 @@ describe("workflow usecase actions", () => {
           createTasks: true,
           accountId: "account-1",
           dealId: "deal-1",
+          candidateId: "candidate-1",
         },
       },
     });

@@ -112,6 +112,10 @@ export type ResearchBriefResult = {
     personName?: string;
     dealId?: string;
     dealTitle?: string;
+    candidateId?: string;
+    candidateTitle?: string;
+    candidateUrl?: string;
+    candidateEvidence?: string;
   };
   log: string[];
 };
@@ -652,6 +656,33 @@ function researchTaskWhere(
   return where;
 }
 
+function candidateContextBlock(candidate: {
+  title?: string | null;
+  organization?: string | null;
+  sourceName?: string | null;
+  url?: string | null;
+  rawContent?: string | null;
+  description?: string | null;
+  evidence?: { title?: string | null; snippet?: string | null; url?: string | null }[];
+} | null) {
+  if (!candidate) return "";
+  const evidence = candidate.evidence?.[0];
+  const lines = [
+    `Discovery candidate: ${candidate.title ?? "Untitled candidate"}`,
+    candidate.organization ? `Organization: ${candidate.organization}` : "",
+    candidate.sourceName ? `Source: ${candidate.sourceName}` : "",
+    candidate.url ? `Candidate URL: ${candidate.url}` : "",
+    evidence?.title ? `Evidence title: ${evidence.title}` : "",
+    evidence?.url ? `Evidence URL: ${evidence.url}` : "",
+    evidence?.snippet
+      ? `Evidence snippet: ${evidence.snippet}`
+      : candidate.rawContent || candidate.description
+        ? `Candidate context: ${(candidate.rawContent || candidate.description || "").slice(0, 1000)}`
+        : "",
+  ].filter(Boolean);
+  return lines.length ? `\n\nLinked discovery context:\n${lines.join("\n")}` : "";
+}
+
 export async function runResearchBrief(
   ownerId: string,
   workspace: Workspace = "DK",
@@ -666,7 +697,7 @@ export async function runResearchBrief(
 
   const log = [workflowLogEntry(`Started research brief for ${workspace}: ${normalized.subject}.`)];
 
-  const [account, person, deal] = await Promise.all([
+  const [account, person, deal, candidate] = await Promise.all([
     normalized.accountId
       ? db.account.findFirst({
           where: { id: normalized.accountId, ownerId },
@@ -685,20 +716,48 @@ export async function runResearchBrief(
           select: { id: true, title: true, accountId: true },
         })
       : null,
+    normalized.candidateId
+      ? db.discoveryCandidate.findFirst({
+          where: { id: normalized.candidateId, ownerId },
+          select: {
+            id: true,
+            title: true,
+            organization: true,
+            sourceName: true,
+            url: true,
+            rawContent: true,
+            description: true,
+            accountId: true,
+            dealId: true,
+            evidence: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { title: true, snippet: true, url: true },
+            },
+          },
+        })
+      : null,
   ]);
 
+  const candidateContext = candidateContextBlock(candidate);
+  const candidateEvidence = candidate?.evidence[0]?.snippet ?? candidate?.rawContent ?? candidate?.description ?? undefined;
   const linked = {
-    accountId: account?.id ?? deal?.accountId ?? person?.accountId ?? undefined,
+    accountId: account?.id ?? deal?.accountId ?? person?.accountId ?? candidate?.accountId ?? undefined,
     accountName: account?.name,
     personId: person?.id,
     personName: person?.name ?? undefined,
-    dealId: deal?.id,
+    dealId: deal?.id ?? candidate?.dealId ?? undefined,
     dealTitle: deal?.title,
+    candidateId: candidate?.id,
+    candidateTitle: candidate?.title,
+    candidateUrl: candidate?.url ?? undefined,
+    candidateEvidence: candidateEvidence?.slice(0, 1200),
   };
 
   if (normalized.accountId && !account) log.push(workflowLogEntry("Skipped account link because it was not found for this owner."));
   if (normalized.personId && !person) log.push(workflowLogEntry("Skipped person link because it was not found for this owner."));
   if (normalized.dealId && !deal) log.push(workflowLogEntry("Skipped deal link because it was not found for this owner."));
+  if (normalized.candidateId && !candidate) log.push(workflowLogEntry("Skipped candidate link because it was not found for this owner."));
 
   const checklist = buildResearchChecklist(normalized, workspace);
   const worksheet = buildResearchWorksheet(normalized, workspace);
@@ -728,7 +787,7 @@ export async function runResearchBrief(
           personId: linked.personId,
           dealId: linked.dealId,
           title: step.title,
-          description: step.description,
+          description: `${step.description}${candidateContext}`,
           dueAt: researchTaskDueDate(step.dueInDays),
           priority: step.priority,
         },
@@ -750,6 +809,9 @@ export async function runResearchBrief(
   );
   log.push(workflowLogEntry(`Prepared ${worksheet.length} worksheet sections for evidence capture.`));
   log.push(workflowLogEntry(`Prepared ${runbook.length} runbook steps for practical lookup order.`));
+  if (candidate) {
+    log.push(workflowLogEntry(`Linked discovery candidate "${candidate.title}".`));
+  }
 
   const durationMs = Date.now() - startedAt;
   log.push(workflowLogEntry(`Finished research brief in ${formatWorkflowElapsed(durationMs)}.`));

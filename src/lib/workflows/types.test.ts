@@ -41,6 +41,7 @@ describe("workflowRunInputSchema", () => {
           subjectType: "company",
           objective: "map-opportunity",
           depth: "deep",
+          candidateId: "candidate-1",
           createTasks: true,
         },
       },
@@ -48,6 +49,7 @@ describe("workflowRunInputSchema", () => {
 
     expect(parsed.options?.researchBrief?.objective).toBe("map-opportunity");
     expect(parsed.options?.researchBrief?.subject).toBe("Aarhus Kommune");
+    expect(parsed.options?.researchBrief?.candidateId).toBe("candidate-1");
   });
 
   it("rejects research brief runs without a subject", () => {

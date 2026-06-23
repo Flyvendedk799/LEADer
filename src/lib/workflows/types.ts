@@ -27,6 +27,7 @@ export const workflowRunOptionsSchema = z.object({
     accountId: z.string().trim().min(1).max(120).optional(),
     personId: z.string().trim().min(1).max(120).optional(),
     dealId: z.string().trim().min(1).max(120).optional(),
+    candidateId: z.string().trim().min(1).max(120).optional(),
     createTasks: z.boolean().optional().default(true),
   }).optional(),
 }).optional();

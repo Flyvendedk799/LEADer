@@ -12,12 +12,13 @@ export type ResearchBriefOptions = {
   accountId?: string;
   personId?: string;
   dealId?: string;
+  candidateId?: string;
   createTasks?: boolean;
 };
 
 export type NormalizedResearchBriefOptions = Required<
   Pick<ResearchBriefOptions, "subject" | "subjectType" | "objective" | "depth" | "createTasks">
-> & Pick<ResearchBriefOptions, "accountId" | "personId" | "dealId">;
+> & Pick<ResearchBriefOptions, "accountId" | "personId" | "dealId" | "candidateId">;
 
 export type ResearchChecklistItem = {
   stage: string;
@@ -419,6 +420,7 @@ export function normalizeResearchBriefOptions(
     accountId: cleanText(options?.accountId, 120) || undefined,
     personId: cleanText(options?.personId, 120) || undefined,
     dealId: cleanText(options?.dealId, 120) || undefined,
+    candidateId: cleanText(options?.candidateId, 120) || undefined,
     createTasks: options?.createTasks !== false,
   };
 }

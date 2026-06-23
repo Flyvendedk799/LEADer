@@ -22,6 +22,7 @@ export type ResearchBriefIdentity = {
   accountId?: string | null;
   personId?: string | null;
   dealId?: string | null;
+  candidateId?: string | null;
   subject?: string | null;
   subjectType?: string | null;
   objective?: string | null;
@@ -172,6 +173,7 @@ export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIde
     accountId: stringValue(brief?.accountId),
     personId: stringValue(brief?.personId),
     dealId: stringValue(brief?.dealId),
+    candidateId: stringValue(brief?.candidateId),
     subject: stringValue(brief?.subject),
     subjectType: stringValue(brief?.subjectType),
     objective: stringValue(brief?.objective),
@@ -182,6 +184,7 @@ export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIde
 export function researchBriefMatchesIdentity(run: ResearchBriefRunLike, identity: ResearchBriefIdentity) {
   const runIdentity = researchBriefIdentityFromInput(run.input);
   if (!researchBriefModeMatches(runIdentity, identity)) return false;
+  if (identity.candidateId) return runIdentity.candidateId === identity.candidateId;
   if (identity.personId) {
     if (runIdentity.personId === identity.personId) return true;
     const subject = normalizedSubject(identity.subject);
@@ -198,6 +201,6 @@ export function findActiveResearchBriefRun<T extends ResearchBriefRunLike>(
   runs: T[],
   identity: ResearchBriefIdentity,
 ): T | null {
-  if (!identity.accountId && !identity.personId && !identity.dealId && !normalizedSubject(identity.subject)) return null;
+  if (!identity.accountId && !identity.personId && !identity.dealId && !identity.candidateId && !normalizedSubject(identity.subject)) return null;
   return runs.find((run) => researchBriefMatchesIdentity(run, identity)) ?? null;
 }
