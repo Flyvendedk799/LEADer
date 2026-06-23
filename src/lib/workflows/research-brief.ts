@@ -63,16 +63,25 @@ function quoted(subject: string) {
 }
 
 function officialPrompts(subject: string, workspace: Workspace, subjectType: ResearchSubjectType) {
-  const base = [
-    `${quoted(subject)} official website`,
-    `${quoted(subject)} contact`,
-    `${quoted(subject)} LinkedIn`,
-  ];
+  const base = workspace === "DK"
+    ? [
+        `${quoted(subject)} officiel hjemmeside`,
+        `${quoted(subject)} kontakt`,
+        `${quoted(subject)} LinkedIn`,
+      ]
+    : [
+        `${quoted(subject)} official website`,
+        `${quoted(subject)} contact`,
+        `${quoted(subject)} LinkedIn`,
+      ];
   if (workspace === "DK") {
     base.push(`${quoted(subject)} CVR`, `${quoted(subject)} virk.dk`);
   }
   if (subjectType === "company") {
-    base.push(`${quoted(subject)} management`, `${quoted(subject)} press release`);
+    base.push(
+      workspace === "DK" ? `${quoted(subject)} ledelse` : `${quoted(subject)} management`,
+      workspace === "DK" ? `${quoted(subject)} pressemeddelelse` : `${quoted(subject)} press release`,
+    );
   }
   if (subjectType === "person") {
     base.push(`${quoted(subject)} rolle organisation`, `${quoted(subject)} email site:linkedin.com/in`);
@@ -90,6 +99,29 @@ function contactPrompts(subject: string, workspace: Workspace) {
     `${quoted(subject)} switchboard`,
     workspace === "DK" ? `${quoted(subject)} CVR telefon` : `${quoted(subject)} company switchboard`,
   ];
+}
+
+function affiliationPrompts(subject: string, workspace: Workspace) {
+  const base = workspace === "DK"
+    ? [
+        `${quoted(subject)} LinkedIn`,
+        `${quoted(subject)} rolle organisation`,
+        `${quoted(subject)} nuværende rolle`,
+        `${quoted(subject)} firma`,
+        `${quoted(subject)} virksomhed`,
+        `${quoted(subject)} email site:linkedin.com/in`,
+      ]
+    : [
+        `${quoted(subject)} LinkedIn`,
+        `${quoted(subject)} role organization`,
+        `${quoted(subject)} current role`,
+        `${quoted(subject)} company`,
+        `${quoted(subject)} email site:linkedin.com/in`,
+      ];
+  if (workspace === "DK") {
+    base.push(`${quoted(subject)} proff`, `${quoted(subject)} CVR`);
+  }
+  return base;
 }
 
 function opportunityPrompts(subject: string, workspace: Workspace) {
@@ -127,6 +159,11 @@ function acceptanceCriteria(stage: string, objective: ResearchObjective, workspa
     contact: [
       "Contact route is public and compliant: switchboard, contact form, role inbox, official page, or public professional profile.",
       "Direct phone/email is only used when it appears on an official or intentionally public professional source.",
+    ],
+    affiliation: [
+      "Current organization and role are identified before direct phone/email hits are trusted.",
+      "At least one public source links the person to that organization or role.",
+      "If no current organization is found, the result says so and uses only general public contact routes.",
     ],
     "route-validation": [
       "Each candidate phone/email/profile is tied back to the right organization or role.",
@@ -222,6 +259,7 @@ export function buildResearchChecklist(
   const { subject, subjectType, objective, depth } = options;
   const prompts = {
     official: officialPrompts(subject, workspace, subjectType),
+    affiliation: affiliationPrompts(subject, workspace),
     contact: contactPrompts(subject, workspace),
     opportunity: opportunityPrompts(subject, workspace),
   };
@@ -234,6 +272,17 @@ export function buildResearchChecklist(
       "HIGH",
       prompts.official,
     ],
+    ...(subjectType === "person"
+      ? ([
+          [
+            "affiliation",
+            "Find current organization and role",
+            "Before trusting contact details, establish where this person currently works, what role they hold, and which public source ties them to that organization. Treat same-name profiles as unverified until they match role, geography, or organization.",
+            objective === "find-contact" ? "URGENT" : "HIGH",
+            prompts.affiliation,
+          ],
+        ] satisfies ResearchStepTemplate[])
+      : []),
     [
       "sources",
       "Map authoritative public sources",
@@ -322,6 +371,11 @@ export function buildResearchChecklist(
     ]);
   }
 
-  const selected = depth === "quick" ? steps.slice(0, 4) : steps;
+  const selected =
+    depth === "quick" && subjectType === "person" && objective === "find-contact"
+      ? steps.filter((step) => ["identity", "affiliation", "contact", "route-validation"].includes(step[0]))
+      : depth === "quick"
+        ? steps.slice(0, 4)
+        : steps;
   return selected.map((step, index) => item(subject, index, depth, objective, workspace, ...step));
 }

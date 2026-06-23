@@ -15,11 +15,25 @@ describe("research brief workflow helpers", () => {
     expect(options.subject).toBe("Mette Jensen");
     expect(checklist.length).toBeGreaterThanOrEqual(6);
     expect(checklist.some((step) => step.stage === "contact" && step.priority === "URGENT")).toBe(true);
+    expect(checklist.some((step) => step.stage === "affiliation" && step.priority === "URGENT")).toBe(true);
+    expect(checklist.map((step) => step.stage).slice(0, 4)).toEqual([
+      "identity",
+      "affiliation",
+      "sources",
+      "contact",
+    ]);
     expect(checklist.find((step) => step.stage === "contact")?.description).toContain("official switchboard");
+    expect(checklist.find((step) => step.stage === "affiliation")?.description).toContain(
+      "where this person currently works",
+    );
+    expect(checklist.find((step) => step.stage === "affiliation")?.acceptanceCriteria.join(" ")).toContain(
+      "Current organization and role",
+    );
     expect(checklist.map((step) => step.stage)).toContain("route-validation");
     expect(checklist.find((step) => step.stage === "route-validation")?.acceptanceCriteria.join(" ")).toContain(
       "primary route and fallback route",
     );
+    expect(checklist.flatMap((step) => step.searchPrompts)).toContain('"Mette Jensen" officiel hjemmeside');
     expect(checklist.flatMap((step) => step.searchPrompts)).toContain('"Mette Jensen" CVR');
     expect(checklist.find((step) => step.stage === "contact")?.description).toContain("Do not use private leaked");
   });
@@ -53,5 +67,21 @@ describe("research brief workflow helpers", () => {
     const checklist = buildResearchChecklist(options, "GLOBAL");
     expect(checklist).toHaveLength(4);
     expect(checklist.map((step) => step.stage)).toEqual(["identity", "sources", "contact", "route-validation"]);
+  });
+
+  it("keeps quick person contact research in practical lookup order", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+      depth: "quick",
+    });
+
+    const checklist = buildResearchChecklist(options, "DK");
+    expect(checklist).toHaveLength(4);
+    expect(checklist.map((step) => step.stage)).toEqual(["identity", "affiliation", "contact", "route-validation"]);
+    expect(checklist.find((step) => step.stage === "affiliation")?.searchPrompts).toEqual(
+      expect.arrayContaining(['"Mette Jensen" firma', '"Mette Jensen" CVR']),
+    );
   });
 });
