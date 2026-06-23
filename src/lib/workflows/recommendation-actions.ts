@@ -1,4 +1,4 @@
-type WorkflowRecommendationActionInput = {
+export type WorkflowRecommendationActionInput = {
   title: string;
   reason: string;
   playbook: string;
@@ -6,10 +6,79 @@ type WorkflowRecommendationActionInput = {
   options?: unknown;
 };
 
+type WorkflowRecommendationActiveRun = {
+  playbook: string;
+  workspace?: string | null;
+  status?: string | null;
+  finishedAt?: Date | string | null;
+  input?: unknown;
+};
+
 export type WorkflowRecommendationBatchAction = "queue" | "save";
+
+const ACTIVE_RUN_STATUSES = new Set(["QUEUED", "RUNNING"]);
+const OPERATING_DAY_PHASES: Record<string, "dailySweep" | "candidateHarvest" | "pipelineRescue"> = {
+  "daily-sweep": "dailySweep",
+  "candidate-harvest": "candidateHarvest",
+  "pipeline-rescue": "pipelineRescue",
+};
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function optionsFrom(value: unknown) {
+  const payload = objectValue(value);
+  return objectValue(payload?.options);
+}
+
+function operatingDayIncludesPlaybook(options: unknown, playbook: string) {
+  if (playbook === "operating-day") return true;
+  const phase = OPERATING_DAY_PHASES[playbook];
+  if (!phase) return false;
+  const operatingDay = objectValue(optionsFrom(options)?.operatingDay ?? objectValue(options)?.operatingDay);
+  return operatingDay?.[phase] !== false;
+}
+
+function recommendationIncludesPlaybook(recommendation: WorkflowRecommendationActionInput, playbook: string) {
+  if (recommendation.playbook === playbook) return true;
+  return recommendation.playbook === "operating-day" && operatingDayIncludesPlaybook(recommendation.options, playbook);
+}
+
+function activeRunIncludesPlaybook(run: WorkflowRecommendationActiveRun, playbook: string) {
+  if (run.playbook === playbook) return true;
+  return run.playbook === "operating-day" && operatingDayIncludesPlaybook(run.input, playbook);
+}
 
 export function workflowRecommendationWorkspace(recommendation: WorkflowRecommendationActionInput) {
   return recommendation.workspace ?? "DK";
+}
+
+export function workflowRecommendationBlockedByActiveRun(
+  recommendation: WorkflowRecommendationActionInput,
+  run: WorkflowRecommendationActiveRun,
+) {
+  if (!ACTIVE_RUN_STATUSES.has(String(run.status ?? "")) || run.finishedAt) return false;
+  const workspace = workflowRecommendationWorkspace(recommendation);
+  if ((run.workspace ?? "DK") !== workspace) return false;
+
+  if (activeRunIncludesPlaybook(run, recommendation.playbook)) return true;
+
+  if (recommendation.playbook === "operating-day") {
+    return recommendationIncludesPlaybook(recommendation, run.playbook);
+  }
+
+  return false;
+}
+
+export function filterWorkflowRecommendations<T extends WorkflowRecommendationActionInput>(
+  recommendations: T[],
+  activeRuns: WorkflowRecommendationActiveRun[],
+) {
+  return recommendations.filter(
+    (recommendation) =>
+      !activeRuns.some((run) => workflowRecommendationBlockedByActiveRun(recommendation, run)),
+  );
 }
 
 export function workflowRecommendationRunPayload(recommendation: WorkflowRecommendationActionInput) {

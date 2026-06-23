@@ -54,6 +54,7 @@ import { ensureDefaultWorkflowPresets, presetToWorkflowInput, workflowPresetOpti
 import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
 import { previewWorkflowRun } from "@/lib/workflows/preview";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
+import { filterWorkflowRecommendations } from "@/lib/workflows/recommendation-actions";
 import { contactResearchReason, countReachablePeople, findActiveResearchBriefRun, needsContactResearch } from "@/lib/workflows/research-targets";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 
@@ -582,6 +583,7 @@ export default async function WorkflowsPage() {
       },
     });
   }
+  const visibleWorkflowRecommendations = filterWorkflowRecommendations(workflowRecommendations, runningWorkflowRuns);
   const workflowActivityItems = [
     ...workflowRuns.map((run) => ({
       id: `workflow-run-${run.id}`,
@@ -680,7 +682,7 @@ export default async function WorkflowsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <WorkflowRecommendationPanel recommendations={workflowRecommendations.slice(0, 4)} />
+          <WorkflowRecommendationPanel recommendations={visibleWorkflowRecommendations.slice(0, 4)} />
         </CardContent>
       </Card>
 

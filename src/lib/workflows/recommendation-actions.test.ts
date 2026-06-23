@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  filterWorkflowRecommendations,
   workflowRecommendationBatchToast,
+  workflowRecommendationBlockedByActiveRun,
   workflowRecommendationPresetPayload,
   workflowRecommendationRunPayload,
 } from "./recommendation-actions";
@@ -64,5 +66,84 @@ describe("workflow recommendation actions", () => {
       title: "No recommendations saved",
       description: "2 failed",
     });
+  });
+
+  it("hides recommendations that are already queued or running", () => {
+    const recommendations = [
+      {
+        title: "Harvest hot candidates",
+        reason: "3 candidates need review.",
+        playbook: "candidate-harvest",
+        options: { candidateHarvest: { minScore: 70, limit: 3 } },
+      },
+      {
+        title: "Rescue pipeline",
+        reason: "2 stale deals need next actions.",
+        playbook: "pipeline-rescue",
+        options: { pipelineRescue: { staleDays: 14, deadlineDays: 7, limit: 2 } },
+      },
+    ];
+
+    expect(
+      filterWorkflowRecommendations(recommendations, [
+        {
+          playbook: "candidate-harvest",
+          workspace: "DK",
+          status: "QUEUED",
+          finishedAt: null,
+        },
+      ]).map((item) => item.playbook),
+    ).toEqual(["pipeline-rescue"]);
+    expect(
+      filterWorkflowRecommendations(recommendations, [
+        {
+          playbook: "candidate-harvest",
+          workspace: "GLOBAL",
+          status: "QUEUED",
+          finishedAt: null,
+        },
+      ]).map((item) => item.playbook),
+    ).toEqual(["candidate-harvest", "pipeline-rescue"]);
+  });
+
+  it("treats an active operating-day phase as covering sub-playbook recommendations", () => {
+    const operatingDay = {
+      playbook: "operating-day",
+      workspace: "DK",
+      status: "RUNNING",
+      finishedAt: null,
+      input: {
+        playbook: "operating-day",
+        workspace: "DK",
+        options: {
+          operatingDay: {
+            dailySweep: false,
+            candidateHarvest: true,
+            pipelineRescue: false,
+          },
+        },
+      },
+    };
+
+    expect(
+      workflowRecommendationBlockedByActiveRun(
+        {
+          title: "Harvest hot candidates",
+          reason: "3 candidates need review.",
+          playbook: "candidate-harvest",
+        },
+        operatingDay,
+      ),
+    ).toBe(true);
+    expect(
+      workflowRecommendationBlockedByActiveRun(
+        {
+          title: "Sweep due sources",
+          reason: "Sources are due.",
+          playbook: "daily-sweep",
+        },
+        operatingDay,
+      ),
+    ).toBe(false);
   });
 });
