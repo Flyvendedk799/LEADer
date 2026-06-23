@@ -4,6 +4,7 @@ import { HttpError } from "@/lib/api";
 import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
 import { runDiscoverySearch, type DiscoveryCandidateDto } from "@/lib/discovery";
+import { discoveryCandidateDedupeKey } from "@/lib/crm/candidate-dedupe";
 import { discoveryCountLabel, discoveryLogEntry, formatDiscoveryElapsed } from "@/lib/crm/discovery-logging";
 import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import {
@@ -784,7 +785,8 @@ async function persistCandidate(
     deadline: candidate.deadline,
     priority: fit.priority,
   });
-  const dedupeKey = candidate.url || candidate.id || `${candidate.title}:${candidate.sourceName}`;
+  const deadline = dateOrUndefined(candidate.deadline);
+  const dedupeKey = discoveryCandidateDedupeKey(lane, candidate, deadline);
   const scoreBreakdown = {
     ...(candidate.scoreBreakdown as unknown as Record<string, unknown>),
     total: matchScore,
@@ -815,7 +817,7 @@ async function persistCandidate(
     budgetMin: candidate.budgetMin,
     budgetMax: candidate.budgetMax,
     currency: candidate.currency ?? "DKK",
-    deadline: dateOrUndefined(candidate.deadline),
+    deadline,
     applicationRoute: candidate.applicationRoute,
     matchScore,
     confidenceScore: confidence,
