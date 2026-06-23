@@ -35,7 +35,13 @@ type RunResult = {
   error?: string;
 };
 
-export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[] }) {
+export function WorkflowSourceQueue({
+  sources,
+  dueCount = sources.filter((source) => source.automatable && source.due).length,
+}: {
+  sources: WorkflowSourceItem[];
+  dueCount?: number;
+}) {
   const router = useRouter();
   const [items, setItems] = React.useState(sources);
   const [runningId, setRunningId] = React.useState<string | null>(null);
@@ -44,6 +50,7 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
   const [bulkAction, setBulkAction] = React.useState<"SKIP_DUE" | "DISABLE" | null>(null);
   const [results, setResults] = React.useState<Record<string, RunResult>>({});
   const dueItems = React.useMemo(() => items.filter((source) => source.automatable && source.due), [items]);
+  const activeDueCount = Math.max(0, dueCount);
   const busy = runningDue || Boolean(runningId) || Boolean(disablingId) || Boolean(bulkAction);
 
   React.useEffect(() => {
@@ -185,11 +192,12 @@ export function WorkflowSourceQueue({ sources }: { sources: WorkflowSourceItem[]
           type="button"
           size="sm"
           variant="outline"
-          disabled={busy}
+          disabled={busy || activeDueCount === 0}
           onClick={runDueSources}
+          title={activeDueCount ? "Run all due automatable sources" : "No automatable sources are due"}
         >
           {runningDue ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-          Run due
+          {activeDueCount ? `Run due (${activeDueCount})` : "Run due"}
         </Button>
         <Button
           type="button"

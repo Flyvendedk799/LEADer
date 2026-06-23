@@ -876,7 +876,7 @@ export default async function WorkflowsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <WorkflowSourceQueue sources={sourceItems} />
+              <WorkflowSourceQueue sources={sourceItems} dueCount={dueSourceCount} />
             </CardContent>
           </Card>
 
