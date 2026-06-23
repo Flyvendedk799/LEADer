@@ -11,6 +11,13 @@ export type ContactResearchTargetStats = {
   latestDealTitle?: string | null;
 };
 
+export type PersonContactResearchTargetStats = {
+  personName?: string | null;
+  personRole?: string | null;
+  accountName?: string | null;
+  latestDealTitle?: string | null;
+};
+
 export type ResearchBriefIdentity = {
   accountId?: string | null;
   personId?: string | null;
@@ -49,6 +56,16 @@ export function needsContactResearch({
   return openDealCount > 0 && countReachablePeople(people) === 0;
 }
 
+export function needsPersonContactResearch({
+  person,
+  openDealCount,
+}: {
+  person: ContactRoute & { name?: string | null };
+  openDealCount: number;
+}) {
+  return openDealCount > 0 && hasValue(person.name) && !personHasContactRoute(person);
+}
+
 export function contactResearchReason(stats: ContactResearchTargetStats) {
   if (stats.peopleCount === 0) {
     return stats.latestDealTitle
@@ -56,6 +73,25 @@ export function contactResearchReason(stats: ContactResearchTargetStats) {
       : "Open account has no people attached yet.";
   }
   return `${stats.peopleCount} ${stats.peopleCount === 1 ? "person" : "people"} saved, but none has email, phone, or LinkedIn.`;
+}
+
+export function personContactResearchReason(stats: PersonContactResearchTargetStats) {
+  const person = stats.personName?.trim() || "Saved person";
+  const role = stats.personRole?.trim() ? ` (${stats.personRole.trim()})` : "";
+  const account = stats.accountName?.trim() ? ` at ${stats.accountName.trim()}` : "";
+  const deal = stats.latestDealTitle?.trim() ? ` for "${stats.latestDealTitle.trim()}"` : "";
+  return `${person}${role}${account}${deal} has no email, phone, or LinkedIn yet.`;
+}
+
+export function personResearchSubject(input: {
+  personName?: string | null;
+  personRole?: string | null;
+  accountName?: string | null;
+}) {
+  const name = input.personName?.replace(/\s+/g, " ").trim();
+  const role = input.personRole?.replace(/\s+/g, " ").trim();
+  const account = input.accountName?.replace(/\s+/g, " ").trim();
+  return [name, role ? `(${role})` : "", account ? `at ${account}` : ""].filter(Boolean).join(" ");
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {
@@ -131,8 +167,12 @@ export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIde
 export function researchBriefMatchesIdentity(run: ResearchBriefRunLike, identity: ResearchBriefIdentity) {
   const runIdentity = researchBriefIdentityFromInput(run.input);
   if (!researchBriefModeMatches(runIdentity, identity)) return false;
+  if (identity.personId) {
+    if (runIdentity.personId === identity.personId) return true;
+    const subject = normalizedSubject(identity.subject);
+    return Boolean(subject && normalizedSubject(runIdentity.subject) === subject);
+  }
   if (identity.dealId && runIdentity.dealId === identity.dealId) return true;
-  if (identity.personId && runIdentity.personId === identity.personId) return true;
   if (identity.accountId && runIdentity.accountId === identity.accountId) return true;
   const subject = normalizedSubject(identity.subject);
   if (!subject || normalizedSubject(runIdentity.subject) !== subject) return false;

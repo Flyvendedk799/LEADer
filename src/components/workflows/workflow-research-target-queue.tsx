@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Building2, CheckCircle2, ExternalLink, Loader2, Search } from "lucide-react";
+import { Building2, CheckCircle2, ExternalLink, Loader2, Search, UserSearch } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,11 +10,17 @@ import { toast } from "@/hooks/use-toast";
 import { researchBriefRunPayload } from "@/lib/workflows/usecase-actions";
 
 type Workspace = "DK" | "GLOBAL";
+type ResearchTargetKind = "account" | "person";
+type ResearchSubjectType = "person" | "company";
 
 export type WorkflowResearchTargetItem = {
   id: string;
+  kind: ResearchTargetKind;
   accountId: string;
+  personId: string | null;
   name: string;
+  subject: string;
+  subjectType: ResearchSubjectType;
   workspace: Workspace;
   type: string;
   peopleCount: number;
@@ -52,13 +58,14 @@ export function WorkflowResearchTargetQueue({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           researchBriefRunPayload({
-            subject: target.name,
-            subjectType: "company",
+            subject: target.subject,
+            subjectType: target.subjectType,
             objective: "find-contact",
             depth: "standard",
             createTasks: true,
             workspace: target.workspace,
             accountId: target.accountId,
+            personId: target.personId,
             dealId: target.latestDealId,
           }),
         ),
@@ -91,11 +98,17 @@ export function WorkflowResearchTargetQueue({
             <div className="flex items-start justify-between gap-3">
               <Link href={`/accounts/${target.accountId}`} className="min-w-0 hover:text-primary">
                 <div className="flex min-w-0 items-center gap-2">
-                  <Building2 className="h-4 w-4 shrink-0 text-primary" />
+                  {target.kind === "person" ? (
+                    <UserSearch className="h-4 w-4 shrink-0 text-primary" />
+                  ) : (
+                    <Building2 className="h-4 w-4 shrink-0 text-primary" />
+                  )}
                   <p className="truncate text-sm font-medium">{target.name}</p>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {target.openDealCount} open {target.openDealCount === 1 ? "deal" : "deals"} - {target.peopleCount} saved {target.peopleCount === 1 ? "person" : "people"}
+                  {target.kind === "person"
+                    ? target.type || "Person"
+                    : `${target.openDealCount} open ${target.openDealCount === 1 ? "deal" : "deals"} - ${target.peopleCount} saved ${target.peopleCount === 1 ? "person" : "people"}`}
                 </p>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{target.reason}</p>
               </Link>

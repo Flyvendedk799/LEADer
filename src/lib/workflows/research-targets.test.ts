@@ -5,7 +5,10 @@ import {
   countReachablePeople,
   findActiveResearchBriefRun,
   needsContactResearch,
+  needsPersonContactResearch,
+  personContactResearchReason,
   personHasContactRoute,
+  personResearchSubject,
   researchBriefIdentityFromInput,
 } from "./research-targets";
 
@@ -24,6 +27,18 @@ describe("workflow research targets", () => {
     expect(needsContactResearch({ people: [{ email: "buyer@example.com" }], openDealCount: 1 })).toBe(false);
   });
 
+  it("flags named people on open deals when they have no contact route", () => {
+    expect(needsPersonContactResearch({ person: { name: "Dennis" }, openDealCount: 0 })).toBe(false);
+    expect(needsPersonContactResearch({ person: { name: " " }, openDealCount: 1 })).toBe(false);
+    expect(needsPersonContactResearch({ person: { name: "Dennis" }, openDealCount: 1 })).toBe(true);
+    expect(
+      needsPersonContactResearch({
+        person: { name: "Dennis", phone: "+45 12 34 56 78" },
+        openDealCount: 1,
+      }),
+    ).toBe(false);
+  });
+
   it("explains why an account needs contact research", () => {
     expect(
       contactResearchReason({
@@ -40,6 +55,24 @@ describe("workflow research targets", () => {
         openDealCount: 1,
       }),
     ).toContain("none has email");
+  });
+
+  it("builds person contact research subjects and reasons from role/account context", () => {
+    expect(
+      personResearchSubject({
+        personName: " Dennis   Hansen ",
+        personRole: "IT chef",
+        accountName: "Kommune Nord",
+      }),
+    ).toBe("Dennis Hansen (IT chef) at Kommune Nord");
+    expect(
+      personContactResearchReason({
+        personName: "Dennis Hansen",
+        personRole: "IT chef",
+        accountName: "Kommune Nord",
+        latestDealTitle: "Intranet",
+      }),
+    ).toBe('Dennis Hansen (IT chef) at Kommune Nord for "Intranet" has no email, phone, or LinkedIn yet.');
   });
 
   it("extracts linked research brief identity from workflow input", () => {
@@ -86,6 +119,38 @@ describe("workflow research targets", () => {
     expect(findActiveResearchBriefRun(runs, { accountId: "account-2", dealId: "deal-2" })?.id).toBe("run-deal");
     expect(findActiveResearchBriefRun(runs, { accountId: "missing" })).toBeNull();
     expect(findActiveResearchBriefRun(runs, {})).toBeNull();
+  });
+
+  it("does not let deal-level research hide a specific person contact brief", () => {
+    const runs = [
+      {
+        id: "run-deal",
+        status: "RUNNING",
+        input: {
+          workspace: "DK",
+          options: {
+            researchBrief: {
+              accountId: "account-1",
+              dealId: "deal-1",
+              subjectType: "company",
+              objective: "find-contact",
+            },
+          },
+        },
+      },
+    ];
+
+    expect(
+      findActiveResearchBriefRun(runs, {
+        accountId: "account-1",
+        personId: "person-1",
+        dealId: "deal-1",
+        subject: "Dennis Hansen",
+        subjectType: "person",
+        objective: "find-contact",
+        workspace: "DK",
+      }),
+    ).toBeNull();
   });
 
   it("keeps linked research briefs distinct by objective and workspace", () => {

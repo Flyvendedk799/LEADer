@@ -60,7 +60,15 @@ import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
 import { previewWorkflowRun } from "@/lib/workflows/preview";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import { filterWorkflowRecommendations } from "@/lib/workflows/recommendation-actions";
-import { contactResearchReason, countReachablePeople, findActiveResearchBriefRun, needsContactResearch } from "@/lib/workflows/research-targets";
+import {
+  contactResearchReason,
+  countReachablePeople,
+  findActiveResearchBriefRun,
+  needsContactResearch,
+  needsPersonContactResearch,
+  personContactResearchReason,
+  personResearchSubject,
+} from "@/lib/workflows/research-targets";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 
 export const dynamic = "force-dynamic";
@@ -215,7 +223,18 @@ export default async function WorkflowsPage() {
         deals: { some: { status: { in: [...OPEN_DEAL_STATUSES] } } },
       },
       include: {
-        people: { select: { email: true, phone: true, linkedin: true } },
+        people: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+            email: true,
+            phone: true,
+            linkedin: true,
+            updatedAt: true,
+          },
+          orderBy: { updatedAt: "desc" },
+        },
         deals: {
           where: { status: { in: [...OPEN_DEAL_STATUSES] } },
           orderBy: { updatedAt: "desc" },
@@ -329,33 +348,87 @@ export default async function WorkflowsPage() {
     .flatMap((account) => {
       const reachablePeopleCount = countReachablePeople(account.people);
       const openDealCount = account.deals.length;
-      if (!needsContactResearch({ people: account.people, openDealCount })) return [];
       const latestDeal = account.deals[0] ?? null;
-      const stats = {
-        peopleCount: account.people.length,
-        reachablePeopleCount,
-        openDealCount,
-        latestDealTitle: latestDeal?.title ?? null,
-      };
-      const activeRun = findActiveResearchBriefRun(activeResearchBriefRuns, {
-        accountId: account.id,
-        dealId: latestDeal?.id ?? null,
-      });
-      return [{
-        id: account.id,
-        accountId: account.id,
-        name: account.name,
-        workspace: account.workspace,
-        type: account.type,
-        peopleCount: stats.peopleCount,
-        reachablePeopleCount,
-        openDealCount,
-        latestDealId: latestDeal?.id ?? null,
-        latestDealTitle: latestDeal?.title ?? null,
-        reason: contactResearchReason(stats),
-        activeRunId: activeRun?.id ?? null,
-        activeRunStatus: activeRun?.status ?? null,
-      }];
+      const targets: WorkflowResearchTargetItem[] = [];
+
+      if (needsContactResearch({ people: account.people, openDealCount })) {
+        const stats = {
+          peopleCount: account.people.length,
+          reachablePeopleCount,
+          openDealCount,
+          latestDealTitle: latestDeal?.title ?? null,
+        };
+        const activeRun = findActiveResearchBriefRun(activeResearchBriefRuns, {
+          accountId: account.id,
+          dealId: latestDeal?.id ?? null,
+          subjectType: "company",
+          objective: "find-contact",
+          workspace: account.workspace,
+        });
+        targets.push({
+          id: `account:${account.id}`,
+          kind: "account",
+          accountId: account.id,
+          personId: null,
+          name: account.name,
+          subject: account.name,
+          subjectType: "company",
+          workspace: account.workspace,
+          type: account.type,
+          peopleCount: stats.peopleCount,
+          reachablePeopleCount,
+          openDealCount,
+          latestDealId: latestDeal?.id ?? null,
+          latestDealTitle: latestDeal?.title ?? null,
+          reason: contactResearchReason(stats),
+          activeRunId: activeRun?.id ?? null,
+          activeRunStatus: activeRun?.status ?? null,
+        });
+      }
+
+      for (const person of account.people) {
+        if (!needsPersonContactResearch({ person, openDealCount })) continue;
+        const subject = personResearchSubject({
+          personName: person.name,
+          personRole: person.role,
+          accountName: account.name,
+        });
+        const activeRun = findActiveResearchBriefRun(activeResearchBriefRuns, {
+          accountId: account.id,
+          personId: person.id,
+          dealId: latestDeal?.id ?? null,
+          subject,
+          subjectType: "person",
+          objective: "find-contact",
+          workspace: account.workspace,
+        });
+        targets.push({
+          id: `person:${person.id}`,
+          kind: "person",
+          accountId: account.id,
+          personId: person.id,
+          name: person.name ?? account.name,
+          subject,
+          subjectType: "person",
+          workspace: account.workspace,
+          type: person.role ?? "Person",
+          peopleCount: account.people.length,
+          reachablePeopleCount,
+          openDealCount,
+          latestDealId: latestDeal?.id ?? null,
+          latestDealTitle: latestDeal?.title ?? null,
+          reason: personContactResearchReason({
+            personName: person.name,
+            personRole: person.role,
+            accountName: account.name,
+            latestDealTitle: latestDeal?.title ?? null,
+          }),
+          activeRunId: activeRun?.id ?? null,
+          activeRunStatus: activeRun?.status ?? null,
+        });
+      }
+
+      return targets;
     })
     .slice(0, 6);
   const actionTasks = [...overdueTasks, ...dueTasks].map((task) => ({
