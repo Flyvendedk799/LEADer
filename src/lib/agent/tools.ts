@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { DEAL_INCLUDE, ensureAccount, getCockpit, runDiscoveryMission, saveCandidateAsDeal } from "@/lib/crm";
-import { ensureDefaultDiscoveryLanes } from "@/lib/crm/lanes";
+import { ensureDefaultDiscoveryLanes, filterVisibleLaneCandidates } from "@/lib/crm/lanes";
 import { pursuitScore } from "@/lib/crm/scoring";
 import type { ConversionAssetKind, DealStatus, TaskPriority, TaskStatus, TouchpointKind, Workspace } from "@/lib/types";
 
@@ -230,7 +230,8 @@ export const AGENT_TOOLS = [
       const limit = args.limit;
       const q = clean(args.query);
       const includeAll = args.entity === "all";
-      const [deals, accounts, people, tasks, candidates] = await Promise.all([
+      const candidateFetchLimit = Math.max(limit * 3, limit);
+      const [deals, accounts, people, tasks, candidateRows] = await Promise.all([
         includeAll || args.entity === "deals"
           ? db.deal.findMany({
               where: { ...makeSearchWhere(ownerId, q), ...(args.status ? { status: args.status as DealStatus } : {}) },
@@ -300,10 +301,11 @@ export const AGENT_TOOLS = [
               },
               include: { lane: true, evidence: { take: 1, orderBy: { createdAt: "desc" } } },
               orderBy: [{ pursuitScore: "desc" }, { updatedAt: "desc" }],
-              take: limit,
+              take: candidateFetchLimit,
             })
           : Promise.resolve([]),
       ]);
+      const candidates = filterVisibleLaneCandidates(candidateRows).slice(0, limit);
 
       return {
         tool: "search_crm",
