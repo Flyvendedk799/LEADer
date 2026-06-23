@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildResearchChecklist, buildResearchWorksheet, normalizeResearchBriefOptions } from "./research-brief";
+import {
+  buildResearchChecklist,
+  buildResearchRunbook,
+  buildResearchWorksheet,
+  normalizeResearchBriefOptions,
+} from "./research-brief";
 
 describe("research brief workflow helpers", () => {
   it("builds a public-source contact checklist from a person clue", () => {
@@ -108,6 +113,34 @@ describe("research brief workflow helpers", () => {
     );
     expect(fields.find((field) => field.id === "primary-route")?.evidence).toContain("official");
     expect(fields.find((field) => field.id === "recommended-action")?.capture).toContain("stop");
+  });
+
+  it("builds an operator runbook for practical name-to-contact lookup", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+      depth: "standard",
+    });
+
+    const runbook = buildResearchRunbook(options, "DK");
+
+    expect(runbook.map((step) => step.id)).toEqual([
+      "resolve-subject",
+      "current-affiliation",
+      "contact-route-ladder",
+      "next-action",
+    ]);
+    expect(runbook.find((step) => step.id === "contact-route-ladder")?.routePriority).toEqual([
+      "Official switchboard or contact form",
+      "Role inbox or department page",
+      "Public professional profile",
+      "Direct phone/email only when intentionally public and tied to the exact subject",
+    ]);
+    expect(runbook.flatMap((step) => step.searchPrompts)).toEqual(
+      expect.arrayContaining(['"Mette Jensen" kontakt', '"Mette Jensen" telefon']),
+    );
+    expect(runbook.find((step) => step.id === "next-action")?.stopWhen).toContain("single sentence");
   });
 
   it("adds opportunity worksheet fields for deep company mapping", () => {

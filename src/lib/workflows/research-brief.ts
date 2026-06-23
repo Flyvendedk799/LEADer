@@ -44,6 +44,16 @@ export type ResearchWorksheetSection = {
   fields: ResearchWorksheetField[];
 };
 
+export type ResearchRunbookStep = {
+  id: string;
+  title: string;
+  goal: string;
+  searchPrompts: string[];
+  capture: string[];
+  stopWhen: string;
+  routePriority?: string[];
+};
+
 type ResearchStepTemplate = [
   stage: string,
   title: string,
@@ -162,6 +172,26 @@ function worksheetField(
     capture,
     evidence,
     sourcePrompts: sourcePrompts.slice(0, 5),
+  };
+}
+
+function runbookStep(
+  id: string,
+  title: string,
+  goal: string,
+  searchPrompts: string[],
+  capture: string[],
+  stopWhen: string,
+  routePriority?: string[],
+): ResearchRunbookStep {
+  return {
+    id,
+    title,
+    goal,
+    searchPrompts: searchPrompts.slice(0, 6),
+    capture,
+    stopWhen,
+    ...(routePriority?.length ? { routePriority } : {}),
   };
 }
 
@@ -642,4 +672,125 @@ export function buildResearchWorksheet(
   });
 
   return sections;
+}
+
+export function buildResearchRunbook(
+  options: NormalizedResearchBriefOptions,
+  workspace: Workspace,
+): ResearchRunbookStep[] {
+  const { subject, subjectType, objective, depth } = options;
+  const prompts = {
+    official: officialPrompts(subject, workspace, subjectType),
+    affiliation: affiliationPrompts(subject, workspace),
+    contact: contactPrompts(subject, workspace),
+    opportunity: opportunityPrompts(subject, workspace),
+  };
+  const steps: ResearchRunbookStep[] = [
+    runbookStep(
+      "resolve-subject",
+      "Resolve the exact subject",
+      "Avoid chasing the wrong same-name person, company, or stale profile.",
+      prompts.official,
+      [
+        "Canonical name and country",
+        subjectType === "person" ? "Current organization and role" : "Official domain or legal entity",
+        "Two confirming public signals",
+        "Same-name false positives",
+      ],
+      "Stop when the subject is confirmed or the ambiguity is explicit enough to avoid saving contact details.",
+    ),
+  ];
+
+  if (subjectType === "person") {
+    steps.push(
+      runbookStep(
+        "current-affiliation",
+        "Find current affiliation",
+        "Tie the person to a current organization before trusting any phone, email, or profile hit.",
+        prompts.affiliation,
+        [
+          "Current employer or organization",
+          "Role/title and department",
+          "Source date or recency clue",
+          "Evidence that connects the person to the organization",
+        ],
+        "Stop when one public source links the person to the organization, or mark the route as general-only.",
+      ),
+    );
+  }
+
+  if (objective === "find-contact" || objective === "general") {
+    steps.push(
+      runbookStep(
+        "contact-route-ladder",
+        "Build the contact route ladder",
+        "Choose the safest usable public contact route before looking for direct personal details.",
+        prompts.contact,
+        [
+          "Primary route",
+          "Fallback route",
+          "Phone or switchboard",
+          "Email, role inbox, or contact form",
+          "Confidence and why the route belongs to this subject",
+        ],
+        "Stop when there is one public primary route, one fallback route, and a reason not to use weaker hits.",
+        [
+          "Official switchboard or contact form",
+          "Role inbox or department page",
+          "Public professional profile",
+          "Direct phone/email only when intentionally public and tied to the exact subject",
+        ],
+      ),
+    );
+  }
+
+  if (objective === "map-opportunity" || objective === "qualify-lead") {
+    steps.push(
+      runbookStep(
+        "opportunity-signal-map",
+        "Map opportunity signals",
+        "Separate concrete buying signals from generic company research.",
+        [...prompts.opportunity, `${quoted(subject)} news`, `${quoted(subject)} announcement`],
+        [
+          "Recent trigger",
+          "Likely buyer or team",
+          "Technical need",
+          "Deadline or reason to act now",
+          "Missing evidence",
+        ],
+        "Stop when the finding can be labeled concrete opportunity, weak signal, or no opportunity yet.",
+      ),
+    );
+  }
+
+  if (objective === "verify-identity") {
+    steps.push(
+      runbookStep(
+        "verification-decision",
+        "Make the verification decision",
+        "Decide match, mismatch, or unresolved instead of letting ambiguity leak into outreach.",
+        [`${quoted(subject)} LinkedIn`, `${quoted(subject)} profile`, `${quoted(subject)} former`, `${quoted(subject)} alias`],
+        ["Matched facts", "Conflicting facts", "Rule-out evidence", "Confidence level"],
+        "Stop when the next action is match, reject, or continue researching with one named missing fact.",
+      ),
+    );
+  }
+
+  steps.push(
+    runbookStep(
+      "next-action",
+      "Choose the next action",
+      "End with an operator decision that can be executed immediately.",
+      [`${quoted(subject)} contact`, `${quoted(subject)} LinkedIn`, `${quoted(subject)} official`],
+      [
+        "Use route, keep researching, save low-confidence, or stop",
+        "Source-backed reason for contact",
+        "Fallback channel",
+        "Largest remaining risk",
+      ],
+      "Stop when the next action is a single sentence with channel, reason, and confidence.",
+    ),
+  );
+
+  return depth === "quick" ? steps.slice(0, Math.min(3, steps.length)) : steps;
 }

@@ -9,10 +9,12 @@ import type { Workspace } from "@/lib/types";
 import { formatWorkflowElapsed, workflowLogEntry } from "./logging";
 import {
   buildResearchChecklist,
+  buildResearchRunbook,
   buildResearchWorksheet,
   normalizeResearchBriefOptions,
   type NormalizedResearchBriefOptions,
   type ResearchChecklistItem,
+  type ResearchRunbookStep,
   type ResearchWorksheetSection,
 } from "./research-brief";
 import { summarizeSourceRuns, type SourceRunSummary } from "./summary";
@@ -102,6 +104,7 @@ export type ResearchBriefResult = {
   taskIds: string[];
   checklist: ResearchChecklistItem[];
   worksheet: ResearchWorksheetSection[];
+  runbook: ResearchRunbookStep[];
   linked: {
     accountId?: string;
     accountName?: string;
@@ -643,6 +646,7 @@ export async function runResearchBrief(
 
   const checklist = buildResearchChecklist(normalized, workspace);
   const worksheet = buildResearchWorksheet(normalized, workspace);
+  const runbook = buildResearchRunbook(normalized, workspace);
   const taskIds: string[] = [];
   let createdTasks = 0;
   let skippedExistingTasks = 0;
@@ -687,6 +691,7 @@ export async function runResearchBrief(
     ),
   );
   log.push(workflowLogEntry(`Prepared ${worksheet.length} worksheet sections for evidence capture.`));
+  log.push(workflowLogEntry(`Prepared ${runbook.length} runbook steps for practical lookup order.`));
 
   const durationMs = Date.now() - startedAt;
   log.push(workflowLogEntry(`Finished research brief in ${formatWorkflowElapsed(durationMs)}.`));
@@ -705,6 +710,7 @@ export async function runResearchBrief(
     taskIds,
     checklist,
     worksheet,
+    runbook,
     linked,
     log,
   };

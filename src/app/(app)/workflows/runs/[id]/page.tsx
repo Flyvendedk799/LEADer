@@ -79,6 +79,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
     numberValue(operatingStaleDeals?.tasksCreated) + numberValue(operatingDeadlines?.tasksCreated);
   const checklist = Array.isArray(result?.checklist) ? result.checklist.filter((item) => objectValue(item)) : [];
   const worksheet = Array.isArray(result?.worksheet) ? result.worksheet.filter((item) => objectValue(item)) : [];
+  const runbook = Array.isArray(result?.runbook) ? result.runbook.filter((item) => objectValue(item)) : [];
   const taskIds = stringList(result?.taskIds);
   const dealIds = stringList(result?.dealIds);
   const tasks = taskIds.length
@@ -147,7 +148,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           <RunMetric label="Subject" value={typeof result?.subject === "string" ? truncate(result.subject, 28) : "Research"} icon={<Search />} />
           <RunMetric label="Created tasks" value={numberValue(result?.createdTasks)} icon={<ListChecks />} />
           <RunMetric label="Existing tasks" value={numberValue(result?.skippedExistingTasks)} icon={<CheckCircle2 />} />
-          <RunMetric label="Worksheet" value={worksheet.length || checklist.length} icon={<Target />} />
+          <RunMetric label="Runbook" value={runbook.length || worksheet.length || checklist.length} icon={<Target />} />
         </section>
       ) : run.playbook === "candidate-harvest" ? (
         <section className="grid gap-3 md:grid-cols-4">
@@ -171,6 +172,68 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           <RunMetric label="Digests" value={numberValue(digest?.created)} icon={<ListChecks />} />
         </section>
       )}
+
+      {run.playbook === "research-brief" && runbook.length ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Operator runbook</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 lg:grid-cols-2">
+              {runbook.map((raw, index) => {
+                const step = objectValue(raw)!;
+                const title = typeof step.title === "string" ? step.title : `Runbook step ${index + 1}`;
+                const goal = typeof step.goal === "string" ? step.goal : "";
+                const capture = stringList(step.capture);
+                const stopWhen = typeof step.stopWhen === "string" ? step.stopWhen : "";
+                const prompts = uniqueResearchPrompts(step.searchPrompts, 5);
+                const routePriority = stringList(step.routePriority);
+                return (
+                  <div key={`${title}-${index}`} className="rounded-md border border-border bg-surface/40 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{index + 1}</Badge>
+                      <p className="text-sm font-medium">{title}</p>
+                    </div>
+                    {goal ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{goal}</p> : null}
+                    {capture.length ? (
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Capture</p>
+                        <ul className="mt-1 space-y-1 text-xs leading-5 text-muted-foreground">
+                          {capture.slice(0, 5).map((item) => (
+                            <li key={item} className="flex gap-2">
+                              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-primary" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {routePriority.length ? (
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Route priority</p>
+                        <ol className="mt-1 space-y-1 text-xs leading-5 text-muted-foreground">
+                          {routePriority.slice(0, 4).map((item, routeIndex) => (
+                            <li key={item} className="flex gap-2">
+                              <span className="shrink-0 tabular-nums">{routeIndex + 1}.</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    ) : null}
+                    {stopWhen ? (
+                      <p className="mt-3 rounded-md border border-border/70 bg-background/45 p-2 text-xs leading-5 text-muted-foreground">
+                        {stopWhen}
+                      </p>
+                    ) : null}
+                    <SearchPromptLinks prompts={prompts} />
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {run.playbook === "research-brief" && checklist.length ? (
         <Card>

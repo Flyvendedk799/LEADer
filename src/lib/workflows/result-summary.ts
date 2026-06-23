@@ -36,9 +36,11 @@ export function workflowRunResultSummary(playbook: string, result: unknown) {
   }
 
   if (playbook === "research-brief") {
+    const runbookSteps = arrayCount(payload.runbook);
     const worksheetSections = arrayCount(payload.worksheet);
+    const runbook = runbookSteps ? `${runbookSteps} runbook steps - ` : "";
     const worksheet = worksheetSections ? `${worksheetSections} worksheet sections - ` : "";
-    return `${worksheet}${numberValue(payload.createdTasks)} research tasks - ${numberValue(payload.skippedExistingTasks)} existing - ${subject}`;
+    return `${runbook}${worksheet}${numberValue(payload.createdTasks)} research tasks - ${numberValue(payload.skippedExistingTasks)} existing - ${subject}`;
   }
 
   if (playbook === "candidate-harvest") {

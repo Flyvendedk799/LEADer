@@ -40,8 +40,9 @@ describe("workflowRunResultSummary", () => {
         subject: "Mette Jensen",
         createdTasks: 0,
         skippedExistingTasks: 0,
+        runbook: [{ id: "resolve-subject" }, { id: "contact-route-ladder" }],
         worksheet: [{ id: "identity" }, { id: "contact-route" }],
       }),
-    ).toBe("2 worksheet sections - 0 research tasks - 0 existing - Mette Jensen");
+    ).toBe("2 runbook steps - 2 worksheet sections - 0 research tasks - 0 existing - Mette Jensen");
   });
 });

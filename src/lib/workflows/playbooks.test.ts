@@ -69,6 +69,7 @@ describe("workflowRunSummary", () => {
       taskIds: ["task-1"],
       checklist: [],
       worksheet: [],
+      runbook: [],
       linked: {},
       log: [],
     };
