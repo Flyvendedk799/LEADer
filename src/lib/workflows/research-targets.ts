@@ -15,6 +15,10 @@ export type ResearchBriefIdentity = {
   accountId?: string | null;
   personId?: string | null;
   dealId?: string | null;
+  subject?: string | null;
+  subjectType?: string | null;
+  objective?: string | null;
+  workspace?: string | null;
 };
 
 export type ResearchBriefRunLike = {
@@ -62,6 +66,10 @@ function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function normalizedSubject(value?: string | null) {
+  return value?.replace(/\s+/g, " ").trim().toLocaleLowerCase() || null;
+}
+
 export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIdentity {
   const root = objectValue(input);
   const options = objectValue(root?.options);
@@ -70,6 +78,10 @@ export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIde
     accountId: stringValue(brief?.accountId),
     personId: stringValue(brief?.personId),
     dealId: stringValue(brief?.dealId),
+    subject: stringValue(brief?.subject),
+    subjectType: stringValue(brief?.subjectType),
+    objective: stringValue(brief?.objective),
+    workspace: stringValue(root?.workspace),
   };
 }
 
@@ -78,13 +90,18 @@ export function researchBriefMatchesIdentity(run: ResearchBriefRunLike, identity
   if (identity.dealId && runIdentity.dealId === identity.dealId) return true;
   if (identity.personId && runIdentity.personId === identity.personId) return true;
   if (identity.accountId && runIdentity.accountId === identity.accountId) return true;
-  return false;
+  const subject = normalizedSubject(identity.subject);
+  if (!subject || normalizedSubject(runIdentity.subject) !== subject) return false;
+  if (identity.workspace && runIdentity.workspace && runIdentity.workspace !== identity.workspace) return false;
+  if (identity.subjectType && runIdentity.subjectType && runIdentity.subjectType !== identity.subjectType) return false;
+  if (identity.objective && runIdentity.objective && runIdentity.objective !== identity.objective) return false;
+  return true;
 }
 
 export function findActiveResearchBriefRun<T extends ResearchBriefRunLike>(
   runs: T[],
   identity: ResearchBriefIdentity,
 ): T | null {
-  if (!identity.accountId && !identity.personId && !identity.dealId) return null;
+  if (!identity.accountId && !identity.personId && !identity.dealId && !normalizedSubject(identity.subject)) return null;
   return runs.find((run) => researchBriefMatchesIdentity(run, identity)) ?? null;
 }

@@ -18,7 +18,7 @@ import {
   type WorkflowQueueMoveAction,
 } from "@/lib/workflows/queue";
 import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
-import { findActiveResearchBriefRun } from "@/lib/workflows/research-targets";
+import { findActiveResearchBriefRun, researchBriefIdentityFromInput } from "@/lib/workflows/research-targets";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 import { workflowRunInputSchema } from "@/lib/workflows/types";
 
@@ -69,7 +69,6 @@ export async function POST(req: Request) {
     }
 
     if (parsed.data.playbook === "research-brief") {
-      const brief = parsed.data.options?.researchBrief;
       const activeRuns = await db.workflowRun.findMany({
         where: {
           ownerId,
@@ -81,11 +80,7 @@ export async function POST(req: Request) {
         orderBy: [{ queuePriority: "desc" }, { createdAt: "asc" }],
         take: 50,
       });
-      const existing = findActiveResearchBriefRun(activeRuns, {
-        accountId: brief?.accountId,
-        personId: brief?.personId,
-        dealId: brief?.dealId,
-      });
+      const existing = findActiveResearchBriefRun(activeRuns, researchBriefIdentityFromInput(parsed.data));
       if (existing) {
         return NextResponse.json({
           run: workflowRunPayload(existing),

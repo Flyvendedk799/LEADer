@@ -46,15 +46,26 @@ describe("workflow research targets", () => {
     expect(
       researchBriefIdentityFromInput({
         playbook: "research-brief",
+        workspace: "DK",
         options: {
           researchBrief: {
             subject: "Acme",
+            subjectType: "company",
+            objective: "map-opportunity",
             accountId: "account-1",
             dealId: "deal-1",
           },
         },
       }),
-    ).toEqual({ accountId: "account-1", personId: null, dealId: "deal-1" });
+    ).toEqual({
+      accountId: "account-1",
+      personId: null,
+      dealId: "deal-1",
+      subject: "Acme",
+      subjectType: "company",
+      objective: "map-opportunity",
+      workspace: "DK",
+    });
   });
 
   it("finds active linked research briefs by deal, person, or account", () => {
@@ -75,5 +86,65 @@ describe("workflow research targets", () => {
     expect(findActiveResearchBriefRun(runs, { accountId: "account-2", dealId: "deal-2" })?.id).toBe("run-deal");
     expect(findActiveResearchBriefRun(runs, { accountId: "missing" })).toBeNull();
     expect(findActiveResearchBriefRun(runs, {})).toBeNull();
+  });
+
+  it("finds active freeform research briefs by normalized subject and mode", () => {
+    const runs = [
+      {
+        id: "run-contact",
+        status: "QUEUED",
+        input: {
+          playbook: "research-brief",
+          workspace: "DK",
+          options: {
+            researchBrief: {
+              subject: "  Mette   Jensen ",
+              subjectType: "person",
+              objective: "find-contact",
+            },
+          },
+        },
+      },
+      {
+        id: "run-opportunity",
+        status: "QUEUED",
+        input: {
+          playbook: "research-brief",
+          workspace: "DK",
+          options: {
+            researchBrief: {
+              subject: "Mette Jensen",
+              subjectType: "person",
+              objective: "map-opportunity",
+            },
+          },
+        },
+      },
+    ];
+
+    expect(
+      findActiveResearchBriefRun(runs, {
+        subject: "mette jensen",
+        subjectType: "person",
+        objective: "find-contact",
+        workspace: "DK",
+      })?.id,
+    ).toBe("run-contact");
+    expect(
+      findActiveResearchBriefRun(runs, {
+        subject: "Mette Jensen",
+        subjectType: "person",
+        objective: "verify-identity",
+        workspace: "DK",
+      }),
+    ).toBeNull();
+    expect(
+      findActiveResearchBriefRun(runs, {
+        subject: "Mette Jensen",
+        subjectType: "person",
+        objective: "find-contact",
+        workspace: "GLOBAL",
+      }),
+    ).toBeNull();
   });
 });
