@@ -29,6 +29,21 @@ export type ResearchChecklistItem = {
   acceptanceCriteria: string[];
 };
 
+export type ResearchWorksheetField = {
+  id: string;
+  label: string;
+  capture: string;
+  evidence: string;
+  sourcePrompts: string[];
+};
+
+export type ResearchWorksheetSection = {
+  id: string;
+  title: string;
+  purpose: string;
+  fields: ResearchWorksheetField[];
+};
+
 type ResearchStepTemplate = [
   stage: string,
   title: string,
@@ -132,6 +147,22 @@ function opportunityPrompts(subject: string, workspace: Workspace) {
     workspace === "DK" ? `${quoted(subject)} udbud` : `${quoted(subject)} tender`,
     workspace === "DK" ? `${quoted(subject)} offentligt indkøb` : `${quoted(subject)} procurement`,
   ];
+}
+
+function worksheetField(
+  id: string,
+  label: string,
+  capture: string,
+  evidence: string,
+  sourcePrompts: string[],
+): ResearchWorksheetField {
+  return {
+    id,
+    label,
+    capture,
+    evidence,
+    sourcePrompts: sourcePrompts.slice(0, 5),
+  };
 }
 
 function dueInDays(index: number, depth: ResearchDepth) {
@@ -378,4 +409,237 @@ export function buildResearchChecklist(
         ? steps.slice(0, 4)
         : steps;
   return selected.map((step, index) => item(subject, index, depth, objective, workspace, ...step));
+}
+
+export function buildResearchWorksheet(
+  options: NormalizedResearchBriefOptions,
+  workspace: Workspace,
+): ResearchWorksheetSection[] {
+  const { subject, subjectType, objective, depth } = options;
+  const prompts = {
+    official: officialPrompts(subject, workspace, subjectType),
+    affiliation: affiliationPrompts(subject, workspace),
+    contact: contactPrompts(subject, workspace),
+    opportunity: opportunityPrompts(subject, workspace),
+  };
+  const sections: ResearchWorksheetSection[] = [
+    {
+      id: "identity",
+      title: "Identity decision",
+      purpose: "Resolve the exact person, company, or clue before trusting contact details.",
+      fields: [
+        worksheetField(
+          "canonical-subject",
+          "Confirmed subject",
+          "Canonical name, current organization/legal entity, country, and public profile/domain.",
+          "Two independent public signals or one official registry/profile plus one corroborating source.",
+          prompts.official,
+        ),
+        worksheetField(
+          "confidence",
+          "Confidence and ambiguity",
+          "High/medium/low confidence, same-name risks, and what would change the conclusion.",
+          "Matched facts and conflicting facts are recorded separately.",
+          [`${quoted(subject)} alias`, `${quoted(subject)} former`, ...prompts.official],
+        ),
+        worksheetField(
+          "false-positives",
+          "Ruled-out matches",
+          "People, companies, domains, or profiles that look similar but are not the target.",
+          "Each rule-out has a source-backed reason such as wrong role, geography, domain, or date.",
+          [`${quoted(subject)} LinkedIn`, `${quoted(subject)} profile`, `${quoted(subject)} CVR`],
+        ),
+      ],
+    },
+    {
+      id: "source-ledger",
+      title: "Source ledger",
+      purpose: "Keep the work resumable and separate facts from guesses.",
+      fields: [
+        worksheetField(
+          "authoritative-sources",
+          "Authoritative sources",
+          "Official website, registry, company page, public profile, and dated source URLs.",
+          "Every source notes what it proves, date checked, and confidence.",
+          [...prompts.official, `${quoted(subject)} official`],
+        ),
+        worksheetField(
+          "dead-ends",
+          "Dead ends",
+          "Searches that produced no usable public evidence or only weak/private-looking data.",
+          "Dead ends include the query used and why the hit should not be used.",
+          [`${quoted(subject)} email`, `${quoted(subject)} phone`, `${quoted(subject)} contact`],
+        ),
+      ],
+    },
+  ];
+
+  if (subjectType === "person") {
+    sections.splice(1, 0, {
+      id: "affiliation",
+      title: "Current affiliation",
+      purpose: "Tie the person to a current organization or role before using direct routes.",
+      fields: [
+        worksheetField(
+          "current-role",
+          "Current role",
+          "Employer, role/title, department, geography, and how recently the source was updated.",
+          "At least one public source links the person to the organization or role.",
+          prompts.affiliation,
+        ),
+        worksheetField(
+          "role-relevance",
+          "Role relevance",
+          "Why this person is likely relevant to buying, partnership, procurement, or referral.",
+          "Responsibility is source-backed or explicitly marked as an assumption.",
+          [...prompts.opportunity, `${quoted(subject)} responsibility`],
+        ),
+      ],
+    });
+  }
+
+  if (objective === "find-contact" || objective === "general") {
+    sections.push({
+      id: "contact-route",
+      title: "Contact route ladder",
+      purpose: "Choose a compliant primary route and fallback route, not just a raw phone/email hit.",
+      fields: [
+        worksheetField(
+          "primary-route",
+          "Primary route",
+          "Official switchboard, contact form, role inbox, or public professional profile to use first.",
+          "The route appears on an official or intentionally public professional source.",
+          prompts.contact,
+        ),
+        worksheetField(
+          "phone",
+          "Phone or switchboard",
+          "Direct phone, main switchboard, department number, or reason no public phone was found.",
+          "Phone number is tied to the subject or organization by an official/public source.",
+          [`${quoted(subject)} phone`, `${quoted(subject)} telefon`, `${quoted(subject)} CVR telefon`],
+        ),
+        worksheetField(
+          "email",
+          "Email or role inbox",
+          "Direct email, role inbox, contact form, pattern candidate, or reason email is not usable.",
+          "Direct email is public and tied to the exact person/organization; guessed patterns stay unverified.",
+          [`${quoted(subject)} email`, `${quoted(subject)} kontakt`, `${quoted(subject)} contact form`],
+        ),
+        worksheetField(
+          "fallback-route",
+          "Fallback route",
+          "Second-best channel and when to use it.",
+          "Fallback is public, role-relevant, and does not rely on private/leaked data.",
+          [`${quoted(subject)} LinkedIn`, `${quoted(subject)} team`, `${quoted(subject)} switchboard`],
+        ),
+      ],
+    });
+  }
+
+  if (objective === "map-opportunity" || objective === "qualify-lead") {
+    sections.push({
+      id: "opportunity",
+      title: "Opportunity hypothesis",
+      purpose: "Separate a concrete opportunity from a weak signal or generic source.",
+      fields: [
+        worksheetField(
+          "trigger",
+          "Trigger",
+          "Recent project, tender, grant, hire, press item, technology change, or public buying signal.",
+          "Trigger is dated and linked to a public source.",
+          [...prompts.opportunity, `${quoted(subject)} news`, `${quoted(subject)} announcement`],
+        ),
+        worksheetField(
+          "need",
+          "Need and fit",
+          "Problem, likely buyer, technical fit, urgency, and what is still missing.",
+          "Facts and assumptions are separated; confidence is explicit.",
+          prompts.opportunity,
+        ),
+        worksheetField(
+          "procurement-route",
+          "Procurement or buying route",
+          "Submission route, contact route, tender/grant deadline, or reason there is no route yet.",
+          "Active route and deadline are checked before treating it as an opportunity.",
+          [
+            workspace === "DK" ? `${quoted(subject)} udbud` : `${quoted(subject)} tender`,
+            workspace === "DK" ? `${quoted(subject)} offentligt indkøb` : `${quoted(subject)} procurement`,
+            `${quoted(subject)} contact`,
+          ],
+        ),
+      ],
+    });
+  }
+
+  if (objective === "verify-identity") {
+    sections.push({
+      id: "verification",
+      title: "Verification decision",
+      purpose: "Make the match/no-match call explicit.",
+      fields: [
+        worksheetField(
+          "matched-facts",
+          "Matched facts",
+          "Facts that support this being the correct subject.",
+          "Each fact cites a source and can be checked later.",
+          prompts.official,
+        ),
+        worksheetField(
+          "conflicts",
+          "Conflicts",
+          "Facts that weaken the match, including stale roles, wrong country, duplicate names, or domain mismatch.",
+          "Each conflict cites a source or says it is unresolved.",
+          [`${quoted(subject)} former`, `${quoted(subject)} profile`, `${quoted(subject)} LinkedIn`],
+        ),
+      ],
+    });
+  }
+
+  if (depth === "deep") {
+    sections.push({
+      id: "timeline-network",
+      title: "Timeline and adjacent routes",
+      purpose: "Capture the broader map without losing the main decision.",
+      fields: [
+        worksheetField(
+          "timeline",
+          "Recent activity timeline",
+          "Dated public signals from the last 12 months and how each affects priority.",
+          "Older signals are marked as background unless they still affect the route.",
+          [`${quoted(subject)} 2026`, `${quoted(subject)} 2025`, `${quoted(subject)} announcement`],
+        ),
+        worksheetField(
+          "adjacent-contacts",
+          "Adjacent contacts",
+          "Public colleagues, department aliases, partners, or switchboard routes if the primary route is weak.",
+          "Adjacent contacts are role-relevant and linked to the same organization.",
+          [`${quoted(subject)} team`, `${quoted(subject)} medarbejdere`, `${quoted(subject)} organisation`],
+        ),
+      ],
+    });
+  }
+
+  sections.push({
+    id: "next-action",
+    title: "Next action",
+    purpose: "End with a usable operator decision.",
+    fields: [
+      worksheetField(
+        "recommended-action",
+        "Recommended action",
+        "Use route, keep researching, save as low-confidence, or stop because evidence is too weak.",
+        "Decision references the strongest source-backed reason and the largest remaining risk.",
+        [`${quoted(subject)} contact`, `${quoted(subject)} LinkedIn`, `${quoted(subject)} official`],
+      ),
+      worksheetField(
+        "first-message",
+        "First message angle",
+        "One concise source-backed reason for contact and the fallback channel.",
+        "The message does not mention unverified assumptions as facts.",
+        [...prompts.opportunity, ...prompts.contact],
+      ),
+    ],
+  });
+
+  return sections;
 }

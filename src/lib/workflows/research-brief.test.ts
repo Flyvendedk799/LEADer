@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildResearchChecklist, normalizeResearchBriefOptions } from "./research-brief";
+import { buildResearchChecklist, buildResearchWorksheet, normalizeResearchBriefOptions } from "./research-brief";
 
 describe("research brief workflow helpers", () => {
   it("builds a public-source contact checklist from a person clue", () => {
@@ -82,6 +82,48 @@ describe("research brief workflow helpers", () => {
     expect(checklist.map((step) => step.stage)).toEqual(["identity", "affiliation", "contact", "route-validation"]);
     expect(checklist.find((step) => step.stage === "affiliation")?.searchPrompts).toEqual(
       expect.arrayContaining(['"Mette Jensen" firma', '"Mette Jensen" CVR']),
+    );
+  });
+
+  it("builds a practitioner worksheet for name-to-contact research", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+      depth: "standard",
+    });
+
+    const worksheet = buildResearchWorksheet(options, "DK");
+    const sections = worksheet.map((section) => section.id);
+    const fields = worksheet.flatMap((section) => section.fields);
+
+    expect(sections).toEqual(
+      expect.arrayContaining(["identity", "affiliation", "source-ledger", "contact-route", "next-action"]),
+    );
+    expect(fields.map((field) => field.id)).toEqual(
+      expect.arrayContaining(["false-positives", "phone", "email", "fallback-route", "recommended-action"]),
+    );
+    expect(fields.find((field) => field.id === "phone")?.sourcePrompts).toEqual(
+      expect.arrayContaining(['"Mette Jensen" phone', '"Mette Jensen" telefon']),
+    );
+    expect(fields.find((field) => field.id === "primary-route")?.evidence).toContain("official");
+    expect(fields.find((field) => field.id === "recommended-action")?.capture).toContain("stop");
+  });
+
+  it("adds opportunity worksheet fields for deep company mapping", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "Aarhus Kommune",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+    });
+
+    const worksheet = buildResearchWorksheet(options, "DK");
+    expect(worksheet.map((section) => section.id)).toEqual(
+      expect.arrayContaining(["opportunity", "timeline-network"]),
+    );
+    expect(worksheet.flatMap((section) => section.fields).map((field) => field.id)).toEqual(
+      expect.arrayContaining(["procurement-route", "timeline", "adjacent-contacts"]),
     );
   });
 });

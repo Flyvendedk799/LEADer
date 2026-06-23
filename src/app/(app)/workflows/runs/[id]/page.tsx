@@ -77,6 +77,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
   const operatingRescueTasks =
     numberValue(operatingStaleDeals?.tasksCreated) + numberValue(operatingDeadlines?.tasksCreated);
   const checklist = Array.isArray(result?.checklist) ? result.checklist.filter((item) => objectValue(item)) : [];
+  const worksheet = Array.isArray(result?.worksheet) ? result.worksheet.filter((item) => objectValue(item)) : [];
   const taskIds = stringList(result?.taskIds);
   const dealIds = stringList(result?.dealIds);
   const tasks = taskIds.length
@@ -145,7 +146,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           <RunMetric label="Subject" value={typeof result?.subject === "string" ? truncate(result.subject, 28) : "Research"} icon={<Search />} />
           <RunMetric label="Created tasks" value={numberValue(result?.createdTasks)} icon={<ListChecks />} />
           <RunMetric label="Existing tasks" value={numberValue(result?.skippedExistingTasks)} icon={<CheckCircle2 />} />
-          <RunMetric label="Checklist steps" value={checklist.length} icon={<Target />} />
+          <RunMetric label="Worksheet" value={worksheet.length || checklist.length} icon={<Target />} />
         </section>
       ) : run.playbook === "candidate-harvest" ? (
         <section className="grid gap-3 md:grid-cols-4">
@@ -214,6 +215,56 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                     {prompts.length ? (
                       <p className="mt-1 text-xs text-muted-foreground">{truncate(prompts.slice(0, 3).join(" · "), 140)}</p>
                     ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {run.playbook === "research-brief" && worksheet.length ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Research worksheet</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {worksheet.map((raw, index) => {
+                const section = objectValue(raw)!;
+                const title = typeof section.title === "string" ? section.title : `Worksheet section ${index + 1}`;
+                const purpose = typeof section.purpose === "string" ? section.purpose : "";
+                const fields = Array.isArray(section.fields)
+                  ? section.fields.filter((field) => objectValue(field))
+                  : [];
+                return (
+                  <div key={`${title}-${index}`} className="rounded-md border border-border bg-surface/40 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{typeof section.id === "string" ? section.id : "worksheet"}</Badge>
+                      <p className="text-sm font-medium">{title}</p>
+                    </div>
+                    {purpose ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{purpose}</p> : null}
+                    <div className="mt-3 space-y-2">
+                      {fields.map((fieldRaw, fieldIndex) => {
+                        const field = objectValue(fieldRaw)!;
+                        const label = typeof field.label === "string" ? field.label : `Field ${fieldIndex + 1}`;
+                        const capture = typeof field.capture === "string" ? field.capture : "";
+                        const evidence = typeof field.evidence === "string" ? field.evidence : "";
+                        const prompts = Array.isArray(field.sourcePrompts)
+                          ? field.sourcePrompts.filter((prompt): prompt is string => typeof prompt === "string")
+                          : [];
+                        return (
+                          <div key={`${label}-${fieldIndex}`} className="rounded-md border border-border/70 bg-background/45 p-2">
+                            <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
+                            {capture ? <p className="mt-1 text-sm leading-5">{capture}</p> : null}
+                            {evidence ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{evidence}</p> : null}
+                            {prompts.length ? (
+                              <p className="mt-1 truncate text-[11px] text-muted-foreground">{prompts.slice(0, 3).join(" · ")}</p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}

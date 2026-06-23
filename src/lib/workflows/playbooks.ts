@@ -9,9 +9,11 @@ import type { Workspace } from "@/lib/types";
 import { formatWorkflowElapsed, workflowLogEntry } from "./logging";
 import {
   buildResearchChecklist,
+  buildResearchWorksheet,
   normalizeResearchBriefOptions,
   type NormalizedResearchBriefOptions,
   type ResearchChecklistItem,
+  type ResearchWorksheetSection,
 } from "./research-brief";
 import { summarizeSourceRuns, type SourceRunSummary } from "./summary";
 import type { WorkflowRunInput, WorkflowRunOptions } from "./types";
@@ -99,6 +101,7 @@ export type ResearchBriefResult = {
   skippedExistingTasks: number;
   taskIds: string[];
   checklist: ResearchChecklistItem[];
+  worksheet: ResearchWorksheetSection[];
   linked: {
     accountId?: string;
     accountName?: string;
@@ -639,6 +642,7 @@ export async function runResearchBrief(
   if (normalized.dealId && !deal) log.push(workflowLogEntry("Skipped deal link because it was not found for this owner."));
 
   const checklist = buildResearchChecklist(normalized, workspace);
+  const worksheet = buildResearchWorksheet(normalized, workspace);
   const taskIds: string[] = [];
   let createdTasks = 0;
   let skippedExistingTasks = 0;
@@ -682,6 +686,7 @@ export async function runResearchBrief(
       `Research brief options: ${normalized.subjectType}, ${normalized.objective}, ${normalized.depth}, ${checklist.length} checklist steps.`,
     ),
   );
+  log.push(workflowLogEntry(`Prepared ${worksheet.length} worksheet sections for evidence capture.`));
 
   const durationMs = Date.now() - startedAt;
   log.push(workflowLogEntry(`Finished research brief in ${formatWorkflowElapsed(durationMs)}.`));
@@ -699,6 +704,7 @@ export async function runResearchBrief(
     skippedExistingTasks,
     taskIds,
     checklist,
+    worksheet,
     linked,
     log,
   };
