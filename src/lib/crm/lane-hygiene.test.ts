@@ -33,4 +33,25 @@ describe("lane hygiene", () => {
       }),
     ).toBeNull();
   });
+
+  it("catches persisted research-policy tenders that only mention incidental software work", () => {
+    const lane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "tenders-procurement")!;
+    const activeDeadline = new Date(Date.now() + 14 * 86400000).toISOString();
+
+    expect(
+      invalidLaneCandidateReason({
+        lane,
+        title:
+          "EEA/CCE/TC/26/004 - Topic Centre on Sustainability and Decarbonisation of EU's Transport Sector - new TC, 2.1, 2.2, 2.3",
+        description:
+          "Support for collecting, quality checking, verifying reported data and disseminating transport-related data under Regulation (EU).",
+        rawContent:
+          "Ordregiver: European Environment Agency (EEA). CPV: 73000000 Forsknings- og udviklingsvirksomhed. Topic Centre support for reported transport data under Regulation (EU). Support with reporting dataflows and database structure. Support with methodological, technical and software maintenance and development of the COPERT model. Tilbudsfrist 29-06-2099.",
+        url: "https://udbud.dk/detaljevisning?noticeId=3025d5d3-08f1-40bd-a54d-bd17344f1693&noticeVersion=01",
+        organization: "European Environment Agency (EEA)",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+      }),
+    ).toBe("research/policy services, not software delivery");
+  });
 });

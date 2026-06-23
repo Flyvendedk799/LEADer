@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
 import { runDiscoverySearch, type DiscoveryCandidateDto } from "@/lib/discovery";
 import { discoveryCountLabel, discoveryLogEntry, formatDiscoveryElapsed } from "@/lib/crm/discovery-logging";
+import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import {
   ensureDefaultDiscoveryLanes,
   filterVisibleLaneCandidates,
@@ -347,6 +348,7 @@ export async function listDeals(ownerId: string, params: URLSearchParams) {
 export async function getCockpit(ownerId: string, workspace: Workspace = "DK") {
   const now = new Date();
   const staleCutoff = new Date(now.getTime() - 14 * 86400000);
+  await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
 
   const [
     openDeals,

@@ -123,7 +123,7 @@ describe("udbud.dk discovery source", () => {
             cpvTitel: "Forsknings- og udviklingsvirksomhed og hermed beslægtet konsulentvirksomhed",
             tidsfrister: [deadline],
             beskrivelse:
-              "Topic Centre support for collecting, compiling, quality checking, verifying reported data and maintaining procedures under Regulation (EU) for the transport sector.",
+              "Topic Centre support for collecting, compiling, quality checking, verifying reported data and maintaining procedures under Regulation (EU) for the transport sector. Support with reporting dataflows, database structure, and software maintenance of the COPERT emissions model.",
             bkSubType: "Udbudsbekendtgørelse",
           },
         },

@@ -4,12 +4,14 @@ import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { discoveryMissionDisplayWarnings, discoveryMissionProviderLabel } from "@/lib/crm/discovery-display";
 import { visibleDiscoveryQueueSnapshotForOwner } from "@/lib/crm/discovery-queue";
+import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import { filterLaneCandidates } from "@/lib/crm/lanes";
 import { db } from "@/lib/db";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   try {
     const ownerId = await requireOwnerId();
+    await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
     const mission = await db.discoveryMission.findFirst({
       where: { id: params.id, ownerId },
       include: {
