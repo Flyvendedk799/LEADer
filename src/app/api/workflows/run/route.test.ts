@@ -110,6 +110,29 @@ describe("workflow run API controls", () => {
     );
   });
 
+  it("preserves expanded workflow history after canceling live runs", async () => {
+    mocks.db.workflowRun.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    mocks.visibleWorkflowQueueSnapshotForOwner.mockResolvedValue({ activeRunId: null, queuedRunIds: [] });
+
+    const response = await PATCH(patchRequest({ action: "CANCEL_ALL", limit: 80 }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.db.workflowRun.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { ownerId: "owner-1" },
+        take: 80,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      runs: [],
+      queue: { activeRunId: null, queuedRunIds: [] },
+      canceled: 0,
+    });
+  });
+
   it("blocks rerunning a live workflow run", async () => {
     mocks.db.workflowRun.findFirst.mockResolvedValue({
       id: "run-1",

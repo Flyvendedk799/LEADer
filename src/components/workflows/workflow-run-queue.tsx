@@ -276,7 +276,7 @@ export function WorkflowRunQueue({
       const res = await fetch("/api/workflows/run", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "CANCEL_ALL" }),
+        body: JSON.stringify({ action: "CANCEL_ALL", limit: historyLimit }),
       });
       const data = (await res.json().catch(() => null)) as WorkflowRunQueueResponse | null;
       if (!res.ok || !data) throw new Error(data?.error || "Workflow control failed");

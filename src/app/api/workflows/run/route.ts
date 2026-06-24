@@ -32,6 +32,7 @@ type WorkflowRunPayload = WorkflowRun & {
 const workflowRunActionSchema = z.object({
   id: z.string().min(1).optional(),
   action: z.enum(["CANCEL", "CANCEL_ALL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
+  limit: z.coerce.number().int().min(20).max(100).optional(),
 });
 
 function workflowRunHistoryLimit(req: Request) {
@@ -157,7 +158,7 @@ export async function PATCH(req: Request) {
         where: { ownerId },
         include: { preset: { select: { name: true } } },
         orderBy: { createdAt: "desc" },
-        take: 20,
+        take: parsed.data.limit ?? 20,
       });
       return NextResponse.json({
         runs: runs.map(workflowRunPayload),

@@ -133,6 +133,29 @@ describe("discovery run API controls", () => {
     );
   });
 
+  it("preserves expanded discovery history after canceling live missions", async () => {
+    mocks.db.discoveryMission.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    mocks.visibleDiscoveryQueueSnapshotForOwner.mockResolvedValue({ activeMissionId: null, queuedMissionIds: [] });
+
+    const response = await PATCH(patchRequest({ action: "CANCEL_ALL", limit: 80 }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.db.discoveryMission.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { ownerId: "owner-1" },
+        take: 80,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      missions: [],
+      queue: { activeMissionId: null, queuedMissionIds: [] },
+      canceled: 0,
+    });
+  });
+
   it("blocks rerunning a live discovery mission", async () => {
     mocks.db.discoveryMission.findFirst.mockResolvedValue({
       id: "mission-1",

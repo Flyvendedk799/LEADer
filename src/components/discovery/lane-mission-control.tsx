@@ -643,7 +643,7 @@ export function LaneMissionControl({
       const res = await fetch("/api/discovery/runs", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "CANCEL_ALL" }),
+        body: JSON.stringify({ action: "CANCEL_ALL", limit: historyLimit }),
       });
       const data = (await res.json().catch(() => null)) as MissionListResponse | null;
       if (!res.ok || !data) throw new Error(data?.error || "Discovery control failed");

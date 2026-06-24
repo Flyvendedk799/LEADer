@@ -30,6 +30,7 @@ import { discoveryRunCreateSchema } from "@/lib/validators";
 const discoveryRunActionSchema = z.object({
   id: z.string().min(1).optional(),
   action: z.enum(["CANCEL", "CANCEL_ALL", "RERUN", "MOVE_UP", "MOVE_DOWN", "MOVE_TOP"]),
+  limit: z.coerce.number().int().min(20).max(100).optional(),
 });
 
 function discoveryHistoryLimit(req: Request) {
@@ -212,7 +213,7 @@ export async function PATCH(req: Request) {
       const missions = await db.discoveryMission.findMany({
         where: { ownerId },
         orderBy: { startedAt: "desc" },
-        take: 20,
+        take: parsed.data.limit ?? 20,
         include: missionListInclude,
       });
       return NextResponse.json({
