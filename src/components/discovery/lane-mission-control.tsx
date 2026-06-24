@@ -54,6 +54,9 @@ import { toast } from "@/hooks/use-toast";
 type Provider = "auto" | "tavily" | "brave" | "serper" | "none";
 type CandidateAction = "review" | "save" | "dismiss" | "duplicate";
 type MissionAction = "CANCEL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
+type HistoryScope = "current-lane" | "all";
+
+type MissionLaneSummary = { id: string; name: string; slug?: string | null };
 
 type Candidate = {
   id: string;
@@ -90,7 +93,7 @@ type MissionResult = {
     startedAt?: string | Date;
     finishedAt?: string | Date | null;
     query?: string;
-    lane?: { id: string; name: string } | null;
+    lane?: MissionLaneSummary | null;
     sourceScanCount?: number;
     warnings: string[];
     log: string[];
@@ -123,7 +126,7 @@ export type MissionSummary = {
   startedAt: string | Date;
   finishedAt?: string | Date | null;
   query: string;
-  lane?: { id: string; name: string } | null;
+  lane?: MissionLaneSummary | null;
   warnings: string[];
   log?: string[];
   sourceScanCount?: number;
@@ -309,6 +312,15 @@ function missionMatchesHistorySearch(mission: MissionSummary, search: string) {
   return terms.every((term) => haystack.includes(term));
 }
 
+export function missionMatchesHistoryScope(
+  mission: Pick<MissionSummary, "lane">,
+  selectedLaneId: string | null | undefined,
+  scope: HistoryScope,
+) {
+  if (scope === "all" || !selectedLaneId) return true;
+  return mission.lane?.id === selectedLaneId;
+}
+
 export function LaneMissionControl({
   lanes,
   initialMissionId,
@@ -336,6 +348,7 @@ export function LaneMissionControl({
   const [refreshing, setRefreshing] = React.useState(false);
   const [missions, setMissions] = React.useState<MissionSummary[]>([]);
   const [historySearch, setHistorySearch] = React.useState("");
+  const [historyScope, setHistoryScope] = React.useState<HistoryScope>("current-lane");
   const [historyLimit, setHistoryLimit] = React.useState(20);
   const [queueState, setQueueState] = React.useState<DiscoveryQueueSnapshot>(() => normalizeQueue());
   const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
@@ -361,9 +374,13 @@ export function LaneMissionControl({
     Boolean(queueState.activeMissionId) ||
     queueState.queuedMissionIds.length > 0;
   const orderedMissions = React.useMemo(() => sortMissionsWithQueue(missions, queueState), [missions, queueState]);
+  const scopedMissions = React.useMemo(
+    () => orderedMissions.filter((mission) => missionMatchesHistoryScope(mission, laneId, historyScope)),
+    [historyScope, laneId, orderedMissions],
+  );
   const filteredMissions = React.useMemo(
-    () => orderedMissions.filter((mission) => missionMatchesHistorySearch(mission, historySearch)),
-    [historySearch, orderedMissions],
+    () => scopedMissions.filter((mission) => missionMatchesHistorySearch(mission, historySearch)),
+    [historySearch, scopedMissions],
   );
   const canLoadOlderMissions = missions.length >= historyLimit && historyLimit < 100;
   const historySearchActive = historySearch.trim().length > 0;
@@ -385,6 +402,13 @@ export function LaneMissionControl({
     window.history.replaceState(window.history.state, "", discoveryMissionHref(id));
   }, []);
 
+  const syncLaneFromMission = React.useCallback((mission?: { lane?: MissionLaneSummary | null }) => {
+    const missionLaneId = mission?.lane?.id;
+    if (missionLaneId && lanes.some((lane) => lane.id === missionLaneId)) {
+      setLaneId(missionLaneId);
+    }
+  }, [lanes]);
+
   React.useEffect(() => {
     setWorkspace(initialWorkspace);
   }, [initialWorkspace]);
@@ -400,6 +424,7 @@ export function LaneMissionControl({
       const data = (await res.json()) as MissionDetailResponse;
       if (!res.ok) throw new Error(data?.error || "Could not load mission");
       setResult(data);
+      syncLaneFromMission(data.mission);
       setQueueState(normalizeQueue(data.queue));
       setLastUpdatedAt(new Date());
       setActiveMissionId(data.mission.id);
@@ -425,7 +450,7 @@ export function LaneMissionControl({
     } finally {
       if (!quiet) setRefreshing(false);
     }
-  }, [mergeMission, showHiddenCandidates, syncMissionUrl]);
+  }, [mergeMission, showHiddenCandidates, syncLaneFromMission, syncMissionUrl]);
 
   const loadMissions = React.useCallback(async (openLatest = false, quiet = false, limitOverride?: number) => {
     if (!quiet) setRefreshing(true);
@@ -543,6 +568,7 @@ export function LaneMissionControl({
       const data = (await res.json()) as MissionDetailResponse;
       if (!res.ok) throw new Error(data?.error || "Discovery failed");
       setResult(data);
+      syncLaneFromMission(data.mission);
       setQueueState(normalizeQueue(data.queue));
       setLastUpdatedAt(new Date());
       setActiveMissionId(data.mission.id);
@@ -1023,6 +1049,27 @@ export function LaneMissionControl({
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/50 p-1">
+                <Button
+                  type="button"
+                  variant={historyScope === "current-lane" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-8"
+                  onClick={() => setHistoryScope("current-lane")}
+                  disabled={!laneId}
+                >
+                  Current lane
+                </Button>
+                <Button
+                  type="button"
+                  variant={historyScope === "all" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-8"
+                  onClick={() => setHistoryScope("all")}
+                >
+                  All lanes
+                </Button>
+              </div>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -1047,8 +1094,10 @@ export function LaneMissionControl({
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {historySearchActive
-                  ? `${filteredMissions.length} of ${orderedMissions.length} loaded missions match`
-                  : `${orderedMissions.length} missions loaded`}
+                  ? `${filteredMissions.length} of ${scopedMissions.length} loaded missions match`
+                  : historyScope === "current-lane" && selectedLane
+                    ? `${scopedMissions.length} ${selectedLane.name} missions loaded`
+                    : `${scopedMissions.length} missions loaded`}
               </p>
             </div>
 
@@ -1504,16 +1553,9 @@ function RejectedCandidateRow({ candidate }: { candidate: Candidate }) {
           </p>
         </div>
         {candidate.url ? (
-          <a
-            href={candidate.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex shrink-0 items-center gap-1 text-xs text-warning hover:underline"
-            title="Open rejected source for diagnostics"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Diagnostic source
-          </a>
+          <p className="max-w-full break-all font-mono text-[11px] leading-5 text-warning" title={candidate.url}>
+            Rejected URL: {truncate(candidate.url, 140)}
+          </p>
         ) : null}
       </div>
     </article>

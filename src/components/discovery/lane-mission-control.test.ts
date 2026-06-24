@@ -6,14 +6,15 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-import { mergeMissionHistory, type MissionSummary } from "./lane-mission-control";
+import { mergeMissionHistory, missionMatchesHistoryScope, type MissionSummary } from "./lane-mission-control";
 
-function mission(index: number): MissionSummary {
+function mission(index: number, laneId?: string): MissionSummary {
   return {
     id: `mission-${index}`,
     status: "SUCCESS",
     startedAt: new Date(Date.UTC(2026, 5, 24, 10, 0, index)).toISOString(),
     query: `query ${index}`,
+    lane: laneId ? { id: laneId, name: laneId === "tender-lane" ? "Tenders / procurement" : "Direct startup" } : undefined,
     warnings: [],
     _count: { candidates: 0 },
     hiddenCandidateCount: 0,
@@ -42,5 +43,14 @@ describe("lane mission history", () => {
     expect(merged).toHaveLength(40);
     expect(merged[0]?.id).toBe("mission-99");
     expect(merged.map((item) => item.id)).not.toContain("mission-0");
+  });
+
+  it("keeps mission history scoped to the selected lane unless all lanes is requested", () => {
+    const tenderMission = mission(1, "tender-lane");
+    const startupMission = mission(2, "startup-lane");
+
+    expect(missionMatchesHistoryScope(tenderMission, "tender-lane", "current-lane")).toBe(true);
+    expect(missionMatchesHistoryScope(startupMission, "tender-lane", "current-lane")).toBe(false);
+    expect(missionMatchesHistoryScope(startupMission, "tender-lane", "all")).toBe(true);
   });
 });
