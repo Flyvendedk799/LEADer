@@ -1579,24 +1579,25 @@ function parseDanishDisplayDate(value?: string) {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-function earliestFutureDeadline(values: string[] = []) {
+function latestFutureDeadline(values: string[] = []) {
   const now = Date.now() - 12 * 60 * 60 * 1000;
   const dates: Date[] = [];
   for (const value of values) {
     const date = parseMaybeDate(value);
     if (date && date.getTime() >= now) dates.push(date);
   }
-  dates.sort((a, b) => a.getTime() - b.getTime());
+  dates.sort((a, b) => b.getTime() - a.getTime());
   return dates[0] ?? null;
 }
 
 function udbudDkResultToCandidate(result: UdbudDkResult, query: string): OpportunityCandidate | null {
   const data = result.dataDa ?? result.dataEn;
   if (!data || !result.noticeId) return null;
+  if (data.erAendring) return null;
   const title = cleanText(data.titel ?? "", 220);
   const description = cleanText(data.beskrivelse ?? "", 1400);
   const organization = cleanText(data.ordregiver || data.alleOrdregivere?.[0] || "Udbud.dk", 180);
-  const deadline = earliestFutureDeadline(data.tidsfrister ?? []);
+  const deadline = latestFutureDeadline(data.tidsfrister ?? []);
   if (!title || !deadline) return null;
   const daysUntilDeadline = (deadline.getTime() - Date.now()) / 86400000;
   const structureText = `${title} ${data.beskrivelse ?? ""} ${data.bkSubType ?? ""}`.toLowerCase();
@@ -1644,6 +1645,16 @@ function udbudDkResultToCandidate(result: UdbudDkResult, query: string): Opportu
   });
 }
 
+function udbudDkCandidateGroupKey(candidate: OpportunityCandidate) {
+  return titleKey(`${candidate.title}:${candidate.organization ?? ""}`) ?? candidate.url;
+}
+
+function udbudDkCandidateVersionScore(candidate: OpportunityCandidate) {
+  const postedAt = candidate.postedAt?.getTime() ?? 0;
+  const deadline = candidate.deadline?.getTime() ?? 0;
+  return postedAt * 10 + deadline;
+}
+
 async function udbudDkSearch(query: string, maxResults: number): Promise<UdbudDkResult[]> {
   const res = await safeFetch("https://udbud.dk/soegning/public/soegeresultat", {
     method: "POST",
@@ -1684,8 +1695,7 @@ async function udbudDkCandidates(
   maxResults: number,
   feedbackModel?: FeedbackSignalModel,
 ): Promise<DiscoveryCandidateDto[]> {
-  const candidates: DiscoveryCandidateDto[] = [];
-  const seen = new Set<string>();
+  const selected = new Map<string, { seed: string; candidate: OpportunityCandidate; score: number }>();
   const seeds = udbudDkSearchSeeds(query, queries);
   const perQuery = Math.min(25, Math.max(10, Math.ceil((maxResults * 2) / Math.max(1, seeds.length))));
   const seededResults = await runSearchQueriesWithConcurrency(
@@ -1699,12 +1709,21 @@ async function udbudDkCandidates(
   );
 
   for (const { seed, result } of seededResults) {
-    if (candidates.length >= maxResults) break;
     const candidate = udbudDkResultToCandidate(result, seed);
     if (!candidate) continue;
-    const key = titleKey(`${candidate.title}:${candidate.organization}:${candidate.deadline}`) ?? candidate.url;
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
+    const key = udbudDkCandidateGroupKey(candidate);
+    if (!key) continue;
+    const score = udbudDkCandidateVersionScore(candidate);
+    const previous = selected.get(key);
+    if (!previous || score > previous.score) selected.set(key, { seed, candidate, score });
+  }
+
+  const selectedCandidates = [...selected.values()]
+    .sort((a, b) => (a.candidate.deadline?.getTime() ?? 0) - (b.candidate.deadline?.getTime() ?? 0))
+    .slice(0, maxResults);
+
+  const candidates: DiscoveryCandidateDto[] = [];
+  for (const { seed, candidate } of selectedCandidates) {
     candidates.push(
       await toDiscoveryDto(
         candidate,

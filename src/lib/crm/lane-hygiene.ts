@@ -18,6 +18,22 @@ function dismissalSignal(reason: string) {
   return `rejected:${reason}`;
 }
 
+function rejectedReason(reason: string) {
+  return `Rejected by lane guard: ${reason}`;
+}
+
+function hasPositiveScore(candidate: {
+  matchScore?: number | null;
+  confidenceScore?: number | null;
+  pursuitScore?: number | null;
+}) {
+  return (
+    (candidate.matchScore ?? 0) > 0 ||
+    (candidate.confidenceScore ?? 0) > 0 ||
+    (candidate.pursuitScore ?? 0) > 0
+  );
+}
+
 export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 250) {
   const rows = await db.discoveryCandidate.findMany({
     where: {
@@ -25,15 +41,7 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
       laneId: { not: null },
       OR: [
         { status: "NEW" },
-        {
-          status: "DISMISSED",
-          dismissalReason: { startsWith: AUTO_DISMISSAL_PREFIX },
-          OR: [
-            { matchScore: { gt: 0 } },
-            { confidenceScore: { gt: 0 } },
-            { pursuitScore: { gt: 0 } },
-          ],
-        },
+        { status: "DISMISSED" },
       ],
     },
     include: { lane: true },
@@ -42,15 +50,13 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
   });
 
   const newRows = rows.filter((candidate) => String(candidate.status ?? "NEW").toUpperCase() === "NEW");
-  const staleRejectedIds = rows
+  const staleAutoRejectedIds = rows
     .filter((candidate) => {
       const status = String(candidate.status ?? "").toUpperCase();
       return (
         status === "DISMISSED" &&
         candidate.dismissalReason?.startsWith(AUTO_DISMISSAL_PREFIX) &&
-        ((candidate.matchScore ?? 0) > 0 ||
-          (candidate.confidenceScore ?? 0) > 0 ||
-          (candidate.pursuitScore ?? 0) > 0)
+        hasPositiveScore(candidate)
       );
     })
     .map((candidate) => candidate.id);
@@ -61,6 +67,29 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
       reason: invalidLaneCandidateReason(candidate),
     }))
     .filter((candidate): candidate is { id: string; reason: string } => Boolean(candidate.reason));
+
+  const dismissedRepairs = rows
+    .filter((candidate) => String(candidate.status ?? "").toUpperCase() === "DISMISSED")
+    .map((candidate) => ({
+      candidate,
+      reason: invalidLaneCandidateReason(candidate),
+    }))
+    .filter((item): item is { candidate: typeof rows[number]; reason: string } => Boolean(item.reason))
+    .filter(({ candidate, reason }) => {
+      const rejection = rejectedReason(reason);
+      const signal = dismissalSignal(reason);
+      const reasons = candidate.reasons ?? [];
+      const signals = candidate.signals ?? [];
+      return (
+        candidate.dismissalReason !== dismissalReason(reason) ||
+        hasPositiveScore(candidate) ||
+        !reasons.includes(rejection) ||
+        !signals.includes(signal)
+      );
+    });
+
+  const dismissedRepairIds = new Set(dismissedRepairs.map(({ candidate }) => candidate.id));
+  const staleRejectedIds = staleAutoRejectedIds.filter((id) => !dismissedRepairIds.has(id));
 
   const invalidIds = new Set(invalid.map((candidate) => candidate.id));
   const seen = new Set<string>();
@@ -77,7 +106,7 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
     seen.add(key);
   }
 
-  if (!invalid.length && !duplicateIds.length && !staleRejectedIds.length) {
+  if (!invalid.length && !duplicateIds.length && !dismissedRepairs.length && !staleRejectedIds.length) {
     return {
       dismissed: 0,
       reasons: [] as string[],
@@ -112,6 +141,23 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
           },
         }),
       ),
+      ...dismissedRepairs.map(({ candidate, reason }) => {
+        const rejection = rejectedReason(reason);
+        const signal = dismissalSignal(reason);
+        const reasons = candidate.reasons ?? [];
+        const signals = candidate.signals ?? [];
+        return db.discoveryCandidate.updateMany({
+          where: { id: candidate.id, ownerId, status: "DISMISSED" },
+          data: {
+            dismissalReason: dismissalReason(reason),
+            matchScore: 0,
+            confidenceScore: 0,
+            pursuitScore: 0,
+            ...(!reasons.includes(rejection) ? { reasons: { push: rejection } } : {}),
+            ...(!signals.includes(signal) ? { signals: { push: signal } } : {}),
+          },
+        });
+      }),
       ...staleRejectedIds.map((id) =>
         db.discoveryCandidate.updateMany({
           where: { id, ownerId, status: "DISMISSED" },
@@ -130,6 +176,6 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
     reasons: [...new Set(invalid.map((candidate) => candidate.reason))],
     duplicated: duplicateIds.length,
     duplicateReasons: duplicateIds.length ? [DUPLICATE_CANDIDATE_REASON] : [],
-    normalizedRejected: staleRejectedIds.length,
+    normalizedRejected: dismissedRepairs.length + staleRejectedIds.length,
   };
 }

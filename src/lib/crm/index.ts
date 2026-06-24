@@ -780,7 +780,7 @@ export async function executeDiscoveryMission(
       data: {
         log: {
           push: discoveryLogEntry(
-            `Search returned ${discoveryCountLabel(laneFiltered.candidates.length, "candidate")} from ${result.provider}; scanned ${discoveryCountLabel(result.sourceScanCount, "source")} in ${formatDiscoveryElapsed(searchMs)}.`,
+            `Search produced ${discoveryCountLabel(laneFiltered.candidates.length, "reviewable candidate")} from ${result.provider}; scanned ${discoveryCountLabel(result.sourceScanCount, "source")} in ${formatDiscoveryElapsed(searchMs)}.`,
           ),
         },
       },
@@ -816,7 +816,7 @@ export async function executeDiscoveryMission(
 
     const candidates = [];
     const persistStartedAt = Date.now();
-    await appendLog(`Saving ${discoveryCountLabel(laneFiltered.candidates.length, "candidate")} to the review queue.`);
+    await appendLog(`Saving ${discoveryCountLabel(laneFiltered.candidates.length, "reviewable candidate")} to the review queue.`);
     for (const candidate of laneFiltered.candidates) {
       if (await isCanceled()) {
         await appendLog(
@@ -847,7 +847,7 @@ export async function executeDiscoveryMission(
         provider: result.provider,
         log: {
           push: discoveryLogEntry(
-            `Saved ${discoveryCountLabel(candidates.length, "candidate")} in ${formatDiscoveryElapsed(persistMs)}; mission complete after ${formatDiscoveryElapsed(totalMs)}. Timing breakdown: ${discoveryPhaseTimingSummary({ prepareMs, searchMs, persistMs, totalMs })}.`,
+            `Saved ${discoveryCountLabel(candidates.length, "reviewable candidate")} in ${formatDiscoveryElapsed(persistMs)}; mission complete after ${formatDiscoveryElapsed(totalMs)}. Timing breakdown: ${discoveryPhaseTimingSummary({ prepareMs, searchMs, persistMs, totalMs })}.`,
           ),
         },
       },

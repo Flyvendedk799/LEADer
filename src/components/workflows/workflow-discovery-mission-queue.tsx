@@ -36,6 +36,7 @@ export type WorkflowDiscoveryMissionItem = {
   finishedAt: string | null;
   query: string;
   laneName: string;
+  laneSlug?: string | null;
   warnings: string[];
   log: string[];
   candidateCount: number;
@@ -49,7 +50,7 @@ type DiscoveryQueueSnapshot = {
 
 type ApiMission = Partial<WorkflowDiscoveryMissionItem> & {
   id: string;
-  lane?: { name?: string | null } | null;
+  lane?: { name?: string | null; slug?: string | null } | null;
   _count?: { candidates?: number };
 };
 
@@ -109,6 +110,7 @@ function apiMissionToItem(mission: ApiMission): WorkflowDiscoveryMissionItem {
     finishedAt: mission.finishedAt ? new Date(mission.finishedAt).toISOString() : null,
     query: String(mission.query ?? ""),
     laneName: mission.laneName ?? mission.lane?.name ?? "Discovery mission",
+    laneSlug: mission.laneSlug ?? mission.lane?.slug ?? null,
     warnings: Array.isArray(mission.warnings) ? mission.warnings.map(String) : [],
     log: Array.isArray(mission.log) ? mission.log.map(String) : [],
     candidateCount:
@@ -137,6 +139,14 @@ function firstQuery(value = "") {
 }
 
 function missionCandidateSummary(mission: WorkflowDiscoveryMissionItem) {
+  if (mission.laneSlug === "tenders-procurement") {
+    if (!mission.candidateCount && mission.hiddenCandidateCount) {
+      return `0 active tenders · ${mission.hiddenCandidateCount} rejected diagnostics`;
+    }
+    return mission.hiddenCandidateCount
+      ? `${mission.candidateCount} active tenders · ${mission.hiddenCandidateCount} rejected diagnostics`
+      : `${mission.candidateCount} active tenders`;
+  }
   if (!mission.candidateCount && mission.hiddenCandidateCount) {
     return `0 reviewable · ${mission.hiddenCandidateCount} rejected only`;
   }

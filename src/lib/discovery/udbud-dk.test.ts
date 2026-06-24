@@ -198,6 +198,59 @@ describe("udbud.dk discovery source", () => {
     expect(candidate?.rawContent).toContain("CPV: 72000000");
   });
 
+  it("uses the latest future udbud.dk deadline when a notice has multiple tender deadlines", () => {
+    const earlyDeadline = new Date(Date.now() + 5 * 86400000).toISOString();
+    const finalDeadline = new Date(Date.now() + 45 * 86400000).toISOString();
+
+    const candidate = udbudDkResultToCandidate(
+      {
+        noticeId: "2de56b9a-b277-4787-9266-531686ad9731",
+        noticeVersion: "01",
+        noticePublicationNumber: "",
+        dataDa: {
+          titel: "Intranet",
+          ordregiver: "METROSELSKABET I/S",
+          publiceringsdato: "09-06-2099",
+          cpvKode: "72200000",
+          cpvTitel: "Programmeludvikling",
+          tidsfrister: [finalDeadline, earlyDeadline],
+          beskrivelse: "Delivery and implementation of a new intranet software platform.",
+          bkSubType: "Annoncering under tærskelværdien",
+          erAendring: false,
+        },
+      },
+      "software",
+    );
+
+    expect(candidate?.deadline?.toISOString()).toBe(finalDeadline);
+  });
+
+  it("drops udbud.dk amendment notices so duplicate corrections do not look like separate tenders", () => {
+    const deadline = new Date(Date.now() + 45 * 86400000).toISOString();
+
+    expect(
+      udbudDkResultToCandidate(
+        {
+          noticeId: "c116a00d-f51a-4bf1-b0a9-c34b906414b0",
+          noticeVersion: "01",
+          noticePublicationNumber: "",
+          dataDa: {
+            titel: "Intranet",
+            ordregiver: "METROSELSKABET I/S",
+            publiceringsdato: "18-06-2099",
+            cpvKode: "72200000",
+            cpvTitel: "Programmeludvikling",
+            tidsfrister: [deadline],
+            beskrivelse: "Delivery and implementation of a new intranet software platform.",
+            bkSubType: "Annoncering under tærskelværdien",
+            erAendring: true,
+          },
+        },
+        "software",
+      ),
+    ).toBeNull();
+  });
+
   it("keeps official udbud.dk notices on deterministic summaries", () => {
     expect(
       shouldUseDeterministicDiscoverySummary({
