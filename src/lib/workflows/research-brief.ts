@@ -53,6 +53,8 @@ export type ResearchRunbookStep = {
   capture: string[];
   stopWhen: string;
   routePriority?: string[];
+  ifNoResult?: string[];
+  sourceQuality?: string[];
 };
 
 export type ResearchDecisionField = {
@@ -520,6 +522,8 @@ function runbookStep(
   capture: string[],
   stopWhen: string,
   routePriority?: string[],
+  ifNoResult?: string[],
+  sourceQuality?: string[],
 ): ResearchRunbookStep {
   return {
     id,
@@ -529,6 +533,8 @@ function runbookStep(
     capture,
     stopWhen,
     ...(routePriority?.length ? { routePriority } : {}),
+    ...(ifNoResult?.length ? { ifNoResult } : {}),
+    ...(sourceQuality?.length ? { sourceQuality } : {}),
   };
 }
 
@@ -1257,6 +1263,17 @@ export function buildResearchRunbook(
         "Same-name false positives",
       ],
       "Stop when the subject is confirmed or the ambiguity is explicit enough to avoid saving contact details.",
+      undefined,
+      [
+        "Search spelling variants, initials, old employer, domain, email local-part, or phone pivots.",
+        "Switch to verify-identity mode if the only hits are same-name or stale profiles.",
+        "Stop early if the evidence would require private, leaked, or non-public data.",
+      ],
+      [
+        "Official registries, official domains, and current professional profiles outrank generic directories.",
+        "Current dated sources outrank cached snippets and old social posts.",
+        "Conflicting evidence is kept visible instead of averaged away.",
+      ],
     ),
   ];
 
@@ -1274,6 +1291,16 @@ export function buildResearchRunbook(
           "Evidence that connects the person to the organization",
         ],
         "Stop when one public source links the person to the organization, or mark the route as general-only.",
+        undefined,
+        [
+          "Try name plus likely domain, email handle, city, role keywords, and LinkedIn profile queries.",
+          "If the current employer is unresolved, use only organization-neutral public routes.",
+          "If two plausible employers remain, carry both as branches until contact ownership is proven.",
+        ],
+        [
+          "Staff/team pages, official bios, and current professional profiles outrank people-search snippets.",
+          "Role recency matters: profile headlines and dated staff pages beat undated third-party pages.",
+        ],
       ),
     );
   }
@@ -1293,6 +1320,17 @@ export function buildResearchRunbook(
           "Domain/email pattern candidates marked unverified",
         ],
         "Stop when you have the current organization domain and at least one official or professional page, or mark the search unresolved.",
+        undefined,
+        [
+          "Pivot from person name to confirmed employer domain, department, switchboard, and staff/team pages.",
+          "Try Danish terms even in international mode when the clue is Danish: kontakt, medarbejder, presse, telefon.",
+          "If all hits are generic directories, record them as low quality and continue through official-domain routes.",
+        ],
+        [
+          "Official domain pages outrank search-result snippets, directories, and copied profile databases.",
+          "Public professional profiles help identity, but do not prove direct phone/email ownership by themselves.",
+          "Domain-pattern guesses remain unverified until confirmed by public organization evidence.",
+        ],
       ),
     );
   }
@@ -1318,6 +1356,16 @@ export function buildResearchRunbook(
           "Low-value generic sources to ignore",
         ],
         "Stop when the next searches are ranked by likely evidence value, not just copied from search results.",
+        undefined,
+        [
+          "If the subject is too broad, split into legal entity, department, domain, product, and named decision-maker branches.",
+          "If only generic sources appear, search official domain paths and registries before news or social results.",
+          "If no route appears, explicitly mark the route gap and move to adjacent public routes.",
+        ],
+        [
+          "Official source families first: registry, domain, procurement/contact, staff/team, press/newsroom.",
+          "Generic portals are useful for discovery but weak for confirming identity, route, or urgency.",
+        ],
       ),
       runbookStep(
         "recent-signal-timeline",
@@ -1339,6 +1387,16 @@ export function buildResearchRunbook(
           "Why it matters now",
         ],
         "Stop when the strongest current trigger is clear, or explicitly mark the research as background-only.",
+        undefined,
+        [
+          "If there are no recent signals, search awarded contracts, procurement plans, job posts, and budget documents.",
+          "If all signals are old, classify them as background and avoid action language.",
+          "If a trigger exists but no route exists, hand off to adjacent-route mapping.",
+        ],
+        [
+          "Dated official announcements and procurement notices outrank undated blog or directory pages.",
+          "Signals older than 12 months are background unless tied to an active route or deadline.",
+        ],
       ),
     );
   }
@@ -1363,6 +1421,16 @@ export function buildResearchRunbook(
           "Staff/team page, role inbox, or department page",
           "Public professional profile tied to current organization",
           "Direct phone/email only when intentionally public and tied to the exact subject",
+        ],
+        [
+          "If no public direct phone exists, use switchboard, department phone, contact form, or role inbox.",
+          "If no public email exists, use official form, role inbox, or professional profile rather than guessing.",
+          "If route ownership is weak, downgrade to fallback route or keep researching instead of contacting.",
+        ],
+        [
+          "Official contact pages and staff pages outrank people-search databases.",
+          "Direct personal details must be intentionally public and tied to the current subject.",
+          "A guessed email pattern is a hypothesis, not a usable route.",
         ],
       ),
     );
@@ -1397,6 +1465,15 @@ export function buildResearchRunbook(
                 "Public professional profile tied to the organization",
                 "Adjacent public contact only when role-relevant",
               ],
+              [
+                "If no named buyer appears, pivot to department aliases, procurement pages, public agendas, and awarded contracts.",
+                "If the primary route is generic, keep one role-relevant fallback and label confidence low.",
+                "If the only contacts are unrelated executives, do not treat them as the buying route.",
+              ],
+              [
+                "Procurement/contact pages outrank generic staff lists for buying-route decisions.",
+                "Adjacent contacts need role relevance, not just organizational proximity.",
+              ],
             ),
           ]
         : []),
@@ -1413,6 +1490,16 @@ export function buildResearchRunbook(
           "Missing evidence",
         ],
         "Stop when the finding can be labeled concrete opportunity, weak signal, or no opportunity yet.",
+        undefined,
+        [
+          "If no active tender or grant exists, search awarded contracts, budget plans, strategy documents, hiring, and recent supplier mentions.",
+          "If there is only a generic portal or archive, classify it as a source or background, not an opportunity.",
+          "If technical need is plausible but unsupported, keep it as a hypothesis and require one more public signal.",
+        ],
+        [
+          "Active official tenders, grants, and dated buying notices outrank archives and generic portals.",
+          "A concrete opportunity needs buyer/route/trigger evidence, not just matching keywords.",
+        ],
       ),
     );
   }
@@ -1426,6 +1513,16 @@ export function buildResearchRunbook(
         [`${quoted(subject)} LinkedIn`, `${quoted(subject)} profile`, `${quoted(subject)} former`, `${quoted(subject)} alias`],
         ["Matched facts", "Conflicting facts", "Rule-out evidence", "Confidence level"],
         "Stop when the next action is match, reject, or continue researching with one named missing fact.",
+        undefined,
+        [
+          "If facts conflict, search former employer, old domain, location, and date-limited queries before deciding.",
+          "If only one source supports the match, mark unresolved unless that source is official and current.",
+          "If a false positive is likely, write the rule-out evidence before moving on.",
+        ],
+        [
+          "Official and current sources outrank name similarity.",
+          "Rule-out evidence is as valuable as confirming evidence in same-name cases.",
+        ],
       ),
     );
   }
@@ -1443,6 +1540,16 @@ export function buildResearchRunbook(
         "Largest remaining risk",
       ],
       "Stop when the next action is a single sentence with channel, reason, and confidence.",
+      undefined,
+      [
+        "If confidence is low, choose keep researching or do not contact yet.",
+        "If route is usable but weak, choose fallback route and state the risk.",
+        "If no opportunity exists, save the best monitoring query or stop.",
+      ],
+      [
+        "The next action must cite a source-backed reason, route, and confidence.",
+        "Do not let unverified assumptions become outreach claims.",
+      ],
     ),
   );
 

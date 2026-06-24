@@ -311,6 +311,18 @@ describe("research brief workflow helpers", () => {
       "Public professional profile tied to current organization",
       "Direct phone/email only when intentionally public and tied to the exact subject",
     ]);
+    expect(runbook.find((step) => step.id === "contact-route-ladder")?.ifNoResult).toEqual(
+      expect.arrayContaining([
+        "If no public direct phone exists, use switchboard, department phone, contact form, or role inbox.",
+        "If no public email exists, use official form, role inbox, or professional profile rather than guessing.",
+      ]),
+    );
+    expect(runbook.find((step) => step.id === "contact-route-ladder")?.sourceQuality).toEqual(
+      expect.arrayContaining([
+        "Official contact pages and staff pages outrank people-search databases.",
+        "A guessed email pattern is a hypothesis, not a usable route.",
+      ]),
+    );
     expect(runbook.flatMap((step) => step.searchPrompts)).toEqual(
       expect.arrayContaining(['"Mette Jensen" kontakt', '"Mette Jensen" telefon']),
     );
@@ -389,6 +401,9 @@ describe("research brief workflow helpers", () => {
     expect(runbook.find((step) => step.id === "next-action")?.capture).toEqual(
       expect.arrayContaining(["Source-backed reason for contact", "Largest remaining risk"]),
     );
+    expect(runbook.find((step) => step.id === "next-action")?.ifNoResult).toEqual(
+      expect.arrayContaining(["If confidence is low, choose keep researching or do not contact yet."]),
+    );
   });
 
   it("builds a top-to-bottom deep opportunity runbook", () => {
@@ -421,6 +436,18 @@ describe("research brief workflow helpers", () => {
       "Public professional profile tied to the organization",
       "Adjacent public contact only when role-relevant",
     ]);
+    expect(runbook.find((step) => step.id === "opportunity-signal-map")?.ifNoResult).toEqual(
+      expect.arrayContaining([
+        "If no active tender or grant exists, search awarded contracts, budget plans, strategy documents, hiring, and recent supplier mentions.",
+        "If there is only a generic portal or archive, classify it as a source or background, not an opportunity.",
+      ]),
+    );
+    expect(runbook.find((step) => step.id === "opportunity-signal-map")?.sourceQuality).toEqual(
+      expect.arrayContaining([
+        "Active official tenders, grants, and dated buying notices outrank archives and generic portals.",
+        "A concrete opportunity needs buyer/route/trigger evidence, not just matching keywords.",
+      ]),
+    );
     expect(runbook.flatMap((step) => step.searchPrompts)).toEqual(
       expect.arrayContaining(['"Aarhus Kommune" udbud', '"Aarhus Kommune" offentligt indkøb']),
     );

@@ -366,6 +366,8 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                 const stopWhen = typeof step.stopWhen === "string" ? step.stopWhen : "";
                 const prompts = uniqueResearchPrompts(step.searchPrompts, 5);
                 const routePriority = stringList(step.routePriority);
+                const ifNoResult = stringList(step.ifNoResult);
+                const sourceQuality = stringList(step.sourceQuality);
                 return (
                   <div key={`${title}-${index}`} className="rounded-md border border-border bg-surface/40 p-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -397,6 +399,32 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                             </li>
                           ))}
                         </ol>
+                      </div>
+                    ) : null}
+                    {ifNoResult.length ? (
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">If no result</p>
+                        <ul className="mt-1 space-y-1 text-xs leading-5 text-muted-foreground">
+                          {ifNoResult.slice(0, 3).map((item) => (
+                            <li key={item} className="flex gap-2">
+                              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-warning" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {sourceQuality.length ? (
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Source quality</p>
+                        <ul className="mt-1 space-y-1 text-xs leading-5 text-muted-foreground">
+                          {sourceQuality.slice(0, 3).map((item) => (
+                            <li key={item} className="flex gap-2">
+                              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-primary" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     ) : null}
                     {stopWhen ? (
