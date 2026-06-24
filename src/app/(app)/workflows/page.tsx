@@ -61,7 +61,7 @@ import { previewWorkflowRun } from "@/lib/workflows/preview";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import { filterWorkflowRecommendations } from "@/lib/workflows/recommendation-actions";
 import {
-  candidateContactResearchSubject,
+  candidateResearchBriefDefaults,
   contactResearchReason,
   countReachablePeople,
   findActiveResearchBriefRun,
@@ -461,13 +461,24 @@ export default async function WorkflowsPage() {
     accountName: task.deal?.account?.name ?? task.account?.name ?? null,
   }));
   const candidateItems = hotCandidates.map((candidate) => {
-    const researchSubject = candidateContactResearchSubject(candidate);
-    const researchSubjectType = candidate.organization ? "company" as const : "unknown" as const;
+    const researchDefaults = candidateResearchBriefDefaults({
+      title: candidate.title,
+      description: candidate.description,
+      rawContent: candidate.rawContent,
+      url: candidate.url,
+      organization: candidate.organization,
+      laneName: candidate.lane?.name,
+      sourceName: candidate.sourceName,
+      sourceKind: candidate.sourceKind,
+      category: candidate.category,
+    });
+    const researchSubject = researchDefaults.subject;
+    const researchSubjectType = researchDefaults.subjectType;
     const activeResearchRun = findActiveResearchBriefRun(activeResearchBriefRuns, {
       candidateId: candidate.id,
       subject: researchSubject,
       subjectType: researchSubjectType,
-      objective: "find-contact",
+      objective: researchDefaults.objective,
       workspace: candidate.workspace,
     });
     return {
@@ -482,6 +493,9 @@ export default async function WorkflowsPage() {
       workspace: candidate.workspace,
       researchSubject,
       researchSubjectType,
+      researchObjective: researchDefaults.objective,
+      researchDepth: researchDefaults.depth,
+      researchActionLabel: researchDefaults.actionLabel,
       researchCandidateId: candidate.id,
       activeResearchRunId: activeResearchRun?.id ?? null,
       activeResearchRunStatus: activeResearchRun?.status ?? null,

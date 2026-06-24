@@ -20,6 +20,8 @@ import { researchBriefRunPayload } from "@/lib/workflows/usecase-actions";
 
 type Workspace = "DK" | "GLOBAL";
 type ResearchSubjectType = "person" | "company" | "unknown";
+type ResearchObjective = "find-contact" | "map-opportunity";
+type ResearchDepth = "standard" | "deep";
 
 export type WorkflowCandidateItem = {
   id: string;
@@ -33,6 +35,9 @@ export type WorkflowCandidateItem = {
   workspace: Workspace;
   researchSubject: string;
   researchSubjectType: ResearchSubjectType;
+  researchObjective: ResearchObjective;
+  researchDepth: ResearchDepth;
+  researchActionLabel: string;
   researchCandidateId: string;
   activeResearchRunId: string | null;
   activeResearchRunStatus: string | null;
@@ -68,8 +73,8 @@ export function WorkflowCandidateQueue({ candidates }: { candidates: WorkflowCan
           researchBriefRunPayload({
             subject: candidate.researchSubject,
             subjectType: candidate.researchSubjectType,
-            objective: "find-contact",
-            depth: "standard",
+            objective: candidate.researchObjective,
+            depth: candidate.researchDepth,
             createTasks: true,
             workspace: candidate.workspace,
             candidateId: candidate.researchCandidateId,
@@ -251,7 +256,7 @@ export function WorkflowCandidateQueue({ candidates }: { candidates: WorkflowCan
                   ) : (
                     <DropdownMenuItem onClick={() => queueResearch(candidate)} disabled={researchBusy}>
                       {researchBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                      Research contact
+                      {candidate.researchActionLabel}
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem onClick={() => act(candidate, "review")}>

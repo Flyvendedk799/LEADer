@@ -35,6 +35,14 @@ export type ResearchBriefRunLike = {
   input?: unknown;
 };
 
+export type CandidateResearchBriefDefaults = {
+  subject: string;
+  subjectType: "company" | "unknown";
+  objective: "find-contact" | "map-opportunity";
+  depth: "standard" | "deep";
+  actionLabel: string;
+};
+
 function hasValue(value?: string | null) {
   return Boolean(value?.trim());
 }
@@ -108,6 +116,55 @@ export function candidateContactResearchSubject(input: {
 
   const sourceName = input.sourceName?.replace(/\s+/g, " ").trim();
   return (sourceName || "Discovery candidate").slice(0, 160);
+}
+
+function isTenderResearchCandidate(input: {
+  title?: string | null;
+  description?: string | null;
+  rawContent?: string | null;
+  url?: string | null;
+  laneName?: string | null;
+  sourceName?: string | null;
+  sourceKind?: string | null;
+  category?: string | null;
+}) {
+  const text = [
+    input.title,
+    input.description,
+    input.rawContent,
+    input.url,
+    input.laneName,
+    input.sourceName,
+    input.sourceKind,
+    input.category,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase();
+  return /tender|procurement|udbud|offentligt indkøb|offentligt indkoeb|tilbudsfrist|udbudsfrist|ordregiver|detaljevisning|mercell|eu-supply|publicpurchase/.test(
+    text,
+  );
+}
+
+export function candidateResearchBriefDefaults(input: {
+  title?: string | null;
+  description?: string | null;
+  rawContent?: string | null;
+  url?: string | null;
+  organization?: string | null;
+  laneName?: string | null;
+  sourceName?: string | null;
+  sourceKind?: string | null;
+  category?: string | null;
+}): CandidateResearchBriefDefaults {
+  const tender = isTenderResearchCandidate(input);
+  return {
+    subject: candidateContactResearchSubject(input),
+    subjectType: input.organization?.trim() ? "company" : "unknown",
+    objective: tender ? "map-opportunity" : "find-contact",
+    depth: tender ? "deep" : "standard",
+    actionLabel: tender ? "Research opportunity" : "Research contact",
+  };
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {

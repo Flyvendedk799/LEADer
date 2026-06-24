@@ -4,6 +4,7 @@ import {
   contactResearchReason,
   countReachablePeople,
   candidateContactResearchSubject,
+  candidateResearchBriefDefaults,
   findActiveResearchBriefRun,
   needsContactResearch,
   needsPersonContactResearch,
@@ -90,6 +91,40 @@ describe("workflow research targets", () => {
         sourceName: "udbud.dk",
       }),
     ).toBe("Udbud med forhandling vedrørende ruteplanlægning");
+  });
+
+  it("routes tender candidates to opportunity mapping instead of generic contact research", () => {
+    expect(
+      candidateResearchBriefDefaults({
+        title: "Intranet",
+        organization: "Metroselskabet I/S",
+        laneName: "Tenders / procurement",
+        sourceName: "udbud.dk",
+        category: "Tender",
+        url: "https://udbud.dk/detaljevisning?noticeId=123",
+        rawContent: "Ordregiver: Metroselskabet. Tilbudsfrist 30-07-2026.",
+      }),
+    ).toEqual({
+      subject: "Metroselskabet I/S",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+      actionLabel: "Research opportunity",
+    });
+
+    expect(
+      candidateResearchBriefDefaults({
+        title: "Founder looking for MVP sparring",
+        organization: "Northwind",
+        laneName: "Direct startup / MVP clients",
+      }),
+    ).toMatchObject({
+      subject: "Northwind",
+      subjectType: "company",
+      objective: "find-contact",
+      depth: "standard",
+      actionLabel: "Research contact",
+    });
   });
 
   it("extracts linked research brief identity from workflow input", () => {
