@@ -181,6 +181,37 @@ describe("workflow research targets", () => {
     expect(findActiveResearchBriefRun(runs, {})).toBeNull();
   });
 
+  it("finds exact candidate research runs even when the requested objective changes", () => {
+    const runs = [
+      {
+        id: "run-old-contact",
+        status: "RUNNING",
+        input: {
+          playbook: "research-brief",
+          workspace: "DK",
+          options: {
+            researchBrief: {
+              candidateId: "candidate-1",
+              subject: "Metroselskabet I/S",
+              subjectType: "company",
+              objective: "find-contact",
+            },
+          },
+        },
+      },
+    ];
+
+    expect(
+      findActiveResearchBriefRun(runs, {
+        candidateId: "candidate-1",
+        subject: "Metroselskabet I/S",
+        subjectType: "company",
+        objective: "map-opportunity",
+        workspace: "DK",
+      })?.id,
+    ).toBe("run-old-contact");
+  });
+
   it("does not let deal-level research hide a specific person contact brief", () => {
     const runs = [
       {

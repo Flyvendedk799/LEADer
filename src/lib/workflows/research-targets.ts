@@ -240,8 +240,8 @@ export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIde
 
 export function researchBriefMatchesIdentity(run: ResearchBriefRunLike, identity: ResearchBriefIdentity) {
   const runIdentity = researchBriefIdentityFromInput(run.input);
-  if (!researchBriefModeMatches(runIdentity, identity)) return false;
   if (identity.candidateId) return runIdentity.candidateId === identity.candidateId;
+  if (!researchBriefModeMatches(runIdentity, identity)) return false;
   if (identity.personId) {
     if (runIdentity.personId === identity.personId) return true;
     const subject = normalizedSubject(identity.subject);
