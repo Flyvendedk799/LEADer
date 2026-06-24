@@ -12,8 +12,10 @@ import {
   buildResearchRunbook,
   buildResearchWorksheet,
   normalizeResearchBriefOptions,
+  researchSubjectClueSummary,
   type NormalizedResearchBriefOptions,
   type ResearchChecklistItem,
+  type ResearchSubjectClueSummary,
   type ResearchRunbookStep,
   type ResearchWorksheetSection,
 } from "./research-brief";
@@ -103,6 +105,7 @@ export type ResearchBriefResult = {
   skippedExistingTasks: number;
   taskIds: string[];
   existingTaskIds: string[];
+  clueSummary: ResearchSubjectClueSummary[];
   checklist: ResearchChecklistItem[];
   worksheet: ResearchWorksheetSection[];
   runbook: ResearchRunbookStep[];
@@ -799,6 +802,7 @@ export async function runResearchBrief(
   const checklist = buildResearchChecklist(normalized, workspace);
   const worksheet = buildResearchWorksheet(normalized, workspace);
   const runbook = buildResearchRunbook(normalized, workspace);
+  const clueSummary = researchSubjectClueSummary(normalized.subject);
   const taskIds: string[] = [];
   const existingTaskIds: string[] = [];
   let createdTasks = 0;
@@ -871,6 +875,7 @@ export async function runResearchBrief(
     skippedExistingTasks,
     taskIds,
     existingTaskIds,
+    clueSummary,
     checklist,
     worksheet,
     runbook,

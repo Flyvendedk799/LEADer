@@ -68,6 +68,7 @@ describe("workflowRunSummary", () => {
       skippedExistingTasks: 1,
       taskIds: ["task-1"],
       existingTaskIds: ["task-existing"],
+      clueSummary: [],
       checklist: [],
       worksheet: [],
       runbook: [],

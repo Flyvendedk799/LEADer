@@ -1,4 +1,8 @@
-import { researchBriefRunbookFromResult, researchBriefWorksheetFromResult } from "./research-brief-result";
+import {
+  researchBriefClueSummaryFromResult,
+  researchBriefRunbookFromResult,
+  researchBriefWorksheetFromResult,
+} from "./research-brief-result";
 
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -10,6 +14,10 @@ function numberValue(value: unknown) {
 
 function arrayCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0;
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 export function workflowRunResultSummary(playbook: string, result: unknown) {
@@ -40,9 +48,11 @@ export function workflowRunResultSummary(playbook: string, result: unknown) {
   if (playbook === "research-brief") {
     const runbookSteps = researchBriefRunbookFromResult(payload).length || arrayCount(payload.runbook);
     const worksheetSections = researchBriefWorksheetFromResult(payload).length || arrayCount(payload.worksheet);
-    const runbook = runbookSteps ? `${runbookSteps} runbook steps - ` : "";
-    const worksheet = worksheetSections ? `${worksheetSections} worksheet sections - ` : "";
-    return `${runbook}${worksheet}${numberValue(payload.createdTasks)} research tasks - ${numberValue(payload.skippedExistingTasks)} existing - ${subject}`;
+    const cluePivots = researchBriefClueSummaryFromResult(payload).length;
+    const clues = cluePivots ? `${countLabel(cluePivots, "clue pivot")} - ` : "";
+    const runbook = runbookSteps ? `${countLabel(runbookSteps, "runbook step")} - ` : "";
+    const worksheet = worksheetSections ? `${countLabel(worksheetSections, "worksheet section")} - ` : "";
+    return `${clues}${runbook}${worksheet}${numberValue(payload.createdTasks)} research tasks - ${numberValue(payload.skippedExistingTasks)} existing - ${subject}`;
   }
 
   if (playbook === "candidate-harvest") {

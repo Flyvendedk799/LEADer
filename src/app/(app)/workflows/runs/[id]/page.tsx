@@ -12,7 +12,11 @@ import { db } from "@/lib/db";
 import { discoveryCandidateHref } from "@/lib/discovery-links";
 import { formatDate, truncate } from "@/lib/utils";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
-import { researchBriefRunbookFromResult, researchBriefWorksheetFromResult } from "@/lib/workflows/research-brief-result";
+import {
+  researchBriefClueSummaryFromResult,
+  researchBriefRunbookFromResult,
+  researchBriefWorksheetFromResult,
+} from "@/lib/workflows/research-brief-result";
 import { researchSearchHref, uniqueResearchPrompts } from "@/lib/workflows/research-links";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 import { workflowResearchLinkedTargets } from "@/lib/workflows/linked-context";
@@ -107,6 +111,10 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
       : Array.isArray(result?.runbook)
         ? result.runbook.filter((item) => objectValue(item))
         : [];
+  const clueSummary =
+    run.playbook === "research-brief"
+      ? researchBriefClueSummaryFromResult(result, input)
+      : [];
   const taskIds = [...new Set([...stringList(result?.taskIds), ...stringList(result?.existingTaskIds)])];
   const dealIds = stringList(result?.dealIds);
   const tasks = taskIds.length
@@ -231,6 +239,23 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                   </div>
                 );
               })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {run.playbook === "research-brief" && clueSummary.length ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Starting pivots</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-1.5">
+              {clueSummary.map((clue) => (
+                <Badge key={`${clue.id}-${clue.value}`} variant="secondary" className="max-w-full truncate" title={clue.value}>
+                  {clue.label}: {clue.value}
+                </Badge>
+              ))}
             </div>
           </CardContent>
         </Card>

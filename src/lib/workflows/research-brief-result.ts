@@ -4,7 +4,9 @@ import {
   buildResearchRunbook,
   buildResearchWorksheet,
   normalizeResearchBriefOptions,
+  researchSubjectClueSummary,
   type ResearchBriefOptions,
+  type ResearchSubjectClueSummary,
   type ResearchRunbookStep,
   type ResearchWorksheetSection,
 } from "./research-brief";
@@ -19,6 +21,19 @@ function stringValue(value: unknown) {
 
 function objectArray<T>(value: unknown) {
   return Array.isArray(value) ? (value.filter((item) => objectValue(item)) as T[]) : [];
+}
+
+function clueSummaryArray(value: unknown): ResearchSubjectClueSummary[] {
+  const allowed = new Set<ResearchSubjectClueSummary["id"]>(["email", "phone", "domain", "name-hint"]);
+  return objectArray<Record<string, unknown>>(value)
+    .map((item) => {
+      const id = stringValue(item.id);
+      const label = stringValue(item.label);
+      const clueValue = stringValue(item.value);
+      if (!id || !allowed.has(id as ResearchSubjectClueSummary["id"]) || !label || !clueValue) return null;
+      return { id: id as ResearchSubjectClueSummary["id"], label, value: clueValue };
+    })
+    .filter((item): item is ResearchSubjectClueSummary => Boolean(item));
 }
 
 function workspaceValue(value: unknown, fallback: Workspace = "DK"): Workspace {
@@ -83,4 +98,16 @@ export function researchBriefWorksheetFromResult(
   const options = researchBriefOptionsFromPayload(result, input);
   if (!options) return [];
   return buildResearchWorksheet(normalizeResearchBriefOptions(options), researchBriefWorkspace(result, fallbackWorkspace));
+}
+
+export function researchBriefClueSummaryFromResult(
+  result: unknown,
+  input?: unknown,
+): ResearchSubjectClueSummary[] {
+  const record = objectValue(result);
+  const existing = clueSummaryArray(record?.clueSummary);
+  if (existing.length) return existing;
+  const options = researchBriefOptionsFromPayload(result, input);
+  if (!options) return [];
+  return researchSubjectClueSummary(normalizeResearchBriefOptions(options).subject);
 }

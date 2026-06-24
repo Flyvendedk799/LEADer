@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { researchBriefRunbookFromResult, researchBriefWorksheetFromResult } from "./research-brief-result";
+import {
+  researchBriefClueSummaryFromResult,
+  researchBriefRunbookFromResult,
+  researchBriefWorksheetFromResult,
+} from "./research-brief-result";
 
 describe("research brief result fallbacks", () => {
   it("reconstructs missing runbooks for older successful research runs", () => {
@@ -62,5 +66,33 @@ describe("research brief result fallbacks", () => {
     });
 
     expect(worksheet.map((section) => section.id)).toContain("contact-route");
+  });
+
+  it("preserves saved clue summaries and reconstructs them for older runs", () => {
+    expect(
+      researchBriefClueSummaryFromResult({
+        subject: "Mette Jensen",
+        clueSummary: [{ id: "phone", label: "Phone", value: "+45 12 34 56 78" }],
+      }),
+    ).toEqual([{ id: "phone", label: "Phone", value: "+45 12 34 56 78" }]);
+
+    expect(
+      researchBriefClueSummaryFromResult(
+        { createdTasks: 0 },
+        {
+          options: {
+            researchBrief: {
+              subject: "mette.jensen@northwind.dk",
+            },
+          },
+        },
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        { id: "email", label: "Email", value: "mette.jensen@northwind.dk" },
+        { id: "domain", label: "Domain", value: "northwind.dk" },
+        { id: "name-hint", label: "Name hint", value: "mette jensen" },
+      ]),
+    );
   });
 });

@@ -45,4 +45,21 @@ describe("workflowRunResultSummary", () => {
       }),
     ).toBe("2 runbook steps - 2 worksheet sections - 0 research tasks - 0 existing - Mette Jensen");
   });
+
+  it("surfaces clue pivots for clue-based research briefs", () => {
+    expect(
+      workflowRunResultSummary("research-brief", {
+        subject: "mette.jensen@northwind.dk",
+        createdTasks: 0,
+        skippedExistingTasks: 0,
+        clueSummary: [
+          { id: "email", label: "Email", value: "mette.jensen@northwind.dk" },
+          { id: "domain", label: "Domain", value: "northwind.dk" },
+          { id: "name-hint", label: "Name hint", value: "mette jensen" },
+        ],
+        runbook: [{ id: "resolve-subject" }],
+        worksheet: [{ id: "identity" }],
+      }),
+    ).toBe("3 clue pivots - 1 runbook step - 1 worksheet section - 0 research tasks - 0 existing - mette.jensen@northwind.dk");
+  });
 });
