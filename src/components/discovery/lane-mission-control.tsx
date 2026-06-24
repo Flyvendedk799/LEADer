@@ -114,7 +114,7 @@ type MissionResult = {
 
 type SearchMode = "focused" | "balanced" | "wide";
 
-type MissionSummary = {
+export type MissionSummary = {
   id: string;
   status: string;
   workspace?: Workspace;
@@ -248,6 +248,12 @@ function sortMissionsWithQueue(items: MissionSummary[], queue: DiscoveryQueueSna
   });
 }
 
+export function mergeMissionHistory(items: MissionSummary[], mission: MissionSummary, limit: number) {
+  return [mission, ...items.filter((item) => item.id !== mission.id)].sort(
+    (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+  ).slice(0, Math.max(1, limit));
+}
+
 function apiMissionToSummary(mission: Partial<MissionSummary> & { id: string; candidates?: Candidate[] }): MissionSummary {
   return {
     id: mission.id,
@@ -369,12 +375,9 @@ export function LaneMissionControl({
 
   const mergeMission = React.useCallback((mission: MissionSummary) => {
     setMissions((current) => {
-      const next = current.filter((item) => item.id !== mission.id);
-      return [mission, ...next].sort(
-        (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
-      ).slice(0, 20);
+      return mergeMissionHistory(current, mission, historyLimit);
     });
-  }, []);
+  }, [historyLimit]);
 
   const syncMissionUrl = React.useCallback((id: string) => {
     window.history.replaceState(window.history.state, "", discoveryMissionHref(id));
