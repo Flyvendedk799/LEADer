@@ -149,6 +149,38 @@ function cleanTerms(values: string[] = [], limit = 12, maxLength = 80) {
   return out;
 }
 
+function dayRange(date: Date) {
+  const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  return { gte: start, lt: new Date(start.getTime() + 86400000) };
+}
+
+function discoveryCandidateDedupeWhere(
+  ownerId: string,
+  lane: { id: string; slug: string },
+  candidate: DiscoveryCandidateDto,
+  deadline: Date | undefined,
+  dedupeKey: string,
+): Prisma.DiscoveryCandidateWhereInput {
+  const alternatives: Prisma.DiscoveryCandidateWhereInput[] = [{ dedupeKey }];
+  const title = cleanTerm(candidate.title, 220);
+  const organization = cleanTerm(candidate.organization, 180);
+
+  if (lane.slug === "tenders-procurement" && title && organization && deadline) {
+    alternatives.push({
+      laneId: lane.id,
+      title: { equals: title, mode: "insensitive" },
+      organization: { equals: organization, mode: "insensitive" },
+      deadline: dayRange(deadline),
+    });
+  }
+
+  return {
+    ownerId,
+    status: { notIn: ["SAVED", "DISMISSED"] },
+    OR: alternatives,
+  };
+}
+
 function queryLimitForMode(mode: DiscoverySearchMode = "balanced", explicit?: number) {
   if (explicit) return explicit;
   if (mode === "focused") return 3;
@@ -798,7 +830,7 @@ async function persistCandidate(
   const reasons = [...new Set([...fit.reasons, ...candidate.reasons])].slice(0, 8);
   const signals = [...new Set([...candidate.signals, ...fit.signals])].slice(0, 12);
   const existing = await db.discoveryCandidate.findFirst({
-    where: { ownerId, dedupeKey, status: { notIn: ["SAVED", "DISMISSED"] } },
+    where: discoveryCandidateDedupeWhere(ownerId, lane, candidate, deadline, dedupeKey),
     include: { evidence: true, lane: true },
   });
 
