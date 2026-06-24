@@ -68,6 +68,13 @@ type MissionControlResponse = {
 
 type MissionAction = "CANCEL" | "CANCEL_ALL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
 
+export function discoveryMissionHistoryPath(limit: number, search = "") {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const trimmed = search.trim();
+  if (trimmed) params.set("q", trimmed);
+  return `/api/discovery/runs?${params.toString()}`;
+}
+
 function statusVariant(status: string): React.ComponentProps<typeof Badge>["variant"] {
   if (status === "SUCCESS") return "success";
   if (status === "ERROR") return "warning";
@@ -203,6 +210,21 @@ export function WorkflowDiscoveryMissionQueue({
   const historySearchActive = historySearch.trim().length > 0;
   const canLoadOlderMissions = items.length >= historyLimit && historyLimit < 100;
 
+  const loadMissions = React.useCallback(async (limit: number, search = historySearch, quiet = false) => {
+    try {
+      const res = await fetch(discoveryMissionHistoryPath(limit, search), { cache: "no-store" });
+      const data = (await res.json().catch(() => null)) as MissionListResponse | null;
+      if (!res.ok || !data) throw new Error(data?.error || "Could not load discovery history");
+      if (Array.isArray(data.missions)) setItems(data.missions.map(apiMissionToItem));
+      setQueueState(normalizeQueue(data.queue));
+      setLastUpdatedAt(new Date());
+    } catch (err) {
+      if (!quiet) {
+        toast.error("Could not load discovery history", err instanceof Error ? err.message : "Try again");
+      }
+    }
+  }, [historySearch]);
+
   React.useEffect(() => {
     setItems(missions);
   }, [missions]);
@@ -225,8 +247,7 @@ export function WorkflowDiscoveryMissionQueue({
 
     async function refreshMissions() {
       try {
-        const params = new URLSearchParams({ limit: String(historyLimit) });
-        const res = await fetch(`/api/discovery/runs?${params.toString()}`, { cache: "no-store" });
+        const res = await fetch(discoveryMissionHistoryPath(historyLimit, historySearch), { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as MissionListResponse | null;
         if (!res.ok || !data || stopped) return;
         if (Array.isArray(data.missions)) {
@@ -245,23 +266,23 @@ export function WorkflowDiscoveryMissionQueue({
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [historyLimit, live]);
+  }, [historyLimit, historySearch, live]);
 
   const loadOlderMissions = React.useCallback(async () => {
     const nextLimit = nextHistoryLimit(historyLimit, historySearchActive);
     setHistoryLimit(nextLimit);
-    try {
-      const params = new URLSearchParams({ limit: String(nextLimit) });
-      const res = await fetch(`/api/discovery/runs?${params.toString()}`, { cache: "no-store" });
-      const data = (await res.json().catch(() => null)) as MissionListResponse | null;
-      if (!res.ok || !data) throw new Error(data?.error || "Could not load discovery history");
-      if (Array.isArray(data.missions)) setItems(data.missions.map(apiMissionToItem));
-      setQueueState(normalizeQueue(data.queue));
-      setLastUpdatedAt(new Date());
-    } catch (err) {
-      toast.error("Could not load discovery history", err instanceof Error ? err.message : "Try again");
-    }
-  }, [historyLimit, historySearchActive]);
+    void loadMissions(nextLimit, historySearch);
+  }, [historyLimit, historySearch, historySearchActive, loadMissions]);
+
+  React.useEffect(() => {
+    if (!historySearchActive) return undefined;
+    const timer = window.setTimeout(() => {
+      const nextLimit = nextHistoryLimit(historyLimit, true);
+      if (nextLimit !== historyLimit) setHistoryLimit(nextLimit);
+      void loadMissions(nextLimit, historySearch, true);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [historyLimit, historySearch, historySearchActive, loadMissions]);
 
   async function controlMission(mission: WorkflowDiscoveryMissionItem, action: MissionAction) {
     setBusyId(`${action}-${mission.id}`);
@@ -372,7 +393,7 @@ export function WorkflowDiscoveryMissionQueue({
         </div>
         <p className="text-[11px] text-muted-foreground">
           {historySearchActive
-            ? `${filteredItems.length} of ${orderedItems.length} loaded discovery runs match`
+            ? `${filteredItems.length} matching discovery ${filteredItems.length === 1 ? "run" : "runs"} loaded`
             : `${orderedItems.length} discovery runs loaded`}
         </p>
       </div>
@@ -514,7 +535,7 @@ export function WorkflowDiscoveryMissionQueue({
         })
       ) : (
         <p className="py-3 text-center text-sm text-muted-foreground">
-          {historySearchActive ? "No loaded discovery runs match this search." : "No discovery runs yet."}
+          {historySearchActive ? "No discovery runs match this search." : "No discovery runs yet."}
         </p>
       )}
       {canLoadOlderMissions ? (
