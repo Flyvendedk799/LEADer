@@ -71,6 +71,12 @@ type SubjectClues = {
   nameHints: string[];
 };
 
+export type ResearchSubjectClueSummary = {
+  id: "email" | "phone" | "domain" | "name-hint";
+  label: string;
+  value: string;
+};
+
 const SUBJECT_TYPES = new Set<ResearchSubjectType>(["person", "company", "unknown"]);
 const OBJECTIVES = new Set<ResearchObjective>([
   "find-contact",
@@ -209,6 +215,16 @@ function subjectClues(subject: string): SubjectClues {
     3,
   );
   return { emails, phones, domains, handles, nameHints };
+}
+
+export function researchSubjectClueSummary(subject: string): ResearchSubjectClueSummary[] {
+  const clues = subjectClues(cleanText(subject, 500));
+  return [
+    ...clues.emails.map((value) => ({ id: "email" as const, label: "Email", value })),
+    ...clues.phones.map((value) => ({ id: "phone" as const, label: "Phone", value })),
+    ...clues.domains.map((value) => ({ id: "domain" as const, label: "Domain", value })),
+    ...clues.nameHints.map((value) => ({ id: "name-hint" as const, label: "Name hint", value })),
+  ].slice(0, 8);
 }
 
 function isGenericEmailLocal(local: string) {

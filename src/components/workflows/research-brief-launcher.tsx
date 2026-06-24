@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Loader2, MapPinned, Search, ShieldCheck, UserSearch } from "lucide-react";
+import { Building2, Fingerprint, Loader2, MapPinned, Search, ShieldCheck, UserSearch } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
-import { buildResearchRunbook, normalizeResearchBriefOptions } from "@/lib/workflows/research-brief";
+import {
+  buildResearchRunbook,
+  normalizeResearchBriefOptions,
+  researchSubjectClueSummary,
+} from "@/lib/workflows/research-brief";
 import { researchBriefRunPayload } from "@/lib/workflows/usecase-actions";
 
 type ResearchSubjectType = "unknown" | "person" | "company";
@@ -43,6 +47,14 @@ export const RESEARCH_BRIEF_STARTERS = [
     objective: "find-contact",
     depth: "standard",
     icon: Building2,
+  },
+  {
+    id: "clue-lookup",
+    label: "Clue lookup",
+    subjectType: "unknown",
+    objective: "qualify-lead",
+    depth: "standard",
+    icon: Fingerprint,
   },
   {
     id: "opportunity-map",
@@ -109,6 +121,7 @@ export function ResearchBriefLauncher({
     });
     return {
       normalized,
+      clues: researchSubjectClueSummary(trimmed),
       runbook: buildResearchRunbook(normalized, workspace).slice(0, 3),
     };
   }, [createTasks, selectedDepth, selectedObjective, selectedType, subject, workspace]);
@@ -175,7 +188,7 @@ export function ResearchBriefLauncher({
         </Button>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
         {RESEARCH_BRIEF_STARTERS.map((starter) => {
           const Icon = starter.icon;
           const active =
@@ -188,7 +201,7 @@ export function ResearchBriefLauncher({
               type="button"
               variant={active ? "secondary" : "outline"}
               size="sm"
-              className="justify-start"
+              className="h-auto min-h-8 justify-start whitespace-normal text-left"
               onClick={() => applyStarter(starter)}
             >
               <Icon className="h-4 w-4" />
@@ -259,6 +272,15 @@ export function ResearchBriefLauncher({
             <Badge variant="outline">{preview.normalized.depth}</Badge>
             <p className="min-w-0 truncate text-sm font-medium">{preview.normalized.subject}</p>
           </div>
+          {preview.clues.length ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {preview.clues.map((clue) => (
+                <Badge key={`${clue.id}-${clue.value}`} variant="secondary" className="max-w-full truncate" title={clue.value}>
+                  {clue.label}: {clue.value}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
           <div className="mt-3 grid gap-2">
             {preview.runbook.map((step) => (
               <div key={step.id} className="rounded-md border border-border bg-background/50 p-2">

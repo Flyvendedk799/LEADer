@@ -20,6 +20,7 @@ describe("ResearchBriefLauncher", () => {
     expect(RESEARCH_BRIEF_STARTERS.map((starter) => starter.id)).toEqual([
       "name-contact",
       "company-contact",
+      "clue-lookup",
       "opportunity-map",
       "verify-match",
     ]);
@@ -35,11 +36,23 @@ describe("ResearchBriefLauncher", () => {
     });
     expect(html).toContain("Name to contact");
     expect(html).toContain("Company contact");
+    expect(html).toContain("Clue lookup");
     expect(html).toContain("Opportunity map");
     expect(html).toContain("Verify match");
     expect(html).toContain("find contact");
     expect(html).toContain("Resolve the exact subject");
     expect(html).toContain("Find current affiliation");
     expect(html).toContain("Mette Jensen");
+  });
+
+  it("renders detected clue pivots in the preview", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ResearchBriefLauncher, { defaultSubject: "mette.jensen@northwind.dk" }),
+    );
+
+    expect(html).toContain("Email: mette.jensen@northwind.dk");
+    expect(html).toContain("Domain: northwind.dk");
+    expect(html).toContain("Name hint: mette jensen");
+    expect(html).toContain("find contact");
   });
 });

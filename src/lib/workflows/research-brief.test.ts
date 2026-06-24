@@ -5,6 +5,7 @@ import {
   buildResearchRunbook,
   buildResearchWorksheet,
   normalizeResearchBriefOptions,
+  researchSubjectClueSummary,
 } from "./research-brief";
 
 describe("research brief workflow helpers", () => {
@@ -241,6 +242,17 @@ describe("research brief workflow helpers", () => {
     );
     expect(runbook.flatMap((step) => step.searchPrompts)).toEqual(
       expect.arrayContaining(["site:northwind.dk", "northwind.dk kontakt", '"mette jensen" site:northwind.dk']),
+    );
+  });
+
+  it("summarizes operator-visible pivots from raw clues", () => {
+    expect(researchSubjectClueSummary("Call +45 12 34 56 78 or mette.jensen@northwind.dk")).toEqual(
+      expect.arrayContaining([
+        { id: "email", label: "Email", value: "mette.jensen@northwind.dk" },
+        { id: "phone", label: "Phone", value: "+45 12 34 56 78" },
+        { id: "domain", label: "Domain", value: "northwind.dk" },
+        { id: "name-hint", label: "Name hint", value: "mette jensen" },
+      ]),
     );
   });
 
