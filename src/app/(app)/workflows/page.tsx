@@ -125,8 +125,8 @@ function discoveryMissionActivityDescription(mission: {
 }) {
   const visible = visibleMissionCandidateMeta(mission);
   const counts = visible.hiddenCandidateCount
-    ? `${visible.candidateCount} reviewable · ${visible.hiddenCandidateCount} hidden`
-    : `${visible.candidateCount} candidates`;
+    ? `${visible.candidateCount} reviewable · ${visible.hiddenCandidateCount} rejected`
+    : `${visible.candidateCount} reviewable`;
   return `${counts} · ${firstQuery(mission.query)}`;
 }
 

@@ -40,10 +40,10 @@ describe("discovery display helpers", () => {
         },
         [
           "No web search API key configured. Add Tavily, Brave Search, or Serper in Settings -> AI to enable broad web discovery.",
-          "2 stale or off-lane candidates hidden from this mission: 2 broad framework agreement.",
+          "2 rejected results were kept out of review: 2 broad framework agreement.",
         ],
       ),
-    ).toEqual(["2 stale or off-lane candidates hidden from this mission: 2 broad framework agreement."]);
+    ).toEqual(["2 rejected results were kept out of review: 2 broad framework agreement."]);
   });
 
   it("hides dismissed, duplicate, and off-lane rows from mission review output", () => {
@@ -92,7 +92,7 @@ describe("discovery display helpers", () => {
     expect(result.candidates.map((candidate) => candidate.title)).toEqual(["Intranet"]);
     expect(result.removed).toBe(3);
     expect(hiddenDiscoveryCandidatesWarning(result.removed, result.reasons)).toContain(
-      "3 dismissed, duplicate, stale or off-lane candidates hidden",
+      "3 rejected results were kept out of review",
     );
   });
 
@@ -134,6 +134,6 @@ describe("discovery display helpers", () => {
       ["Udbud.co archive", "archived tender URL"],
       ["Duplicate active software tender", "duplicate candidate"],
     ]);
-    expect(result.reasons).toEqual(["1 archived tender URL", "1 dismissed or duplicate candidate"]);
+    expect(result.reasons).toEqual(["1 archived tender URL", "1 dismissed or duplicate result"]);
   });
 });

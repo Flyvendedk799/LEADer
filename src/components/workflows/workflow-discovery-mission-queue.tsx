@@ -151,7 +151,7 @@ function missionSearchText(mission: WorkflowDiscoveryMissionItem) {
     mission.laneName,
     mission.query,
     mission.candidateCount ? `${mission.candidateCount} reviewable` : "",
-    mission.hiddenCandidateCount ? `${mission.hiddenCandidateCount} hidden` : "",
+    mission.hiddenCandidateCount ? `${mission.hiddenCandidateCount} rejected` : "",
     ...(mission.warnings ?? []),
     ...(mission.log ?? []),
   ]
@@ -407,10 +407,10 @@ export function WorkflowDiscoveryMissionQueue({
                   <span className="whitespace-nowrap">
                     {mission.hiddenCandidateCount
                       ? `${mission.candidateCount} reviewable`
-                      : `${mission.candidateCount} candidates`}
+                      : `${mission.candidateCount} reviewable`}
                   </span>
                   {mission.hiddenCandidateCount ? (
-                    <span className="whitespace-nowrap">{mission.hiddenCandidateCount} hidden</span>
+                    <span className="whitespace-nowrap">{mission.hiddenCandidateCount} rejected</span>
                   ) : null}
                 </div>
                 {moveable ? (

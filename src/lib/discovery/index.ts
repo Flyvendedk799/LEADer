@@ -2109,7 +2109,7 @@ export async function runDiscoverySearch(
   const kindHiddenCount = beforeKindFilter - kindCandidates.length;
   if (kindHiddenCount > 0 && resultKind !== "all") {
     warnings.push(
-      `${kindHiddenCount} ${resultKind === "opportunities" ? "source" : "opportunity"} candidates were hidden by the result filter.`,
+      `${kindHiddenCount} ${resultKind === "opportunities" ? "source" : "opportunity"} candidates were rejected by the result filter.`,
     );
   }
 
@@ -2122,7 +2122,7 @@ export async function runDiscoverySearch(
   );
   const hiddenCount = beforeFreshnessFilter - freshCandidates.length;
   if (hiddenCount > 0) {
-    warnings.push(`${hiddenCount} expired or stale candidates were hidden from the review list.`);
+    warnings.push(`${hiddenCount} expired or stale candidates were kept out of review.`);
   }
 
   const termFiltered = filterBySearchTerms(freshCandidates, input.requiredTerms, input.excludedTerms);
@@ -2134,7 +2134,7 @@ export async function runDiscoverySearch(
   const unsavedCandidates = termFiltered.candidates.filter((candidate) => !savedCandidateMatch(candidate, savedIndex));
   const savedHiddenCount = beforeSavedFilter - unsavedCandidates.length;
   if (savedHiddenCount > 0) {
-    warnings.push(`${savedHiddenCount} already saved results were hidden.`);
+    warnings.push(`${savedHiddenCount} already saved results were skipped.`);
   }
 
   const marked = await markAlreadySaved(ownerId, dedupeCandidates(unsavedCandidates, maxResults));
@@ -2144,7 +2144,7 @@ export async function runDiscoverySearch(
   );
   const feedbackHiddenCount = beforeFeedbackFilter - unique.length;
   if (feedbackHiddenCount > 0) {
-    warnings.push(`${feedbackHiddenCount} candidates were hidden by your discovery feedback.`);
+    warnings.push(`${feedbackHiddenCount} candidates were rejected by your discovery feedback.`);
   }
   await progress(`Ranked ${unique.length} candidates after filters and dedupe.`);
   const provider = usedOfficialTenderIndex

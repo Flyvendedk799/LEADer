@@ -4,7 +4,7 @@ const HIDDEN_REVIEW_STATUSES = new Set(["DISMISSED", "DUPLICATE"]);
 const STATUS_HIDDEN_GROUP = "dismissed or duplicate candidate";
 
 function hiddenStatusLabel(count: number) {
-  return `${count} dismissed or duplicate ${count === 1 ? "candidate" : "candidates"}`;
+  return `${count} dismissed or duplicate ${count === 1 ? "result" : "results"}`;
 }
 
 export function discoveryMissionProviderLabel(mission: {
@@ -96,5 +96,5 @@ export function splitReviewableDiscoveryCandidates<T extends CandidateLike & { s
 
 export function hiddenDiscoveryCandidatesWarning(removed: number, reasons: string[]) {
   if (removed <= 0) return null;
-  return `${removed} dismissed, duplicate, stale or off-lane candidates hidden from this mission: ${reasons.slice(0, 3).join("; ")}.`;
+  return `${removed} rejected ${removed === 1 ? "result was" : "results were"} kept out of review: ${reasons.slice(0, 3).join("; ")}.`;
 }

@@ -174,7 +174,7 @@ function missionHiddenCandidateCount(mission: MissionSummary) {
 function missionCandidateSummary(mission: MissionSummary) {
   const reviewable = missionCandidateCount(mission);
   const hidden = missionHiddenCandidateCount(mission);
-  return hidden ? `${reviewable} reviewable · ${hidden} hidden` : `${reviewable} candidates`;
+  return hidden ? `${reviewable} reviewable · ${hidden} rejected` : `${reviewable} reviewable`;
 }
 
 function missionStatusVariant(status: string): React.ComponentProps<typeof Badge>["variant"] {
@@ -852,7 +852,8 @@ export function LaneMissionControl({
                     {activeQueueLabel ? <Badge variant="secondary">{activeQueueLabel}</Badge> : null}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {candidates.length} {candidates.length === 1 ? "candidate" : "candidates"}
+                    {candidates.length} reviewable {candidates.length === 1 ? "candidate" : "candidates"}
+                    {hiddenCandidateCount > 0 ? ` · ${hiddenCandidateCount} rejected` : ""}
                     {" · "}
                     {result.mission.provider || "web"} search
                     {" · "}
@@ -884,7 +885,7 @@ export function LaneMissionControl({
                       disabled={refreshing || !activeMissionId}
                     >
                       <Eye className="h-4 w-4" />
-                      {showHiddenCandidates ? "Hide hidden" : `Hidden: ${hiddenCandidateCount}`}
+                      {showHiddenCandidates ? "Hide rejected" : `Rejected: ${hiddenCandidateCount}`}
                     </Button>
                   ) : null}
                   {["NEW", "REVIEWED", "SAVED", "DISMISSED", "DUPLICATE"].map((status) => (
@@ -907,10 +908,10 @@ export function LaneMissionControl({
             )}
 
             {showHiddenCandidates && hiddenCandidates.length > 0 ? (
-              <div className="space-y-2 rounded-lg border border-dashed border-border bg-surface/30 p-3">
+              <div className="space-y-2 rounded-lg border border-dashed border-warning/50 bg-warning/5 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium">Hidden candidates</p>
-                  <Badge variant="outline">{hiddenCandidates.length}</Badge>
+                  <p className="text-sm font-medium">Rejected results</p>
+                  <Badge variant="warning">{hiddenCandidates.length}</Badge>
                 </div>
                 {hiddenCandidates.map((candidate) => (
                   <CandidateCard key={`hidden-${candidate.id}`} candidate={candidate} onAction={candidateAction} hidden />
@@ -1309,6 +1310,7 @@ function CandidateCard({
       className={cn(
         "scroll-mt-24 rounded-lg border border-border bg-card p-4 shadow-sm",
         hidden && "border-dashed bg-muted/30",
+        hidden && "border-warning/50 bg-warning/5",
       )}
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -1316,11 +1318,19 @@ function CandidateCard({
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="min-w-0 text-base font-semibold leading-snug">{candidate.title}</h2>
             {candidate.url && (
-              <a href={candidate.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary">
+              <a
+                href={candidate.url}
+                target="_blank"
+                rel="noreferrer"
+                className={cn("text-muted-foreground hover:text-primary", hidden && "text-warning hover:text-warning")}
+                aria-label={hidden ? "Open rejected source" : "Open source"}
+                title={hidden ? `Open rejected source: ${candidate.hiddenReason ?? candidate.status.toLowerCase()}` : "Open source"}
+              >
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             )}
             <Badge variant={statusVariant}>{candidate.status.toLowerCase()}</Badge>
+            {hidden ? <Badge variant="warning">rejected result</Badge> : null}
             {candidate.hiddenReason ? <Badge variant="warning">{candidate.hiddenReason}</Badge> : null}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -1347,7 +1357,7 @@ function CandidateCard({
         <Meta label="Budget" value={formatBudget(candidate.budgetMin, candidate.budgetMax, candidate.currency ?? "DKK")} />
         <Meta label="Deadline" value={formatDate(candidate.deadline)} />
         <Meta label="Source" value={candidate.sourceKind === "source-scan" ? "saved source" : candidate.provider || "web"} />
-        <Meta label="Status" value={candidate.status.toLowerCase()} />
+        <Meta label="Status" value={hidden ? "rejected" : candidate.status.toLowerCase()} />
       </div>
 
       {(candidate.signals.length > 0 || candidate.reasons.length > 0) && (
@@ -1372,7 +1382,7 @@ function CandidateCard({
               {item.url && (
                 <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline">
                   <ExternalLink className="h-3 w-3" />
-                  Source
+                  {hidden ? "Rejected source" : "Source"}
                 </a>
               )}
             </div>

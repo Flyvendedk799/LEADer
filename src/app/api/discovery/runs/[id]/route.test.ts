@@ -43,7 +43,7 @@ describe("discovery run detail API", () => {
     mocks.dismissInvalidNewLaneCandidates.mockResolvedValue({ dismissed: 0 });
     mocks.discoveryMissionDisplayWarnings.mockImplementation((_mission, warnings) => warnings);
     mocks.discoveryMissionProviderLabel.mockReturnValue("udbud.dk");
-    mocks.hiddenDiscoveryCandidatesWarning.mockReturnValue("1 hidden candidate.");
+    mocks.hiddenDiscoveryCandidatesWarning.mockReturnValue("1 rejected result was kept out of review.");
     mocks.visibleDiscoveryQueueSnapshotForOwner.mockResolvedValue({ activeMissionId: null, queuedMissionIds: [] });
     mocks.db.discoveryMission.findFirst.mockResolvedValue({
       id: "mission-1",
@@ -67,7 +67,7 @@ describe("discovery run detail API", () => {
     expect(body.mission.candidates).toEqual([{ id: "visible" }]);
     expect(body.hiddenCandidateCount).toBe(1);
     expect(body.hiddenCandidates).toEqual([]);
-    expect(body.mission.warnings).toEqual(["1 hidden candidate."]);
+    expect(body.mission.warnings).toEqual(["1 rejected result was kept out of review."]);
   });
 
   it("returns hidden candidates when explicitly requested", async () => {

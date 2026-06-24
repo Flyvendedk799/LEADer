@@ -619,7 +619,7 @@ export async function executeDiscoveryMission(
     const searchMs = Date.now() - phaseStartedAt;
     if (laneFiltered.removed > 0) {
       await appendLog(
-        `${prepared.lane.name} lane guard hid ${discoveryCountLabel(laneFiltered.removed, "candidate")}: ${laneFiltered.reasons.slice(0, 3).join("; ")}.`,
+        `${prepared.lane.name} lane guard rejected ${discoveryCountLabel(laneFiltered.removed, "candidate")} from review: ${laneFiltered.reasons.slice(0, 3).join("; ")}.`,
       );
     }
     await db.discoveryMission.updateMany({
@@ -636,7 +636,7 @@ export async function executeDiscoveryMission(
       ...result.warnings,
       ...(laneFiltered.removed > 0
         ? [
-            `${prepared.lane.name} lane guard hid ${discoveryCountLabel(laneFiltered.removed, "candidate")}: ${laneFiltered.reasons.slice(0, 3).join("; ")}.`,
+            `${prepared.lane.name} lane guard rejected ${discoveryCountLabel(laneFiltered.removed, "candidate")} from review: ${laneFiltered.reasons.slice(0, 3).join("; ")}.`,
           ]
         : []),
     ];
