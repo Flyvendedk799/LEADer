@@ -46,6 +46,25 @@ describe("platform agent", () => {
     });
   });
 
+  it("plans Danish research briefs without polluting the subject", () => {
+    const phoneCalls = planMockToolCalls("Find telefonnummer til Mette Jensen");
+    expect(phoneCalls[0]?.tool).toBe("queue_research_brief");
+    expect(phoneCalls[0]?.args).toMatchObject({
+      subject: "Mette Jensen",
+      objective: "find-contact",
+      workspace: "DK",
+    });
+
+    const opportunityCalls = planMockToolCalls("Kortlæg muligheder om Aarhus Kommune top to bottom");
+    expect(opportunityCalls[0]?.tool).toBe("queue_research_brief");
+    expect(opportunityCalls[0]?.args).toMatchObject({
+      subject: "Aarhus Kommune",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+    });
+  });
+
   it("exposes both read and write platform tools", () => {
     const names = AGENT_TOOL_CATALOG.map((tool) => tool.name);
     expect(names).toContain("search_crm");

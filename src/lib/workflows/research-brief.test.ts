@@ -55,6 +55,27 @@ describe("research brief workflow helpers", () => {
     });
   });
 
+  it("normalizes Danish operator-style research requests into clean subjects", () => {
+    expect(normalizeResearchBriefOptions({ subject: "Find telefonnummer til Mette Jensen" })).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Find kontaktinfo på Nordwind ApS" })).toMatchObject({
+      subject: "Nordwind ApS",
+      subjectType: "company",
+      objective: "find-contact",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Kortlæg muligheder om Aarhus Kommune top to bottom" })).toMatchObject({
+      subject: "Aarhus Kommune",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+    });
+  });
+
   it("treats explicit opportunity mapping as company-shaped even for two-word subjects", () => {
     expect(
       normalizeResearchBriefOptions({

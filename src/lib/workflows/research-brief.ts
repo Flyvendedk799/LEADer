@@ -117,17 +117,17 @@ function typedValue<T extends string>(value: unknown, allowed: Set<T>, fallback:
 
 function researchObjectiveCue(value: string): ResearchObjective | undefined {
   const lower = value.toLowerCase();
-  if (/verify|confirm|identity|same person|same company|hvem er|who is/.test(lower)) return "verify-identity";
-  if (/opportunity|tender|procurement|udbud|buying signal|lead map|map.*lead|find more|explore/.test(lower)) {
+  if (/verify|verificer|bekræft|bekraeft|confirm|identity|identitet|same person|same company|hvem er|who is/.test(lower)) return "verify-identity";
+  if (/opportunity|mulighed|muligheder|tender|procurement|udbud|buying signal|lead map|map.*lead|kortlæg|kortlaeg|find more|explore|udforsk/.test(lower)) {
     return "map-opportunity";
   }
-  if (/phone|telefon|mobile|email|e-mail|contact|kontakt|linkedin|reach/.test(lower)) return "find-contact";
+  if (/phone|telefon|telefonnummer|mobile|email|e-mail|\bmail\b|contact|kontakt|kontaktinfo|kontaktoplysninger|linkedin|reach/.test(lower)) return "find-contact";
   return undefined;
 }
 
 function researchDepthCue(value: string): ResearchDepth | undefined {
   const lower = value.toLowerCase();
-  if (/deep|thorough|thorougher|top to bottom|everything|full|complete|explore/.test(lower)) return "deep";
+  if (/deep|thorough|thorougher|top to bottom|top til bund|everything|full|complete|explore/.test(lower)) return "deep";
   if (/quick|fast|light|brief/.test(lower)) return "quick";
   return undefined;
 }
@@ -143,8 +143,8 @@ function cleanOperatorSubject(value: string) {
   return cleanText(value, 220)
     .replace(/^["'“”]+|["'“”.,;:!?]+$/g, "")
     .replace(/\b(?:please|pls|tak|thanks)\b/gi, "")
-    .replace(/\b(?:quick|standard|deep|thorough|thorougher|top to bottom|everything|full|complete|brief)\b/gi, "")
-    .replace(/^(?:for|of|on|about|around|to)\s+/i, "")
+    .replace(/\b(?:quick|standard|deep|thorough|thorougher|top to bottom|top til bund|everything|full|complete|brief)\b/gi, "")
+    .replace(/^(?:for|of|on|about|around|to|til|om|på|pa|hos|vedrørende|vedroerende|angående|angaaende)\s+/i, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -152,9 +152,9 @@ function cleanOperatorSubject(value: string) {
 function researchSubjectFromOperatorText(value: string) {
   const text = cleanText(value, 500);
   const patterns = [
-    /\b(?:find|get|look up|lookup|research|verify|map|explore)\s+(?:me\s+)?(?:the\s+)?(?:phone number|telefonnummer|phone|telefon|mobile|email|e-mail|contact route|contact details|contact info|contact|kontakt|linkedin|profile|identity)\s+(?:for|of|on|about|to)\s+(.+)$/i,
-    /\b(?:find|get|look up|lookup)\s+(.+?)\s+(?:phone number|telefonnummer|phone|telefon|mobile|email|e-mail|contact route|contact details|contact info|contact|kontakt|linkedin|profile)$/i,
-    /\b(?:research|osint|verify|map|explore)\s+(?:the\s+)?(?:person|company|account|buyer|lead|opportunity|contact)?\s*(?:for|on|about|around)?\s+(.+)$/i,
+    /\b(?:find|get|look up|lookup|research|undersøg|undersoeg|verify|verificer|bekræft|bekraeft|map|kortlæg|kortlaeg|explore|udforsk)\s+(?:me\s+)?(?:the\s+)?(?:phone number|telefonnummer|phone|telefon|mobile|email|e-mail|mail|contact route|contact details|contact info|kontaktinfo|kontaktoplysninger|contact|kontakt|linkedin|profile|identity|identitet)\s+(?:for|of|on|about|to|til|om|på|pa|hos|vedrørende|vedroerende|angående|angaaende)\s+(.+)$/i,
+    /\b(?:find|get|look up|lookup|hent|slå op|slaa op)\s+(.+?)\s+(?:phone number|telefonnummer|phone|telefon|mobile|email|e-mail|mail|contact route|contact details|contact info|kontaktinfo|kontaktoplysninger|contact|kontakt|linkedin|profile)$/i,
+    /\b(?:research|undersøg|undersoeg|osint|verify|verificer|bekræft|bekraeft|map|kortlæg|kortlaeg|explore|udforsk)\s+(?:the\s+)?(?:person|company|account|buyer|lead|opportunity|mulighed|muligheder|contact|kontakt)?\s*(?:for|on|about|around|to|til|om|på|pa|hos|vedrørende|vedroerende|angående|angaaende)?\s+(.+)$/i,
     /\b(?:who is|hvem er)\s+(.+)$/i,
   ];
 
