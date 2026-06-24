@@ -91,6 +91,7 @@ export const RESEARCH_BRIEF_STARTERS = [
 export function selectResearchPreviewRunbookSteps(
   steps: ResearchRunbookStep[],
   objective: ResearchObjective,
+  depth: ResearchDepth = "standard",
 ) {
   const hasClueOwnerStep = steps.some((step) => step.id === "resolve-clue-owner");
   const preferred =
@@ -99,7 +100,16 @@ export function selectResearchPreviewRunbookSteps(
       : objective === "find-contact"
       ? ["resolve-subject", "search-public-surfaces", "contact-route-ladder", "next-action"]
       : objective === "map-opportunity" || objective === "qualify-lead"
-        ? hasClueOwnerStep
+        ? depth === "deep" && objective === "map-opportunity"
+          ? [
+              "resolve-subject",
+              "expand-source-pivots",
+              "recent-signal-timeline",
+              "adjacent-route-map",
+              "opportunity-signal-map",
+              "next-action",
+            ]
+          : hasClueOwnerStep
           ? ["resolve-subject", "resolve-clue-owner", "expand-source-pivots", "next-action"]
           : ["resolve-subject", "expand-source-pivots", "opportunity-signal-map", "next-action"]
         : objective === "verify-identity"
@@ -107,6 +117,7 @@ export function selectResearchPreviewRunbookSteps(
             ? ["resolve-subject", "resolve-clue-owner", "verification-decision", "next-action"]
             : ["resolve-subject", "verification-decision", "next-action"]
           : ["resolve-subject", "expand-source-pivots", "next-action"];
+  const limit = depth === "deep" && objective === "map-opportunity" ? 6 : 4;
 
   const selected: ResearchRunbookStep[] = [];
   for (const id of preferred) {
@@ -114,10 +125,10 @@ export function selectResearchPreviewRunbookSteps(
     if (step && !selected.some((item) => item.id === step.id)) selected.push(step);
   }
   for (const step of steps) {
-    if (selected.length >= 4) break;
+    if (selected.length >= limit) break;
     if (!selected.some((item) => item.id === step.id)) selected.push(step);
   }
-  return selected.slice(0, 4);
+  return selected.slice(0, limit);
 }
 
 export function ResearchBriefLauncher({
@@ -164,6 +175,7 @@ export function ResearchBriefLauncher({
       runbook: selectResearchPreviewRunbookSteps(
         buildResearchRunbook(normalized, workspace),
         normalized.objective,
+        normalized.depth,
       ),
     };
   }, [createTasks, selectedDepth, selectedObjective, selectedType, subject, workspace]);

@@ -65,6 +65,23 @@ describe("ResearchBriefLauncher", () => {
     expect(html).toContain("find contact");
   });
 
+  it("renders deep opportunity preview steps a practitioner would expect", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ResearchBriefLauncher, {
+        defaultSubject: "Aarhus Kommune",
+        subjectType: "company",
+        objective: "map-opportunity",
+        depth: "deep",
+      }),
+    );
+
+    expect(html).toContain("Expand source pivots");
+    expect(html).toContain("Build recent signal timeline");
+    expect(html).toContain("Map adjacent public routes");
+    expect(html).toContain("Map opportunity signals");
+    expect(html).toContain("Choose the next action");
+  });
+
   it("prioritizes clue ownership in preview steps for clue-based contact research", () => {
     const normalized = normalizeResearchBriefOptions({
       subject: "mette.jensen@northwind.dk",
@@ -94,6 +111,29 @@ describe("ResearchBriefLauncher", () => {
       "resolve-subject",
       "search-public-surfaces",
       "contact-route-ladder",
+      "next-action",
+    ]);
+  });
+
+  it("previews the full top-to-bottom opportunity path for deep company research", () => {
+    const normalized = normalizeResearchBriefOptions({
+      subject: "Aarhus Kommune",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+    });
+    const steps = selectResearchPreviewRunbookSteps(
+      buildResearchRunbook(normalized, "DK"),
+      normalized.objective,
+      normalized.depth,
+    );
+
+    expect(steps.map((step) => step.id)).toEqual([
+      "resolve-subject",
+      "expand-source-pivots",
+      "recent-signal-timeline",
+      "adjacent-route-map",
+      "opportunity-signal-map",
       "next-action",
     ]);
   });
