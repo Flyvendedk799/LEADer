@@ -363,7 +363,46 @@ describe("research brief workflow helpers", () => {
       "current-affiliation",
       "search-public-surfaces",
       "contact-route-ladder",
+      "next-action",
     ]);
+    expect(runbook.find((step) => step.id === "next-action")?.capture).toEqual(
+      expect.arrayContaining(["Source-backed reason for contact", "Largest remaining risk"]),
+    );
+  });
+
+  it("builds a top-to-bottom deep opportunity runbook", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "Aarhus Kommune",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+    });
+
+    const runbook = buildResearchRunbook(options, "DK");
+
+    expect(runbook.map((step) => step.id)).toEqual([
+      "resolve-subject",
+      "expand-source-pivots",
+      "recent-signal-timeline",
+      "adjacent-route-map",
+      "opportunity-signal-map",
+      "next-action",
+    ]);
+    expect(runbook.find((step) => step.id === "expand-source-pivots")?.capture).toEqual(
+      expect.arrayContaining(["Aliases, subsidiaries, products, and spelling variants", "Source types to search next"]),
+    );
+    expect(runbook.find((step) => step.id === "recent-signal-timeline")?.capture).toEqual(
+      expect.arrayContaining(["Signal date", "Why it matters now"]),
+    );
+    expect(runbook.find((step) => step.id === "adjacent-route-map")?.routePriority).toEqual([
+      "Official procurement, tender, or contact page",
+      "Department page, role inbox, or switchboard",
+      "Public professional profile tied to the organization",
+      "Adjacent public contact only when role-relevant",
+    ]);
+    expect(runbook.flatMap((step) => step.searchPrompts)).toEqual(
+      expect.arrayContaining(['"Aarhus Kommune" udbud', '"Aarhus Kommune" offentligt indkøb']),
+    );
   });
 
   it("adds opportunity worksheet fields for deep company mapping", () => {

@@ -1297,6 +1297,52 @@ export function buildResearchRunbook(
     );
   }
 
+  if (depth === "deep") {
+    steps.push(
+      runbookStep(
+        "expand-source-pivots",
+        "Expand source pivots",
+        "Turn the first clue into a wider, prioritized search map before chasing individual hits.",
+        [
+          ...prompts.official,
+          ...prompts.surface,
+          `${quoted(subject)} alias`,
+          `${quoted(subject)} subsidiary`,
+          `${quoted(subject)} product`,
+        ],
+        [
+          "Official domains and registries",
+          "Aliases, subsidiaries, products, and spelling variants",
+          "Relevant people, departments, or buyer teams",
+          "Source types to search next",
+          "Low-value generic sources to ignore",
+        ],
+        "Stop when the next searches are ranked by likely evidence value, not just copied from search results.",
+      ),
+      runbookStep(
+        "recent-signal-timeline",
+        "Build recent signal timeline",
+        "Find dated public events that explain why this account or person might be worth action now.",
+        [
+          `${quoted(subject)} 2026`,
+          `${quoted(subject)} 2025`,
+          `${quoted(subject)} announcement`,
+          `${quoted(subject)} funding`,
+          `${quoted(subject)} tender`,
+          `${quoted(subject)} udbud`,
+        ],
+        [
+          "Signal date",
+          "Public source URL",
+          "What changed",
+          "Buyer/team or stakeholder",
+          "Why it matters now",
+        ],
+        "Stop when the strongest current trigger is clear, or explicitly mark the research as background-only.",
+      ),
+    );
+  }
+
   if (objective === "find-contact" || objective === "general") {
     steps.push(
       runbookStep(
@@ -1324,6 +1370,36 @@ export function buildResearchRunbook(
 
   if (objective === "map-opportunity" || objective === "qualify-lead") {
     steps.push(
+      ...(depth === "deep"
+        ? [
+            runbookStep(
+              "adjacent-route-map",
+              "Map adjacent public routes",
+              "Find role-relevant people, departments, procurement pages, partners, and switchboard paths that can unlock the opportunity if the obvious route is weak.",
+              [
+                `${quoted(subject)} team`,
+                `${quoted(subject)} organisation`,
+                `${quoted(subject)} procurement`,
+                `${quoted(subject)} offentligt indkøb`,
+                `${quoted(subject)} kontakt`,
+              ],
+              [
+                "Likely buyer or department",
+                "Primary contact route",
+                "Fallback contact route",
+                "Public adjacent contacts",
+                "Reason each route is relevant",
+              ],
+              "Stop when there is one primary route and one fallback route, or the route gap is named as the blocker.",
+              [
+                "Official procurement, tender, or contact page",
+                "Department page, role inbox, or switchboard",
+                "Public professional profile tied to the organization",
+                "Adjacent public contact only when role-relevant",
+              ],
+            ),
+          ]
+        : []),
       runbookStep(
         "opportunity-signal-map",
         "Map opportunity signals",
@@ -1372,7 +1448,7 @@ export function buildResearchRunbook(
 
   if (depth === "quick" && subjectType === "person" && (objective === "find-contact" || objective === "general")) {
     return steps.filter((step) =>
-      ["resolve-subject", "current-affiliation", "search-public-surfaces", "contact-route-ladder"].includes(step.id),
+      ["resolve-subject", "current-affiliation", "search-public-surfaces", "contact-route-ladder", "next-action"].includes(step.id),
     );
   }
 
