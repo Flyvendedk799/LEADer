@@ -116,6 +116,106 @@ describe("workflow playbook cancellation", () => {
     );
   });
 
+  it("carries linked CRM context into account, person, and deal research tasks", async () => {
+    mocks.db.account.findFirst.mockResolvedValue({ id: "account-1", name: "Kommune Nord" });
+    mocks.db.person.findFirst.mockResolvedValue({ id: "person-1", name: "Dennis Hansen", accountId: "account-1" });
+    mocks.db.deal.findFirst.mockResolvedValue({ id: "deal-1", title: "Intranet", accountId: "account-1" });
+    mocks.db.discoveryCandidate.findFirst.mockResolvedValue(null);
+    mocks.db.task.findMany.mockResolvedValue([]);
+    mocks.db.task.create.mockResolvedValue({ id: "task-1" });
+
+    const result = await runResearchBrief("owner-1", "DK", {
+      subject: "Dennis Hansen",
+      subjectType: "person",
+      objective: "find-contact",
+      depth: "quick",
+      accountId: "account-1",
+      personId: "person-1",
+      dealId: "deal-1",
+      createTasks: true,
+    });
+
+    expect(result.linked).toMatchObject({
+      accountId: "account-1",
+      accountName: "Kommune Nord",
+      personId: "person-1",
+      personName: "Dennis Hansen",
+      dealId: "deal-1",
+      dealTitle: "Intranet",
+    });
+    expect(mocks.db.task.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          accountId: "account-1",
+          personId: "person-1",
+          dealId: "deal-1",
+          description: expect.stringContaining("Linked CRM context:"),
+        }),
+      }),
+    );
+    expect(mocks.db.task.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          description: expect.stringContaining("Deal: Intranet"),
+        }),
+      }),
+    );
+  });
+
+  it("hydrates account and deal context from a candidate-linked research brief", async () => {
+    mocks.db.account.findFirst.mockResolvedValue({ id: "account-1", name: "Metroselskabet I/S" });
+    mocks.db.person.findFirst.mockResolvedValue(null);
+    mocks.db.deal.findFirst.mockResolvedValue({ id: "deal-1", title: "Intranet opportunity", accountId: "account-1" });
+    mocks.db.discoveryCandidate.findFirst.mockResolvedValue({
+      id: "candidate-1",
+      missionId: "mission-1",
+      title: "Intranet",
+      organization: "Metroselskabet I/S",
+      sourceName: "udbud.dk",
+      url: "https://udbud.dk/detaljevisning?noticeId=123",
+      rawContent: "Ordregiver: Metroselskabet. CPV: 72000000.",
+      description: "Aktivt udbud om intranet.",
+      accountId: "account-1",
+      dealId: "deal-1",
+      evidence: [],
+    });
+    mocks.db.task.findMany.mockResolvedValue([]);
+    mocks.db.task.create.mockResolvedValue({ id: "task-1" });
+
+    const result = await runResearchBrief("owner-1", "DK", {
+      subject: "Metroselskabet I/S",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "quick",
+      candidateId: "candidate-1",
+      createTasks: true,
+    });
+
+    expect(result.linked).toMatchObject({
+      accountId: "account-1",
+      accountName: "Metroselskabet I/S",
+      dealId: "deal-1",
+      dealTitle: "Intranet opportunity",
+      candidateId: "candidate-1",
+    });
+    expect(mocks.db.task.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          accountId: "account-1",
+          dealId: "deal-1",
+          description: expect.stringContaining("Linked CRM context:"),
+        }),
+      }),
+    );
+    expect(mocks.db.task.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          description: expect.stringContaining("Linked discovery context:"),
+        }),
+      }),
+    );
+  });
+
   it("returns existing research task ids when duplicate steps are skipped", async () => {
     mocks.db.task.findMany.mockResolvedValue([
       { id: "task-existing", title: "Research identity: Aarhus Kommune" },

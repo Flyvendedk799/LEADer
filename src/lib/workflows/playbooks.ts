@@ -685,6 +685,19 @@ function candidateContextBlock(candidate: {
   return lines.length ? `\n\nLinked discovery context:\n${lines.join("\n")}` : "";
 }
 
+function linkedCrmContextBlock(linked: {
+  accountName?: string;
+  personName?: string;
+  dealTitle?: string;
+}) {
+  const lines = [
+    linked.accountName ? `Account: ${linked.accountName}` : "",
+    linked.personName ? `Person: ${linked.personName}` : "",
+    linked.dealTitle ? `Deal: ${linked.dealTitle}` : "",
+  ].filter(Boolean);
+  return lines.length ? `\n\nLinked CRM context:\n${lines.join("\n")}` : "";
+}
+
 export async function runResearchBrief(
   ownerId: string,
   workspace: Workspace = "DK",
@@ -742,26 +755,46 @@ export async function runResearchBrief(
       : null,
   ]);
 
+  if (normalized.accountId && !account) log.push(workflowLogEntry("Skipped account link because it was not found for this owner."));
+  if (normalized.personId && !person) log.push(workflowLogEntry("Skipped person link because it was not found for this owner."));
+  if (normalized.dealId && !deal) log.push(workflowLogEntry("Skipped deal link because it was not found for this owner."));
+  if (normalized.candidateId && !candidate) log.push(workflowLogEntry("Skipped candidate link because it was not found for this owner."));
+
+  const linkedDeal = deal ?? (
+    candidate?.dealId
+      ? await db.deal.findFirst({
+          where: { id: candidate.dealId, ownerId },
+          select: { id: true, title: true, accountId: true },
+        })
+      : null
+  );
+  const linkedAccountId = account?.id ?? linkedDeal?.accountId ?? person?.accountId ?? candidate?.accountId;
+  const linkedAccount = account ?? (
+    linkedAccountId
+      ? await db.account.findFirst({
+          where: { id: linkedAccountId, ownerId },
+          select: { id: true, name: true },
+        })
+      : null
+  );
+
   const candidateContext = candidateContextBlock(candidate);
   const candidateEvidence = candidate?.evidence[0]?.snippet ?? candidate?.rawContent ?? candidate?.description ?? undefined;
   const linked = {
-    accountId: account?.id ?? deal?.accountId ?? person?.accountId ?? candidate?.accountId ?? undefined,
-    accountName: account?.name,
+    accountId: linkedAccount?.id ?? linkedDeal?.accountId ?? person?.accountId ?? candidate?.accountId ?? undefined,
+    accountName: linkedAccount?.name,
     personId: person?.id,
     personName: person?.name ?? undefined,
-    dealId: deal?.id ?? candidate?.dealId ?? undefined,
-    dealTitle: deal?.title,
+    dealId: linkedDeal?.id ?? candidate?.dealId ?? undefined,
+    dealTitle: linkedDeal?.title,
     candidateId: candidate?.id,
     candidateMissionId: candidate?.missionId ?? undefined,
     candidateTitle: candidate?.title,
     candidateUrl: candidate?.url ?? undefined,
     candidateEvidence: candidateEvidence?.slice(0, 1200),
   };
-
-  if (normalized.accountId && !account) log.push(workflowLogEntry("Skipped account link because it was not found for this owner."));
-  if (normalized.personId && !person) log.push(workflowLogEntry("Skipped person link because it was not found for this owner."));
-  if (normalized.dealId && !deal) log.push(workflowLogEntry("Skipped deal link because it was not found for this owner."));
-  if (normalized.candidateId && !candidate) log.push(workflowLogEntry("Skipped candidate link because it was not found for this owner."));
+  const linkedCrmContext = linkedCrmContextBlock(linked);
+  const taskContext = `${linkedCrmContext}${candidateContext}`;
 
   const checklist = buildResearchChecklist(normalized, workspace);
   const worksheet = buildResearchWorksheet(normalized, workspace);
@@ -795,7 +828,7 @@ export async function runResearchBrief(
           personId: linked.personId,
           dealId: linked.dealId,
           title: step.title,
-          description: `${step.description}${candidateContext}`,
+          description: `${step.description}${taskContext}`,
           dueAt: researchTaskDueDate(step.dueInDays),
           priority: step.priority,
         },
