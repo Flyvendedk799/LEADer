@@ -380,6 +380,51 @@ function clueCapture(subject: string) {
   return parts.length ? `Structured input pivots (${parts.join("; ")})` : "";
 }
 
+function hasSubjectClues(subject: string) {
+  const clues = subjectClues(subject);
+  return Boolean(clues.emails.length || clues.phones.length || clues.domains.length);
+}
+
+function phoneDigits(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function clueResolutionPrompts(subject: string, workspace: Workspace) {
+  const clues = subjectClues(subject);
+  return uniqueLoose([
+    ...clues.emails.flatMap((email) => {
+      const [local, domain] = email.split("@");
+      const localName = local?.replace(/[._%+-]+/g, " ").trim();
+      return [
+        quoted(email),
+        domain ? `site:${domain} ${quoted(email)}` : "",
+        domain && localName ? `${quoted(localName)} site:${domain}` : "",
+        domain ? `site:${domain} ${workspace === "DK" ? "kontakt" : "contact"}` : "",
+        domain ? `${domain} email pattern` : "",
+      ];
+    }),
+    ...clues.phones.flatMap((phone) => [
+      quoted(phone),
+      phoneDigits(phone) ? quoted(phoneDigits(phone)) : "",
+      `${quoted(phone)} ${workspace === "DK" ? "kontakt" : "owner"}`,
+      `${quoted(phone)} ${workspace === "DK" ? "virksomhed" : "company"}`,
+    ]),
+    ...clues.domains.flatMap((domain) => [
+      `site:${domain}`,
+      workspace === "DK" ? `${domain} CVR` : `${domain} company registry`,
+      workspace === "DK" ? `${domain} virksomhedsregister` : `${domain} official domain`,
+      workspace === "DK" ? `site:${domain} kontakt` : `site:${domain} contact`,
+      workspace === "DK" ? `site:${domain} medarbejdere` : `site:${domain} team`,
+      workspace === "DK" ? `${domain} telefon` : `${domain} phone`,
+      ...(workspace === "GLOBAL" ? [`site:${domain} kontakt`, `${domain} telefon`] : []),
+    ]),
+    ...clues.nameHints.flatMap((name) => [
+      quoted(name),
+      ...clues.domains.map((domain) => `${quoted(name)} site:${domain}`),
+    ]),
+  ], 16);
+}
+
 function officialPrompts(subject: string, workspace: Workspace, subjectType: ResearchSubjectType) {
   const pivots = cluePrompts(subject, workspace);
   const base = workspace === "DK"
@@ -571,6 +616,11 @@ function acceptanceCriteria(stage: string, objective: ResearchObjective, workspa
       "At least one public source links the person to that organization or role.",
       "If no current organization is found, the result says so and uses only general public contact routes.",
     ],
+    "clue-resolution": [
+      "Each email, phone, or domain clue is treated as a pivot, not as confirmed identity.",
+      "Probable owner, organization, and route confidence are backed by public source evidence.",
+      "If ownership cannot be proven, the clue is marked unresolved and not used as the outreach route.",
+    ],
     "route-validation": [
       "Each candidate phone/email/profile is tied back to the right organization or role.",
       "Domain/email pattern candidates are marked unverified unless a public source confirms ownership.",
@@ -680,10 +730,12 @@ export function buildResearchChecklist(
   workspace: Workspace,
 ): ResearchChecklistItem[] {
   const { subject, subjectType, objective, depth } = options;
+  const hasClues = hasSubjectClues(subject);
   const prompts = {
     official: officialPrompts(subject, workspace, subjectType),
     affiliation: affiliationPrompts(subject, workspace),
     contact: contactPrompts(subject, workspace),
+    clueResolution: clueResolutionPrompts(subject, workspace),
     opportunity: opportunityPrompts(subject, workspace),
     surface: subjectType === "person" ? personSurfacePrompts(subject, workspace) : domainSurfacePrompts(subject, workspace),
   };
@@ -696,6 +748,17 @@ export function buildResearchChecklist(
       "HIGH",
       prompts.official,
     ],
+    ...(hasClues
+      ? ([
+          [
+            "clue-resolution",
+            "Resolve clue ownership",
+            "Turn the email, phone, or domain into a probable owner before using it. Search exact clue strings, official domains, registry pages, staff/team pages, and current public profiles; keep the clue unresolved if ownership is not public.",
+            objective === "find-contact" || objective === "verify-identity" ? "URGENT" : "HIGH",
+            prompts.clueResolution,
+          ],
+        ] satisfies ResearchStepTemplate[])
+      : []),
     ...(subjectType === "person"
       ? ([
           [
@@ -797,7 +860,9 @@ export function buildResearchChecklist(
 
   const selected =
     depth === "quick" && subjectType === "person" && objective === "find-contact"
-      ? steps.filter((step) => ["identity", "affiliation", "contact", "route-validation"].includes(step[0]))
+      ? steps.filter((step) => ["identity", "clue-resolution", "affiliation", "contact", "route-validation"].includes(step[0]))
+      : depth === "quick" && hasClues && (objective === "find-contact" || objective === "general")
+        ? steps.filter((step) => ["identity", "clue-resolution", "contact", "route-validation"].includes(step[0]))
       : depth === "quick"
         ? steps.slice(0, 4)
         : steps;
@@ -810,10 +875,12 @@ export function buildResearchWorksheet(
 ): ResearchWorksheetSection[] {
   const { subject, subjectType, objective, depth } = options;
   const inputClue = clueCapture(subject);
+  const hasClues = hasSubjectClues(subject);
   const prompts = {
     official: officialPrompts(subject, workspace, subjectType),
     affiliation: affiliationPrompts(subject, workspace),
     contact: contactPrompts(subject, workspace),
+    clueResolution: clueResolutionPrompts(subject, workspace),
     opportunity: opportunityPrompts(subject, workspace),
     surface: subjectType === "person" ? personSurfacePrompts(subject, workspace) : domainSurfacePrompts(subject, workspace),
   };
@@ -880,8 +947,39 @@ export function buildResearchWorksheet(
     },
   ];
 
-  if (subjectType === "person") {
+  if (hasClues) {
     sections.splice(1, 0, {
+      id: "clue-resolution",
+      title: "Clue ownership",
+      purpose: "Turn an email, phone, or domain into a source-backed owner before using it.",
+      fields: [
+        worksheetField(
+          "clue-owner",
+          "Probable owner",
+          "Person, organization, domain, department, or unresolved owner for each clue.",
+          "Ownership is backed by an official domain, registry, staff/team page, or intentionally public professional source.",
+          prompts.clueResolution,
+        ),
+        worksheetField(
+          "clue-confidence",
+          "Ownership confidence",
+          "High/medium/low confidence and the largest reason the clue could belong to someone else.",
+          "Exact public clue matches outrank copied snippets, directories, and inferred email patterns.",
+          prompts.clueResolution,
+        ),
+        worksheetField(
+          "clue-route-status",
+          "Route status",
+          "Use as primary route, use only as fallback, keep as identity clue, or do not use.",
+          "The clue is not used for outreach unless public ownership and current relevance are proven.",
+          [...prompts.clueResolution, ...prompts.contact],
+        ),
+      ],
+    });
+  }
+
+  if (subjectType === "person") {
+    sections.splice(hasClues ? 2 : 1, 0, {
       id: "affiliation",
       title: "Current affiliation",
       purpose: "Tie the person to a current organization or role before using direct routes.",
@@ -1070,10 +1168,12 @@ export function buildResearchDecisionFrame(
   workspace: Workspace,
 ): ResearchDecisionFrame {
   const { subject, subjectType, objective } = options;
+  const hasClues = hasSubjectClues(subject);
   const prompts = {
     official: officialPrompts(subject, workspace, subjectType),
     affiliation: affiliationPrompts(subject, workspace),
     contact: contactPrompts(subject, workspace),
+    clueResolution: clueResolutionPrompts(subject, workspace),
     opportunity: opportunityPrompts(subject, workspace),
     surface: subjectType === "person" ? personSurfacePrompts(subject, workspace) : domainSurfacePrompts(subject, workspace),
   };
@@ -1086,6 +1186,25 @@ export function buildResearchDecisionFrame(
       [`${quoted(subject)} official`, `${quoted(subject)} profile`, `${quoted(subject)} contact`],
     ),
   ];
+
+  if (hasClues) {
+    fields.push(
+      decisionField(
+        "clue-ownership",
+        "Clue ownership",
+        "Who publicly owns or is linked to the email, phone, or domain clue.",
+        "Ownership is proven by an exact public clue match, official domain, registry, staff/team page, or intentionally public professional source.",
+        prompts.clueResolution,
+      ),
+      decisionField(
+        "clue-use",
+        "Clue use",
+        "Use as primary route, fallback route, identity clue only, or unresolved.",
+        "A clue is not used for outreach unless current public ownership and route relevance are proven.",
+        [...prompts.clueResolution, ...prompts.contact],
+      ),
+    );
+  }
 
   if (objective === "find-contact" || objective === "general") {
     fields.push(
@@ -1244,10 +1363,12 @@ export function buildResearchRunbook(
 ): ResearchRunbookStep[] {
   const { subject, subjectType, objective, depth } = options;
   const inputClue = clueCapture(subject);
+  const hasClues = hasSubjectClues(subject);
   const prompts = {
     official: officialPrompts(subject, workspace, subjectType),
     affiliation: affiliationPrompts(subject, workspace),
     contact: contactPrompts(subject, workspace),
+    clueResolution: clueResolutionPrompts(subject, workspace),
     opportunity: opportunityPrompts(subject, workspace),
     surface: subjectType === "person" ? personSurfacePrompts(subject, workspace) : domainSurfacePrompts(subject, workspace),
   };
@@ -1278,6 +1399,41 @@ export function buildResearchRunbook(
       ],
     ),
   ];
+
+  if (hasClues) {
+    steps.push(
+      runbookStep(
+        "resolve-clue-owner",
+        "Resolve clue ownership",
+        "Turn the email, phone, or domain into a source-backed owner before using it as a route.",
+        prompts.clueResolution,
+        [
+          "Exact clue and normalized variants",
+          "Probable owner or unresolved owner",
+          "Official domain, registry, staff/team page, or profile evidence",
+          "Whether the clue is personal, role-based, organizational, or generic",
+          "Use as route, fallback, identity clue only, or do not use",
+        ],
+        "Stop when the clue has a public owner and route status, or is explicitly marked unresolved.",
+        [
+          "Exact public match on official domain or registry",
+          "Staff/team page or role inbox tied to the same organization",
+          "Current public professional profile linked to the clue",
+          "Directory/snippet hit only as a weak pivot, never as final ownership",
+        ],
+        [
+          "If exact clue search fails, normalize phone formatting, search domain pages, and pivot through email local-part/name hints.",
+          "If the owner is generic or ambiguous, keep the clue as an identity pivot and use official switchboard/form routes.",
+          "If only private-looking or copied data appears, stop and mark the clue unusable for outreach.",
+        ],
+        [
+          "Official source exact matches outrank directories, cached snippets, and copied profile databases.",
+          "A domain/email pattern is not ownership until a public source confirms it.",
+          "Phone numbers require organization or role linkage before becoming a route.",
+        ],
+      ),
+    );
+  }
 
   if (subjectType === "person") {
     steps.push(
@@ -1557,7 +1713,7 @@ export function buildResearchRunbook(
 
   if (depth === "quick" && subjectType === "person" && (objective === "find-contact" || objective === "general")) {
     return steps.filter((step) =>
-      ["resolve-subject", "current-affiliation", "search-public-surfaces", "contact-route-ladder", "next-action"].includes(step.id),
+      ["resolve-subject", "resolve-clue-owner", "current-affiliation", "search-public-surfaces", "contact-route-ladder", "next-action"].includes(step.id),
     );
   }
 

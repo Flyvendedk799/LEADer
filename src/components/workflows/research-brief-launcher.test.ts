@@ -60,7 +60,25 @@ describe("ResearchBriefLauncher", () => {
     expect(html).toContain("Email: mette.jensen@northwind.dk");
     expect(html).toContain("Domain: northwind.dk");
     expect(html).toContain("Name hint: mette jensen");
+    expect(html).toContain("Resolve clue ownership");
+    expect(html).toContain("Turn the email, phone, or domain into a source-backed owner");
     expect(html).toContain("find contact");
+  });
+
+  it("prioritizes clue ownership in preview steps for clue-based contact research", () => {
+    const normalized = normalizeResearchBriefOptions({
+      subject: "mette.jensen@northwind.dk",
+      objective: "find-contact",
+      depth: "standard",
+    });
+    const steps = selectResearchPreviewRunbookSteps(buildResearchRunbook(normalized, "DK"), normalized.objective);
+
+    expect(steps.map((step) => step.id)).toEqual([
+      "resolve-subject",
+      "resolve-clue-owner",
+      "contact-route-ladder",
+      "next-action",
+    ]);
   });
 
   it("previews objective-critical runbook steps instead of only the first steps", () => {

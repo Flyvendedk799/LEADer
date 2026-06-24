@@ -166,7 +166,7 @@ describe("research brief workflow helpers", () => {
 
     const checklist = buildResearchChecklist(options, "GLOBAL");
     expect(checklist).toHaveLength(4);
-    expect(checklist.map((step) => step.stage)).toEqual(["identity", "sources", "contact", "route-validation"]);
+    expect(checklist.map((step) => step.stage)).toEqual(["identity", "clue-resolution", "contact", "route-validation"]);
   });
 
   it("keeps Danish search pivots in international research briefs", () => {
@@ -255,6 +255,11 @@ describe("research brief workflow helpers", () => {
     });
 
     const worksheet = buildResearchWorksheet(options, "DK");
+    expect(worksheet.map((section) => section.id).slice(0, 3)).toEqual([
+      "identity",
+      "clue-resolution",
+      "affiliation",
+    ]);
     const fields = worksheet.flatMap((section) => section.fields);
     const inputPivots = fields.find((field) => field.id === "input-pivots");
 
@@ -268,16 +273,81 @@ describe("research brief workflow helpers", () => {
     expect(domainPattern?.sourcePrompts).toEqual(
       expect.arrayContaining(['site:northwind.dk "mette.jensen@northwind.dk"', '"mette jensen" site:northwind.dk']),
     );
+    expect(fields.map((field) => field.id)).toEqual(
+      expect.arrayContaining(["clue-owner", "clue-confidence", "clue-route-status"]),
+    );
+    expect(fields.find((field) => field.id === "clue-route-status")?.capture).toContain("do not use");
+
+    const checklist = buildResearchChecklist(options, "DK");
+    expect(checklist.map((step) => step.stage).slice(0, 3)).toEqual([
+      "identity",
+      "clue-resolution",
+      "affiliation",
+    ]);
+    expect(checklist.find((step) => step.stage === "clue-resolution")?.acceptanceCriteria.join(" ")).toContain(
+      "not used as the outreach route",
+    );
 
     const runbook = buildResearchRunbook(options, "DK");
+    expect(runbook.map((step) => step.id).slice(0, 3)).toEqual([
+      "resolve-subject",
+      "resolve-clue-owner",
+      "current-affiliation",
+    ]);
     expect(runbook.find((step) => step.id === "resolve-subject")?.capture.join(" ")).toContain(
       "Structured input pivots",
+    );
+    expect(runbook.find((step) => step.id === "resolve-clue-owner")?.capture).toEqual(
+      expect.arrayContaining([
+        "Probable owner or unresolved owner",
+        "Use as route, fallback, identity clue only, or do not use",
+      ]),
+    );
+    expect(runbook.find((step) => step.id === "resolve-clue-owner")?.sourceQuality).toEqual(
+      expect.arrayContaining([
+        "Official source exact matches outrank directories, cached snippets, and copied profile databases.",
+        "A domain/email pattern is not ownership until a public source confirms it.",
+      ]),
     );
     expect(runbook.find((step) => step.id === "search-public-surfaces")?.capture.join(" ")).toContain(
       "Domain/email pattern candidates marked unverified",
     );
     expect(runbook.flatMap((step) => step.searchPrompts)).toEqual(
       expect.arrayContaining(["site:northwind.dk", "northwind.dk kontakt", '"mette jensen" site:northwind.dk']),
+    );
+
+    const decision = buildResearchDecisionFrame(options, "DK");
+    expect(decision.fields.map((field) => field.id)).toEqual(
+      expect.arrayContaining(["clue-ownership", "clue-use"]),
+    );
+    expect(decision.fields.find((field) => field.id === "clue-use")?.prompt).toContain("fallback route");
+  });
+
+  it("builds a clue-owner branch for phone-only verification", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "+45 12 34 56 78",
+      depth: "standard",
+    });
+
+    const runbook = buildResearchRunbook(options, "DK");
+    expect(options).toMatchObject({
+      subjectType: "unknown",
+      objective: "verify-identity",
+    });
+    expect(runbook.map((step) => step.id)).toEqual([
+      "resolve-subject",
+      "resolve-clue-owner",
+      "verification-decision",
+      "next-action",
+    ]);
+    expect(runbook.find((step) => step.id === "resolve-clue-owner")?.searchPrompts).toEqual(
+      expect.arrayContaining(['"+45 12 34 56 78"', '"4512345678"']),
+    );
+    expect(runbook.find((step) => step.id === "resolve-clue-owner")?.ifNoResult).toEqual(
+      expect.arrayContaining([
+        "If exact clue search fails, normalize phone formatting, search domain pages, and pivot through email local-part/name hints.",
+        "If only private-looking or copied data appears, stop and mark the clue unusable for outreach.",
+      ]),
     );
   });
 

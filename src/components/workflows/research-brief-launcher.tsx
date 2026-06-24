@@ -92,13 +92,20 @@ export function selectResearchPreviewRunbookSteps(
   steps: ResearchRunbookStep[],
   objective: ResearchObjective,
 ) {
+  const hasClueOwnerStep = steps.some((step) => step.id === "resolve-clue-owner");
   const preferred =
-    objective === "find-contact"
+    objective === "find-contact" && hasClueOwnerStep
+      ? ["resolve-subject", "resolve-clue-owner", "contact-route-ladder", "next-action"]
+      : objective === "find-contact"
       ? ["resolve-subject", "search-public-surfaces", "contact-route-ladder", "next-action"]
       : objective === "map-opportunity" || objective === "qualify-lead"
-        ? ["resolve-subject", "expand-source-pivots", "opportunity-signal-map", "next-action"]
+        ? hasClueOwnerStep
+          ? ["resolve-subject", "resolve-clue-owner", "expand-source-pivots", "next-action"]
+          : ["resolve-subject", "expand-source-pivots", "opportunity-signal-map", "next-action"]
         : objective === "verify-identity"
-          ? ["resolve-subject", "verification-decision", "next-action"]
+          ? hasClueOwnerStep
+            ? ["resolve-subject", "resolve-clue-owner", "verification-decision", "next-action"]
+            : ["resolve-subject", "verification-decision", "next-action"]
           : ["resolve-subject", "expand-source-pivots", "next-action"];
 
   const selected: ResearchRunbookStep[] = [];
