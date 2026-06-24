@@ -42,6 +42,29 @@ describe("research brief workflow helpers", () => {
       depth: "standard",
     });
 
+    expect(normalizeResearchBriefOptions({ subject: "Find phone Mette Jensen" })).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Find phone number Mette Jensen" })).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Find contact details Acme Robotics" })).toMatchObject({
+      subject: "Acme Robotics",
+      subjectType: "company",
+      objective: "find-contact",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Research phone +45 12 34 56 78" })).toMatchObject({
+      subject: "+45 12 34 56 78",
+      objective: "find-contact",
+    });
+
     expect(normalizeResearchBriefOptions({ subject: "Map opportunity around Acme Robotics top to bottom" })).toMatchObject({
       subject: "Acme Robotics",
       subjectType: "company",
@@ -71,6 +94,36 @@ describe("research brief workflow helpers", () => {
 
   it("normalizes Danish operator-style research requests into clean subjects", () => {
     expect(normalizeResearchBriefOptions({ subject: "Find telefonnummer til Mette Jensen" })).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Find telefonnummer Mette Jensen" })).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Find telefon Mette Jensen" })).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Find nummer til Mette Jensen" })).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Slå Mette Jensen telefonnummer op" })).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Hent telefon på Mette Jensen" })).toMatchObject({
       subject: "Mette Jensen",
       subjectType: "person",
       objective: "find-contact",

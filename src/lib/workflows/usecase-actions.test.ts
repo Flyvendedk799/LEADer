@@ -104,6 +104,18 @@ describe("workflow usecase actions", () => {
       },
     });
 
+    expect(researchBriefRunPayload({ subject: "Find phone Mette Jensen" })).toMatchObject({
+      playbook: "research-brief",
+      workspace: "DK",
+      options: {
+        researchBrief: {
+          subject: "Mette Jensen",
+          subjectType: "person",
+          objective: "find-contact",
+        },
+      },
+    });
+
     expect(researchBriefRunPayload({ subject: "Map opportunity around Acme Robotics top to bottom" })).toMatchObject({
       playbook: "research-brief",
       workspace: "DK",

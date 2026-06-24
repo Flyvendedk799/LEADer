@@ -36,6 +36,22 @@ describe("platform agent", () => {
       createTasks: true,
     });
 
+    const shortContactCalls = planMockToolCalls("Find phone Mette Jensen");
+    expect(shortContactCalls[0]?.tool).toBe("queue_research_brief");
+    expect(shortContactCalls[0]?.args).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+
+    const companyContactCalls = planMockToolCalls("Find contact details Acme Robotics");
+    expect(companyContactCalls[0]?.tool).toBe("queue_research_brief");
+    expect(companyContactCalls[0]?.args).toMatchObject({
+      subject: "Acme Robotics",
+      subjectType: "company",
+      objective: "find-contact",
+    });
+
     const opportunityCalls = planMockToolCalls("Map opportunity around Acme Robotics top to bottom");
     expect(opportunityCalls[0]?.tool).toBe("queue_research_brief");
     expect(opportunityCalls[0]?.args).toMatchObject({
@@ -50,6 +66,22 @@ describe("platform agent", () => {
     const phoneCalls = planMockToolCalls("Find telefonnummer til Mette Jensen");
     expect(phoneCalls[0]?.tool).toBe("queue_research_brief");
     expect(phoneCalls[0]?.args).toMatchObject({
+      subject: "Mette Jensen",
+      objective: "find-contact",
+      workspace: "DK",
+    });
+
+    const noPrepositionPhoneCalls = planMockToolCalls("Find telefon Mette Jensen");
+    expect(noPrepositionPhoneCalls[0]?.tool).toBe("queue_research_brief");
+    expect(noPrepositionPhoneCalls[0]?.args).toMatchObject({
+      subject: "Mette Jensen",
+      objective: "find-contact",
+      workspace: "DK",
+    });
+
+    const lookupCalls = planMockToolCalls("Slå Mette Jensen telefonnummer op");
+    expect(lookupCalls[0]?.tool).toBe("queue_research_brief");
+    expect(lookupCalls[0]?.args).toMatchObject({
       subject: "Mette Jensen",
       objective: "find-contact",
       workspace: "DK",
