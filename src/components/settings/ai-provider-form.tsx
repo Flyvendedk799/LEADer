@@ -70,10 +70,10 @@ export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-muted-foreground" />
-          AI provider
+          AI provider & subscriptions
         </CardTitle>
         <CardDescription>
-          Choose AI and discovery search providers, save API keys, or use local subscriptions.
+          Choose API-key providers or local Codex/ChatGPT and Claude Code subscriptions. Discovery search keys are separate.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

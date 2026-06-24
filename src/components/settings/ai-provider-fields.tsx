@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { BrainCircuit, Eye, EyeOff, MessageSquareText, Search, Terminal, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,8 +73,8 @@ const PROVIDER_DEFAULTS: Record<
     requiresApiKey: true,
   },
   codex: {
-    label: "Codex subscription",
-    description: "Use your local Codex/ChatGPT subscription from the Codex CLI. No API key.",
+    label: "Codex / ChatGPT subscription",
+    description: "Use this Mac's signed-in Codex CLI / ChatGPT session. No API key.",
     baseUrl: "https://chatgpt.com/backend-api",
     model: "gpt-5.5",
     embeddingModel: "text-embedding-3-small",
@@ -81,7 +82,7 @@ const PROVIDER_DEFAULTS: Record<
   },
   "claude-subscription": {
     label: "Claude Code subscription",
-    description: "Use the local Claude Code subscription from macOS Keychain. No API key.",
+    description: "Use this Mac's Claude Code login from macOS Keychain. No API key.",
     baseUrl: "https://api.anthropic.com",
     model: "claude-opus-4-8",
     embeddingModel: "text-embedding-3-small",
@@ -89,11 +90,28 @@ const PROVIDER_DEFAULTS: Record<
   },
 };
 
-const PROVIDERS: { value: AiProvider; icon: typeof BrainCircuit }[] = [
-  { value: "openai", icon: BrainCircuit },
-  { value: "anthropic", icon: MessageSquareText },
-  { value: "codex", icon: Terminal },
-  { value: "claude-subscription", icon: Terminal },
+const PROVIDER_ICONS: Record<AiProvider, typeof BrainCircuit> = {
+  openai: BrainCircuit,
+  anthropic: MessageSquareText,
+  codex: Terminal,
+  "claude-subscription": Terminal,
+};
+
+const PROVIDER_GROUPS: {
+  title: string;
+  description: string;
+  providers: AiProvider[];
+}[] = [
+  {
+    title: "API key providers",
+    description: "Use provider billing with encrypted API keys saved in LEADer.",
+    providers: ["openai", "anthropic"],
+  },
+  {
+    title: "Local subscriptions",
+    description: "Use your signed-in Codex/ChatGPT or Claude Code session on this Mac.",
+    providers: ["codex", "claude-subscription"],
+  },
 ];
 
 const SEARCH_PROVIDER_LABELS: Record<SearchProvider, string> = {
@@ -144,6 +162,35 @@ export function searchProviderPayload(state: SearchProviderState) {
   };
 }
 
+export function aiProviderModeSummary(state: AiProviderState, aiKeys?: PublicAiKeys) {
+  const defaults = PROVIDER_DEFAULTS[state.provider];
+  if (!defaults.requiresApiKey) {
+    const signInName = state.provider === "codex" ? "Codex / ChatGPT" : "Claude Code";
+    return {
+      kind: "subscription" as const,
+      badge: "Local subscription",
+      title: `${defaults.label} selected`,
+      description: `AI planning, summaries, and workflow reasoning will use your local ${signInName} login. No API key is sent or stored by LEADer.`,
+    };
+  }
+
+  const savedKeyMatchesProvider = aiKeys?.provider === state.provider;
+  const hasSavedKey = Boolean(savedKeyMatchesProvider && aiKeys?.hasApiKey && !state.clearApiKey);
+  const hasNewKey = Boolean(state.apiKey.trim() && !state.clearApiKey);
+  const keyLabel = aiKeys?.keyPreview || "configured";
+
+  return {
+    kind: "api-key" as const,
+    badge: "API key",
+    title: `${defaults.label} selected`,
+    description: hasNewKey
+      ? "Save settings to use the pasted API key for AI planning, summaries, and workflow reasoning."
+      : hasSavedKey
+        ? `Using saved key ${keyLabel} for AI planning, summaries, and workflow reasoning.`
+        : "Paste an API key, or choose a local subscription below if you want to use Codex/ChatGPT or Claude Code without storing an API key.",
+  };
+}
+
 interface AiProviderFieldsProps {
   state: AiProviderState;
   onChange: (state: AiProviderState) => void;
@@ -160,10 +207,11 @@ export function AiProviderFields({
   const [showKey, setShowKey] = React.useState(false);
   const currentDefaults = PROVIDER_DEFAULTS[state.provider];
   const requiresApiKey = currentDefaults.requiresApiKey;
-  const hasSavedKey = Boolean(aiKeys?.hasApiKey && !state.clearApiKey);
+  const hasSavedKey = Boolean(aiKeys?.provider === state.provider && aiKeys?.hasApiKey && !state.clearApiKey);
+  const modeSummary = aiProviderModeSummary(state, aiKeys);
   const subscriptionHint =
     state.provider === "codex"
-      ? "Uses your Codex CLI login on this machine. Sign in to Codex first, then save this provider."
+      ? "Uses your Codex CLI / ChatGPT login on this machine. Sign in to Codex first, then save this provider."
       : state.provider === "claude-subscription"
         ? "Uses your Claude Code login from macOS Keychain on this machine. Sign in to Claude Code first, then save this provider."
         : "";
@@ -182,47 +230,71 @@ export function AiProviderFields({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-2">
-        <Label>Provider</Label>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {PROVIDERS.map((item) => {
-            const defaults = PROVIDER_DEFAULTS[item.value];
-            const Icon = item.icon;
-            const selected = state.provider === item.value;
-            return (
-              <button
-                key={item.value}
-                type="button"
-                disabled={disabled}
-                onClick={() => chooseProvider(item.value)}
-                className={cn(
-                  "flex min-h-24 items-start gap-3 rounded-md border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
-                  selected
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border bg-surface hover:bg-surface-2",
-                )}
-              >
-                <span
-                  className={cn(
-                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
-                    selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                </span>
-                <span>
-                  <span className="block text-sm font-semibold">{defaults.label}</span>
-                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                    {defaults.description}
-                  </span>
-                  <span className="mt-2 block text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
-                    {defaults.requiresApiKey ? "API key" : "Local subscription"}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
+      <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={modeSummary.kind === "subscription" ? "secondary" : "outline"}>
+            {modeSummary.badge}
+          </Badge>
+          <span className="text-sm font-semibold">Current AI mode</span>
         </div>
+        <p className="mt-2 text-sm font-medium">{modeSummary.title}</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{modeSummary.description}</p>
+      </div>
+
+      <div className="grid gap-3">
+        <div className="grid gap-1">
+          <Label>Provider</Label>
+          <p className="text-xs text-muted-foreground">
+            Pick the AI provider for planning, summaries, scoring, and workflow reasoning. Broad web search is configured separately below.
+          </p>
+        </div>
+        {PROVIDER_GROUPS.map((group) => (
+          <div key={group.title} className="grid gap-2">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="text-sm font-medium">{group.title}</span>
+              <span className="text-xs text-muted-foreground">{group.description}</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {group.providers.map((provider) => {
+                const defaults = PROVIDER_DEFAULTS[provider];
+                const Icon = PROVIDER_ICONS[provider];
+                const selected = state.provider === provider;
+                return (
+                  <button
+                    key={provider}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => chooseProvider(provider)}
+                    className={cn(
+                      "flex min-h-28 items-start gap-3 rounded-md border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+                      selected
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border bg-surface hover:bg-surface-2",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+                        selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold">{defaults.label}</span>
+                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                        {defaults.description}
+                      </span>
+                      <span className="mt-2 block text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
+                        {defaults.requiresApiKey ? "API key required" : "No API key sent"}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -323,7 +395,10 @@ export function AiProviderFields({
         </div>
       ) : (
         <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted-foreground">
-          {subscriptionHint}
+          <p>{subscriptionHint}</p>
+          <p className="mt-1">
+            This covers AI reasoning only. Broad web search still uses a search provider key, official sources, or saved sources.
+          </p>
         </div>
       )}
     </div>
@@ -366,7 +441,7 @@ export function SearchProviderFields({
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Used by Discover for broad web search. Saved sources still work without a search key.
+          Used by Discover for broad web search. Codex/Claude subscriptions do not include web search. Official udbud.dk tender mode and saved sources still work without a search key.
         </p>
       </div>
 
