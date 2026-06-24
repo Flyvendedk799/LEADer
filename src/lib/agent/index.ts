@@ -88,10 +88,11 @@ function inferResearchDepth(message: string) {
   return "standard";
 }
 
-function inferResearchSubjectType(message: string) {
+function inferResearchSubjectType(message: string, objective = inferResearchObjective(message)) {
   const lower = message.toLowerCase();
   if (/person|name|founder|ceo|cto|owner|kontaktperson|medarbejder|employee/.test(lower)) return "person";
   if (/company|account|buyer|business|organisation|organization|virksomhed|firma|kunde/.test(lower)) return "company";
+  if (objective === "map-opportunity") return "company";
   return "unknown";
 }
 
@@ -162,12 +163,13 @@ export function planMockToolCalls(message: string): AgentToolCall[] {
   if (isResearchBriefRequest(text)) {
     const subject = extractResearchSubject(text);
     if (subject) {
+      const objective = inferResearchObjective(text);
       return [{
         tool: "queue_research_brief",
         args: {
           subject,
-          subjectType: inferResearchSubjectType(text),
-          objective: inferResearchObjective(text),
+          subjectType: inferResearchSubjectType(text, objective),
+          objective,
           depth: inferResearchDepth(text),
           workspace: inferWorkspace(text),
           createTasks: true,

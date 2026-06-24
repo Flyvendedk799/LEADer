@@ -36,6 +36,7 @@ describe("platform agent", () => {
     expect(opportunityCalls[0]?.tool).toBe("queue_research_brief");
     expect(opportunityCalls[0]?.args).toMatchObject({
       subject: "Acme Robotics",
+      subjectType: "company",
       objective: "map-opportunity",
       depth: "deep",
     });

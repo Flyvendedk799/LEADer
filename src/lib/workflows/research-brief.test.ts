@@ -53,6 +53,19 @@ describe("research brief workflow helpers", () => {
     });
   });
 
+  it("treats explicit opportunity mapping as company-shaped even for two-word subjects", () => {
+    expect(
+      normalizeResearchBriefOptions({
+        subject: "Acme Robotics",
+        objective: "map-opportunity",
+      }),
+    ).toMatchObject({
+      subject: "Acme Robotics",
+      subjectType: "company",
+      objective: "map-opportunity",
+    });
+  });
+
   it("builds a public-source contact checklist from a person clue", () => {
     const options = normalizeResearchBriefOptions({
       subject: "  Mette Jensen  ",

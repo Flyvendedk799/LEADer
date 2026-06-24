@@ -595,10 +595,14 @@ export function normalizeResearchBriefOptions(
   const requestedSubjectType = typedValue(options?.subjectType, SUBJECT_TYPES, "unknown");
   const requestedObjective = typedValue(options?.objective, OBJECTIVES, "qualify-lead");
   const requestedDepth = typedValue(options?.depth, DEPTHS, "standard");
-  const subjectTypeSeed =
-    requestedSubjectType === "unknown" && parsed.subjectType ? parsed.subjectType : requestedSubjectType;
   const objectiveSeed =
     requestedObjective === "qualify-lead" && parsed.objective ? parsed.objective : requestedObjective;
+  const subjectTypeSeed =
+    requestedSubjectType === "unknown" && parsed.subjectType
+      ? parsed.subjectType
+      : requestedSubjectType === "unknown" && objectiveSeed === "map-opportunity"
+        ? "company"
+        : requestedSubjectType;
   const subjectType = inferredSubjectType(subject, subjectTypeSeed);
   const objective = inferredObjective(subject, subjectType, objectiveSeed);
   return {
