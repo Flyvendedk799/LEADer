@@ -1415,7 +1415,10 @@ function searchResultUrlParts(url?: string) {
   }
 }
 
-function tenderSearchResultRejectReason(result: SearchResult): string | null {
+function tenderSearchResultRejectReason(
+  result: SearchResult,
+  options: { skipOfficialUdbudDk?: boolean } = {},
+): string | null {
   const { host, path, href } = searchResultUrlParts(result.url);
   const text = `${result.title} ${result.snippet ?? ""} ${result.sourceName ?? ""}`.toLowerCase();
   const genericListingPath =
@@ -1437,6 +1440,14 @@ function tenderSearchResultRejectReason(result: SearchResult): string | null {
   ) {
     return "job/social result";
   }
+  if (
+    /computerworld\.dk|presse-og-nyheder|\/art\//.test(`${host} ${path}`) ||
+    /vinder .*udbud|vandt .*udbud|har vundet .*udbud|contract award|awarded contract|tender award|news article|pressemeddelelse|nyhed/.test(
+      text,
+    )
+  ) {
+    return "news/article, not active tender";
+  }
 
   if (/\/(?:arkiv|archive)(?:\/|$)/.test(href)) return "archived tender URL";
   if (host.endsWith("udbud.dk") && /\/pages\/tenders\/showtender/.test(path)) {
@@ -1445,6 +1456,9 @@ function tenderSearchResultRejectReason(result: SearchResult): string | null {
   if (/^(pre|test|staging)\./.test(host)) return "non-production tender URL";
   if (/\/handlers\/file\.ashx|\/vedhaeftning\/|\.(?:pdf|docx?|xlsx?)(?:[?#]|$)/.test(`${path} ${href}`)) {
     return "tender attachment, not notice page";
+  }
+  if (options.skipOfficialUdbudDk && host === "udbud.dk") {
+    return "official udbud.dk result already handled";
   }
   if (
     !/udbud|udbudsfrist|tilbudsfrist|afgiv tilbud|indsend tilbud|public rft|request for tender|contract notice|procurement|tender|noticeid|publicpurchase|mercell|eu-supply|ethics|comdia|ted\.europa\.eu|e-avrop/.test(
@@ -1457,8 +1471,9 @@ function tenderSearchResultRejectReason(result: SearchResult): string | null {
     /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen|info\.mercell|(?:^|\.)udbud\.co$/.test(
       host,
     ) ||
+    /rib-software\.com/.test(host) ||
     genericListingPath ||
-    /find tenders?|tender portal|procurement platform|udbudsportal|udbudsliste|alle udbud|liste over|oversigt over|database|markedsplads|offentlige udbud|søg efter udbud|soeg efter udbud|komplette guide|guide til offentlige indkøb|udbudsindsigter/.test(
+    /find tenders?|tender portal|procurement platform|e-?procurement software|udbudsplatform|digitale udbud|udbudsportal|udbudsliste|alle udbud|liste over|oversigt over|database|markedsplads|offentlige udbud|søg efter udbud|soeg efter udbud|komplette guide|guide til offentlige indkøb|udbudsindsigter|udbudsret|spørgsmål om udbud|sporgsmal om udbud|vejledning for udbudsstrategi|udbudsstrategi/.test(
       text,
     )
   ) {
@@ -1476,12 +1491,15 @@ function reasonCounts(reasons: string[]) {
     .map(([reason, count]) => `${count} ${reason}`);
 }
 
-function filterTenderSearchResults(results: SearchResult[]) {
+function filterTenderSearchResults(
+  results: SearchResult[],
+  options: { skipOfficialUdbudDk?: boolean } = {},
+) {
   const kept: SearchResult[] = [];
   const rejected: string[] = [];
 
   for (const result of results) {
-    const reason = tenderSearchResultRejectReason(result);
+    const reason = tenderSearchResultRejectReason(result, options);
     if (reason) {
       rejected.push(reason);
       continue;
@@ -2236,7 +2254,7 @@ export async function runDiscoverySearch(
       }
 
       const filteredWebResults = tenderIntent
-        ? filterTenderSearchResults(webResults)
+        ? filterTenderSearchResults(webResults, { skipOfficialUdbudDk: usedOfficialTenderIndex })
         : { results: webResults, removed: 0, reasons: [] as string[] };
       if (filteredWebResults.removed > 0) {
         const message =

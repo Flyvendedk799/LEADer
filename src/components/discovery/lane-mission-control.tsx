@@ -46,7 +46,7 @@ import {
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
 import { discoveryMissionCanRerun, discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
-import { HISTORY_MAX_LIMIT, nextHistoryLimit } from "@/lib/history-window";
+import { nextHistoryLimit } from "@/lib/history-window";
 import type { Workspace } from "@/lib/types";
 import { cn, formatBudget, formatDate, truncate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -228,6 +228,10 @@ export function missionTenderQualitySummary(mission: MissionTenderQualitySummary
   }
   if (official) return "Searching official udbud.dk active notices.";
   return null;
+}
+
+export function missionHistorySearchSummary(count: number) {
+  return `${count} matching ${count === 1 ? "mission" : "missions"} loaded`;
 }
 
 function missionStatusVariant(status: string): React.ComponentProps<typeof Badge>["variant"] {
@@ -1197,7 +1201,7 @@ export function LaneMissionControl({
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {historySearchActive
-                  ? `${filteredMissions.length} mission${filteredMissions.length === 1 ? "" : "s"} match in the latest ${HISTORY_MAX_LIMIT} checked`
+                  ? missionHistorySearchSummary(filteredMissions.length)
                   : historyScope === "current-lane" && selectedLane
                     ? `${scopedMissions.length} ${selectedLane.name} missions loaded`
                     : `${scopedMissions.length} missions loaded`}
@@ -1348,7 +1352,7 @@ export function LaneMissionControl({
               })
             ) : (
               <p className="py-3 text-sm text-muted-foreground">
-                {historySearchActive ? "No loaded missions match this search." : "No missions yet."}
+                {historySearchActive ? "No missions match this search." : "No missions yet."}
               </p>
             )}
             {canLoadOlderMissions ? (

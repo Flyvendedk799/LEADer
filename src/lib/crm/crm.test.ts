@@ -113,6 +113,33 @@ describe("CRM discovery lanes", () => {
 
     expect(
       laneCandidateGate(lane, {
+        title: "RIB Udbud - din udbudsplatform til digitale udbud",
+        description: "Digital e-procurement software and udbudsplatform.",
+        url: "https://www.rib-software.com/dk/rib-udbud",
+        candidateKind: "opportunity",
+      }),
+    ).toEqual({ allowed: false, reason: "generic tender source, not a concrete opportunity" });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "Udbudsret: Få svaret på de 10 mest stillede spørgsmål om udbudsret",
+        description: "Article with questions and answers about udbudsret.",
+        url: "https://www.danskerhverv.dk/presse-og-nyheder/nyheder/2023/februar/udbudsret-fa-svaret-pa-de-10-mest-stillede-sporgsmal-om-udbudsret/",
+        candidateKind: "opportunity",
+      }),
+    ).toEqual({ allowed: false, reason: "news/article, not active tender" });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "IBM Danmark vinder hemmeligholdt udbud hos Forsvarsministeriet",
+        description: "News article about a supplier that won an udbud.",
+        url: "https://www.computerworld.dk/art/294171/ibm-danmark-vinder-hemmeligholdt-udbud-hos-forsvarsministeriet-var-eneste-selskab-der-boed",
+        candidateKind: "opportunity",
+      }),
+    ).toEqual({ allowed: false, reason: "news/article, not active tender" });
+
+    expect(
+      laneCandidateGate(lane, {
         title: "Godkendte rådgivere på SMV:Digital og SMV:PRO",
         description: "Voucher and grant programme advisers for digitalization projects.",
         rawContent: "Hvis du har fået en voucher eller bevilling kan du kontakte en godkendt rådgiver.",

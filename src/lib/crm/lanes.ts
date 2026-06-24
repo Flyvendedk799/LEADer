@@ -409,6 +409,13 @@ function isSocialOrProfileResult(host: string, path: string) {
   );
 }
 
+function isNewsOrAwardedTenderArticle(text: string, host: string, path: string) {
+  return /computerworld\.dk|presse-og-nyheder|\/art\//.test(`${host} ${path}`) ||
+    /vinder .*udbud|vandt .*udbud|har vundet .*udbud|contract award|awarded contract|tender award|news article|pressemeddelelse|nyhed/.test(
+      text,
+    );
+}
+
 function isConcreteSupplierOpportunityUrl(host: string, path: string) {
   return (
     (host.endsWith("ehsys.dk") && /\/indkoeb\/tilbud\/indsend\//.test(path)) ||
@@ -466,9 +473,9 @@ function isGenericTenderSource(text: string, host: string, path: string) {
   const genericListingPath =
     path === "/" ||
     /\/(?:alle|sources?|kilder?|udbud|indkoeb\/alle|indkøb\/alle)\/?$/.test(path);
-  return /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen|info\.mercell|(?:^|\.)udbud\.co$/.test(host) ||
+  return /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen|info\.mercell|rib-software\.com|(?:^|\.)udbud\.co$/.test(host) ||
     genericListingPath ||
-    /find tenders?|tender portal|procurement platform|udbudsportal|udbudsliste|alle udbud|liste over|oversigt over|database|markedsplads|offentlige udbud|søg efter udbud|soeg efter udbud|komplette guide|guide til offentlige indkøb|udbudsindsigter/.test(
+    /find tenders?|tender portal|procurement platform|e-?procurement software|udbudsplatform|digitale udbud|udbudsportal|udbudsliste|alle udbud|liste over|oversigt over|database|markedsplads|offentlige udbud|søg efter udbud|soeg efter udbud|komplette guide|guide til offentlige indkøb|udbudsindsigter|udbudsret|spørgsmål om udbud|sporgsmal om udbud|vejledning for udbudsstrategi|udbudsstrategi/.test(
       text,
     );
 }
@@ -514,6 +521,10 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
 
   if (isJobOrRecruitingResult(text, host, path)) {
     return { allowed: false, reason: "job/recruiting result" };
+  }
+
+  if (isNewsOrAwardedTenderArticle(text, host, path)) {
+    return { allowed: false, reason: "news/article, not active tender" };
   }
 
   if (isNonProductionTenderUrl(host)) {

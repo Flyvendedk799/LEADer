@@ -70,6 +70,30 @@ describe("udbud.dk discovery source", () => {
         query: "software udbud",
       },
       {
+        title: "RIB Udbud - din udbudsplatform til digitale udbud",
+        url: "https://www.rib-software.com/dk/rib-udbud",
+        snippet: "Digital e-procurement software and udbudsplatform.",
+        sourceName: "RIB Software",
+        provider: "brave",
+        query: "software udbud",
+      },
+      {
+        title: "Udbudsret: Få svaret på de 10 mest stillede spørgsmål om udbudsret",
+        url: "https://www.danskerhverv.dk/presse-og-nyheder/nyheder/2023/februar/udbudsret-fa-svaret-pa-de-10-mest-stillede-sporgsmal-om-udbudsret/",
+        snippet: "Article with questions and answers about udbudsret.",
+        sourceName: "Dansk Erhverv",
+        provider: "brave",
+        query: "software udbud",
+      },
+      {
+        title: "IBM Danmark vinder hemmeligholdt udbud hos Forsvarsministeriet",
+        url: "https://www.computerworld.dk/art/294171/ibm-danmark-vinder-hemmeligholdt-udbud-hos-forsvarsministeriet-var-eneste-selskab-der-boed",
+        snippet: "News article about a supplier that won an udbud.",
+        sourceName: "Computerworld",
+        provider: "brave",
+        query: "software udbud",
+      },
+      {
         title: "Godkendte rådgivere på SMV:Digital og SMV:PRO",
         url: "https://www.teknologisk.dk/ydelser/smv-digital-og-smv-pro/44758",
         snippet: "Voucher and grant programme advisers for digitalization projects.",
@@ -99,14 +123,44 @@ describe("udbud.dk discovery source", () => {
       "Kontrakt om levering af drift og support af hostet servermiljø",
       "Konkret softwareudbud for supportaftale",
     ]);
-    expect(result.removed).toBe(6);
+    expect(result.removed).toBe(9);
     expect(result.reasons).toEqual([
       "2 job/social result",
+      "2 generic tender source, not a concrete opportunity",
+      "2 news/article, not active tender",
       "1 archived tender URL",
       "1 legacy udbud.dk archive URL",
-      "1 generic tender source, not a concrete opportunity",
       "1 missing tender evidence",
     ]);
+  });
+
+  it("skips redundant udbud.dk web results after the official active-notice index ran", () => {
+    const result = filterTenderSearchResults(
+      [
+        {
+          title: "Kontrakt om levering af drift og support af hostet servermiljø",
+          url: "https://udbud.dk/detaljevisning?noticeId=32f47e2a-3bff-4727-a49e-f68f3729982c&noticeVersion=01",
+          snippet: "Aktivt offentligt udbud om software, drift og support.",
+          sourceName: "udbud.dk",
+          provider: "brave",
+          query: "software udbud",
+        },
+        {
+          title: "Konkret softwareudbud for supportaftale",
+          url: "https://example.dk/tenders/software-support-2026/",
+          snippet: "Concrete tender page with buyer, scope and active deadline.",
+          sourceName: "Example procurement",
+          provider: "brave",
+          query: "software udbud",
+        },
+      ],
+      { skipOfficialUdbudDk: true },
+    );
+
+    expect(result.results.map((item) => item.title)).toEqual([
+      "Konkret softwareudbud for supportaftale",
+    ]);
+    expect(result.reasons).toEqual(["1 official udbud.dk result already handled"]);
   });
 
   it("maps active udbud.dk search results to concrete tender candidates", () => {

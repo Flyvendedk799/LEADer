@@ -9,6 +9,7 @@ vi.mock("next/navigation", () => ({
 import {
   DEFAULT_HISTORY_SCOPE,
   mergeMissionHistory,
+  missionHistorySearchSummary,
   missionMatchesHistoryScope,
   missionTenderQualitySummary,
   selectMissionToOpen,
@@ -63,6 +64,12 @@ describe("lane mission history", () => {
     expect(missionMatchesHistoryScope(tenderMission, "tender-lane", "current-lane")).toBe(true);
     expect(missionMatchesHistoryScope(startupMission, "tender-lane", "current-lane")).toBe(false);
     expect(missionMatchesHistoryScope(startupMission, "tender-lane", "all")).toBe(true);
+  });
+
+  it("describes search results as server-loaded matches", () => {
+    expect(missionHistorySearchSummary(0)).toBe("0 matching missions loaded");
+    expect(missionHistorySearchSummary(1)).toBe("1 matching mission loaded");
+    expect(missionHistorySearchSummary(3)).toBe("3 matching missions loaded");
   });
 
   it("opens the latest mission from the selected lane while keeping all-lane fallback available", () => {
