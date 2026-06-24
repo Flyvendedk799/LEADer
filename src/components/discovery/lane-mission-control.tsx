@@ -46,7 +46,7 @@ import {
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
 import { discoveryMissionCanRerun, discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
-import { nextHistoryLimit } from "@/lib/history-window";
+import { HISTORY_MAX_LIMIT, nextHistoryLimit } from "@/lib/history-window";
 import type { Workspace } from "@/lib/types";
 import { cn, formatBudget, formatDate, truncate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -517,11 +517,23 @@ export function LaneMissionControl({
     }
   }, [mergeMission, showHiddenCandidates, syncLaneFromMission, syncMissionUrl]);
 
-  const loadMissions = React.useCallback(async (openLatest = false, quiet = false, limitOverride?: number) => {
+  const loadMissions = React.useCallback(async (
+    openLatest = false,
+    quiet = false,
+    limitOverride?: number,
+    searchOverride = historySearch,
+    scopeOverride = historyScope,
+  ) => {
     if (!quiet) setRefreshing(true);
     try {
       const limit = limitOverride ?? historyLimit;
       const params = new URLSearchParams({ limit: String(limit) });
+      const search = searchOverride.trim();
+      if (search) {
+        params.set("q", search);
+        params.set("scope", scopeOverride);
+        if (scopeOverride === "current-lane" && laneId) params.set("laneId", laneId);
+      }
       const res = await fetch(`/api/discovery/runs?${params.toString()}`, { cache: "no-store" });
       const data = (await res.json()) as MissionListResponse;
       if (!res.ok) throw new Error(data?.error || "Could not load mission history");
@@ -538,13 +550,13 @@ export function LaneMissionControl({
     } finally {
       if (!quiet) setRefreshing(false);
     }
-  }, [historyLimit, historyScope, laneId, loadMission]);
+  }, [historyLimit, historyScope, historySearch, laneId, loadMission]);
 
   const loadOlderMissions = React.useCallback(() => {
     const nextLimit = nextHistoryLimit(historyLimit, historySearchActive);
     setHistoryLimit(nextLimit);
-    void loadMissions(false, false, nextLimit);
-  }, [historyLimit, historySearchActive, loadMissions]);
+    void loadMissions(false, false, nextLimit, historySearch, historyScope);
+  }, [historyLimit, historySearch, historySearchActive, historyScope, loadMissions]);
 
   React.useEffect(() => {
     const targetMissionId = initialMissionId?.trim() || null;
@@ -597,6 +609,16 @@ export function LaneMissionControl({
     }, 3500);
     return () => window.clearInterval(timer);
   }, [activeMissionId, loadMission, loadMissions, missionRunning]);
+
+  React.useEffect(() => {
+    if (!historySearchActive) return undefined;
+    const timer = window.setTimeout(() => {
+      const nextLimit = nextHistoryLimit(historyLimit, true);
+      if (nextLimit !== historyLimit) setHistoryLimit(nextLimit);
+      void loadMissions(false, true, nextLimit, historySearch, historyScope);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [historyLimit, historyScope, historySearch, historySearchActive, laneId, loadMissions]);
 
   React.useEffect(() => {
     if (!liveQueue) {
@@ -1163,7 +1185,7 @@ export function LaneMissionControl({
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {historySearchActive
-                  ? `${filteredMissions.length} of ${scopedMissions.length} loaded missions match`
+                  ? `${filteredMissions.length} mission${filteredMissions.length === 1 ? "" : "s"} match in the latest ${HISTORY_MAX_LIMIT} checked`
                   : historyScope === "current-lane" && selectedLane
                     ? `${scopedMissions.length} ${selectedLane.name} missions loaded`
                     : `${scopedMissions.length} missions loaded`}

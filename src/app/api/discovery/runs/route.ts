@@ -40,6 +40,70 @@ function discoveryHistoryLimit(req: Request) {
   return Math.min(100, Math.max(20, Math.floor(parsed)));
 }
 
+function discoveryHistorySearch(req: Request) {
+  return (new URL(req.url).searchParams.get("q") || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+}
+
+function discoveryHistoryLaneScope(req: Request) {
+  const params = new URL(req.url).searchParams;
+  const scope = params.get("scope") === "current-lane" ? "current-lane" : "all";
+  const laneId = (params.get("laneId") || "").trim();
+  return { scope, laneId };
+}
+
+function discoveryHistorySearchText(mission: {
+  id: string;
+  status?: string | null;
+  workspace?: string | null;
+  provider?: string | null;
+  query?: string | null;
+  lane?: { name?: string | null; slug?: string | null } | null;
+  warnings?: string[];
+  log?: string[];
+  candidates?: CandidateLike[];
+}) {
+  return [
+    mission.id,
+    mission.status,
+    mission.workspace,
+    mission.provider,
+    mission.query,
+    mission.lane?.name,
+    mission.lane?.slug,
+    ...(mission.warnings ?? []),
+    ...(mission.log ?? []),
+    ...(mission.candidates ?? []).flatMap((candidate) => [
+      candidate.title,
+      candidate.description,
+      candidate.rawContent,
+      candidate.url,
+      candidate.organization,
+      candidate.sourceName,
+      candidate.sourceKind,
+      candidate.category,
+      candidate.status,
+      candidate.applicationRoute,
+    ]),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function discoveryMissionMatchesHistorySearch(mission: Parameters<typeof discoveryHistorySearchText>[0], search: string) {
+  const terms = search
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = discoveryHistorySearchText(mission);
+  return terms.every((term) => haystack.includes(term));
+}
+
 const candidateGateSelect = {
   title: true,
   description: true,
@@ -120,13 +184,23 @@ export async function GET(req: Request) {
     const ownerId = await requireOwnerId();
     await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
     const queue = await recoverDiscoveryQueue(ownerId);
+    const search = discoveryHistorySearch(req);
+    const { scope, laneId } = discoveryHistoryLaneScope(req);
+    const limit = discoveryHistoryLimit(req);
+    const take = search ? 100 : limit;
     const missions = await db.discoveryMission.findMany({
-      where: { ownerId },
+      where: {
+        ownerId,
+        ...(search && scope === "current-lane" && laneId ? { laneId } : {}),
+      },
       orderBy: { startedAt: "desc" },
-      take: discoveryHistoryLimit(req),
+      take,
       include: missionListInclude,
     });
-    return NextResponse.json({ missions: missions.map(visibleMissionListRow), queue });
+    const filtered = search
+      ? missions.filter((mission) => discoveryMissionMatchesHistorySearch(mission, search)).slice(0, limit)
+      : missions;
+    return NextResponse.json({ missions: filtered.map(visibleMissionListRow), queue });
   } catch (err) {
     return apiError(err);
   }

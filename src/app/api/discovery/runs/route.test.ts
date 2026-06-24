@@ -133,6 +133,98 @@ describe("discovery run API controls", () => {
     );
   });
 
+  it("searches expanded discovery history server-side within the selected lane scope", async () => {
+    mocks.db.discoveryMission.findMany.mockResolvedValue([
+      {
+        id: "mission-match",
+        status: "SUCCESS",
+        workspace: "DK",
+        provider: "udbud.dk",
+        query: "software udbud",
+        lane: { id: "lane-tender", name: "Tenders", slug: "tenders-procurement" },
+        candidates: [],
+        warnings: [],
+        log: ["Official udbud.dk returned active notices"],
+        _count: { candidates: 1 },
+      },
+      {
+        id: "mission-other",
+        status: "SUCCESS",
+        workspace: "DK",
+        provider: "brave",
+        query: "linkedin jobs",
+        lane: { id: "lane-tender", name: "Tenders", slug: "tenders-procurement" },
+        candidates: [],
+        warnings: [],
+        log: [],
+        _count: { candidates: 2 },
+      },
+    ]);
+
+    const response = await GET(getRequest("?q=software%20udbud&scope=current-lane&laneId=lane-tender&limit=20"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.db.discoveryMission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { ownerId: "owner-1", laneId: "lane-tender" },
+        take: 100,
+      }),
+    );
+    expect(body.missions).toEqual([
+      expect.objectContaining({
+        id: "mission-match",
+        provider: "udbud.dk",
+      }),
+    ]);
+  });
+
+  it("can find older discovery history by candidate text, not only mission query", async () => {
+    mocks.db.discoveryMission.findMany.mockResolvedValue([
+      {
+        id: "mission-candidate-hit",
+        status: "SUCCESS",
+        workspace: "DK",
+        provider: "auto",
+        query: "generic search",
+        lane: { id: "lane-1", name: "Startup", slug: "direct-startup-mvp" },
+        candidates: [
+          {
+            title: "Aarhus Kommune udbud",
+            description: "Active tender notice",
+            rawContent: "",
+            url: "https://udbud.dk/detaljevisning/example",
+            organization: "Aarhus Kommune",
+            sourceName: "udbud.dk",
+            sourceKind: "web",
+            category: "tender",
+            status: "NEW",
+            applicationRoute: "APPLICATION",
+          },
+        ],
+        warnings: [],
+        log: [],
+        _count: { candidates: 1 },
+      },
+    ]);
+
+    const response = await GET(getRequest("?q=Aarhus%20Kommune&scope=all&limit=20"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.db.discoveryMission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { ownerId: "owner-1" },
+        take: 100,
+      }),
+    );
+    expect(body.missions).toEqual([
+      expect.objectContaining({
+        id: "mission-candidate-hit",
+      }),
+    ]);
+  });
+
   it("preserves expanded discovery history after canceling live missions", async () => {
     mocks.db.discoveryMission.findMany
       .mockResolvedValueOnce([])
