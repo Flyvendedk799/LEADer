@@ -39,6 +39,23 @@ const DEFAULT_QUERY = DISCOVERY_PRESETS[0].query;
 type Provider = "auto" | "tavily" | "brave" | "serper" | "none";
 type ResultKind = "all" | "opportunities" | "sources";
 
+function hasTenderSearchIntent(query: string, resultKind: ResultKind) {
+  return resultKind === "opportunities" && /udbud|tender|procurement|tilbudsfrist|udbudsfrist|public rft|offentlig/i.test(query);
+}
+
+export function discoveryResultProviderLabel(result: Pick<DiscoverySearchResult, "provider" | "providerConfigured">) {
+  if (result.provider === "udbud.dk") return "official udbud.dk";
+  if (result.provider?.startsWith("udbud.dk+")) return result.provider.replace("udbud.dk+", "udbud.dk + ");
+  if (result.providerConfigured) return `${result.provider} search`;
+  return "source scan";
+}
+
+export function candidateKindLabel(candidate: Pick<DiscoveryCandidateDto, "candidateKind" | "category" | "signals" | "sourceName" | "provider">) {
+  if (candidate.candidateKind === "source") return "Source";
+  const text = `${candidate.category ?? ""} ${candidate.sourceName ?? ""} ${candidate.provider ?? ""} ${candidate.signals.join(" ")}`;
+  return /udbud|tender|procurement/i.test(text) ? "Udbud" : "Opportunity";
+}
+
 export function DiscoveryWorkbench({
   initialWorkspace = "DK",
 }: {
@@ -58,6 +75,8 @@ export function DiscoveryWorkbench({
   const [savingSource, setSavingSource] = React.useState<Record<string, boolean>>({});
   const [markingNonLead, setMarkingNonLead] = React.useState<Record<string, boolean>>({});
   const activePreset = DISCOVERY_PRESETS.find((preset) => preset.query === query);
+  const officialTenderMode = workspace === "DK" && provider === "auto" && hasTenderSearchIntent(query, resultKind);
+  const effectiveIncludeSources = officialTenderMode ? false : includeSources;
 
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault();
@@ -76,7 +95,7 @@ export function DiscoveryWorkbench({
           provider,
           resultKind,
           includeWeb,
-          includeSources,
+          includeSources: effectiveIncludeSources,
           maxResults: Number(maxResults) || 12,
         }),
       });
@@ -303,19 +322,30 @@ export function DiscoveryWorkbench({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Begge</SelectItem>
-                  <SelectItem value="opportunities">Udbud</SelectItem>
-                  <SelectItem value="sources">Udbudskilde</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="opportunities">Opportunities</SelectItem>
+                  <SelectItem value="sources">Source pages</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {officialTenderMode ? (
+              <div className="flex items-center gap-2 rounded-md border border-success/35 bg-success/10 px-3 py-2 text-xs font-medium text-success">
+                <CheckCircle2 className="h-4 w-4" />
+                Active udbud.dk notices
+              </div>
+            ) : null}
             <div className="flex items-center justify-between">
               <Label htmlFor="include-web">Web</Label>
               <Switch id="include-web" checked={includeWeb} onCheckedChange={setIncludeWeb} />
             </div>
             <div className="flex items-center justify-between">
               <Label htmlFor="include-sources">Sources</Label>
-              <Switch id="include-sources" checked={includeSources} onCheckedChange={setIncludeSources} />
+              <Switch
+                id="include-sources"
+                checked={effectiveIncludeSources}
+                disabled={officialTenderMode}
+                onCheckedChange={setIncludeSources}
+              />
             </div>
             <Button type="submit" disabled={loading} className="mt-1">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
@@ -334,9 +364,7 @@ export function DiscoveryWorkbench({
                   {candidates.length} {candidates.length === 1 ? "candidate" : "candidates"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {result.providerConfigured
-                    ? `${result.provider} search`
-                    : "source scan"}{" "}
+                  {discoveryResultProviderLabel(result)}{" "}
                   · {result.sourceScanCount} saved sources scanned
                 </p>
               </div>
@@ -457,6 +485,7 @@ function CandidateCard({
   const saved = candidate.alreadySaved;
   const savedSource = candidate.alreadySavedSource;
   const isSource = candidate.candidateKind === "source";
+  const kindLabel = candidateKindLabel(candidate);
   const summary = candidate.summaryDa || candidate.description || candidate.rawContent || "";
   const details = candidate.detailText || candidate.rawContent || candidate.description || "";
   const attachments = candidate.attachments ?? [];
@@ -480,7 +509,7 @@ function CandidateCard({
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={isSource ? "outline" : "secondary"} className="gap-1">
               {isSource ? <Database className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
-              {isSource ? "Udbudskilde" : "Udbud"}
+              {kindLabel}
             </Badge>
             <h2 className="min-w-0 text-base font-semibold leading-snug">
               {candidate.url ? (

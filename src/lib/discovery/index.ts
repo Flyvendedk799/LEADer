@@ -1392,6 +1392,15 @@ function isTenderSearchIntent(query: string, queries: string[] = []) {
   );
 }
 
+function shouldUseOfficialOnlyTenderSearch(
+  input: Pick<DiscoverySearchInput, "provider">,
+  workspace: Workspace,
+  resultKind: DiscoverySearchInput["resultKind"],
+  tenderIntent: boolean,
+) {
+  return tenderIntent && workspace === "DK" && resultKind === "opportunities" && (input.provider ?? "auto") === "auto";
+}
+
 function searchResultUrlParts(url?: string) {
   if (!url) return { host: "", path: "", href: "" };
   try {
@@ -2102,6 +2111,7 @@ export const __discoveryTesting = {
   savedCandidateMatch,
   sanitizeUdbudDkQuery,
   shouldUseDeterministicDiscoverySummary,
+  shouldUseOfficialOnlyTenderSearch,
   udbudDkResultToCandidate,
   udbudDkSearchSeeds,
 };
@@ -2165,7 +2175,17 @@ export async function runDiscoverySearch(
     workspace === "DK" &&
     resultKind !== "sources" &&
     isTenderSearchIntent(input.query, queries);
+  const officialOnlyTenderSearch = shouldUseOfficialOnlyTenderSearch(input, workspace, resultKind, tenderIntent);
+  const broadProviderState = officialOnlyTenderSearch
+    ? { provider: "none" as const, apiKey: "", configured: false, source: "none" as const }
+    : providerState;
   let usedOfficialTenderIndex = false;
+
+  if (officialOnlyTenderSearch) {
+    await progress(
+      "Tender search using official udbud.dk active notices only; choose an explicit provider or source results for broader expansion.",
+    );
+  }
 
   if (input.includeWeb !== false && tenderIntent) {
     const udbudStartedAt = Date.now();
@@ -2190,14 +2210,14 @@ export async function runDiscoverySearch(
     }
   }
 
-  if (input.includeWeb !== false && providerState.configured && providerState.provider !== "none") {
+  if (input.includeWeb !== false && broadProviderState.configured && broadProviderState.provider !== "none") {
     try {
       const webStartedAt = Date.now();
-      await progress(`Starting web search with ${queries.length} probes via ${providerState.provider}.`);
+      await progress(`Starting web search with ${queries.length} probes via ${broadProviderState.provider}.`);
       const providerStartedAt = Date.now();
       const webResults = await runProviderSearch(
-        providerState.provider,
-        providerState.apiKey,
+        broadProviderState.provider,
+        broadProviderState.apiKey,
         queries,
         collectionLimit,
         workspace,
@@ -2248,7 +2268,7 @@ export async function runDiscoverySearch(
       warnings.push(message);
       await progress(`Web search warning: ${message}`);
     }
-  } else if (input.includeWeb !== false && providerState.provider !== "none") {
+  } else if (input.includeWeb !== false && broadProviderState.provider !== "none") {
     warnings.push(
       "No web search API key configured. Add Tavily, Brave Search, or Serper in Settings -> AI to enable broad web discovery.",
     );
@@ -2257,7 +2277,9 @@ export async function runDiscoverySearch(
     await progress("Generic web search skipped by provider setting.");
   }
 
-  if (input.includeSources !== false) {
+  if (input.includeSources !== false && officialOnlyTenderSearch) {
+    await progress("Saved source scanning skipped for official-only tender search.");
+  } else if (input.includeSources !== false) {
     const sourceStartedAt = Date.now();
     const sourceQuery = [input.query, ...searchPlan.focusTerms.slice(0, 8), ...(input.requiredTerms ?? [])].join(" ");
     await progress("Scanning saved sources for matching opportunities.");
@@ -2330,10 +2352,10 @@ export async function runDiscoverySearch(
   }
   await progress(`Ranked ${unique.length} candidates after filters and dedupe.`);
   const provider = usedOfficialTenderIndex
-    ? providerState.configured && providerState.provider !== "none"
-      ? `udbud.dk+${providerState.provider}`
+    ? broadProviderState.configured && broadProviderState.provider !== "none"
+      ? `udbud.dk+${broadProviderState.provider}`
       : "udbud.dk"
-    : providerState.provider;
+    : broadProviderState.provider;
   return {
     candidates: unique,
     queries,

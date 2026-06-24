@@ -6,6 +6,7 @@ const {
   filterTenderSearchResults,
   sanitizeUdbudDkQuery,
   shouldUseDeterministicDiscoverySummary,
+  shouldUseOfficialOnlyTenderSearch,
   udbudDkResultToCandidate,
   udbudDkSearchSeeds,
 } = __discoveryTesting;
@@ -156,6 +157,14 @@ describe("udbud.dk discovery source", () => {
         provider: "brave",
       }),
     ).toBe(false);
+  });
+
+  it("keeps auto DK tender opportunity searches on the official active-notice index", () => {
+    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "opportunities", true)).toBe(true);
+    expect(shouldUseOfficialOnlyTenderSearch({ provider: "brave" }, "DK", "opportunities", true)).toBe(false);
+    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "all", true)).toBe(false);
+    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "GLOBAL", "opportunities", true)).toBe(false);
+    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "opportunities", false)).toBe(false);
   });
 
   it("drops decade-long DIS/catalogue notices from the official source", () => {
