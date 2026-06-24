@@ -18,7 +18,7 @@ import {
   type WorkflowQueueMoveAction,
 } from "@/lib/workflows/queue";
 import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
-import { workflowRunRerunBlockedMessage } from "@/lib/workflows/run-actions";
+import { workflowRunInputMatchesActiveRun, workflowRunRerunBlockedMessage } from "@/lib/workflows/run-actions";
 import { findActiveResearchBriefRun, researchBriefIdentityFromInput } from "@/lib/workflows/research-targets";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 import { workflowRunInputSchema } from "@/lib/workflows/types";
@@ -77,27 +77,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    if (parsed.data.playbook === "research-brief") {
-      const activeRuns = await db.workflowRun.findMany({
-        where: {
-          ownerId,
-          playbook: "research-brief",
-          status: { in: [...ACTIVE_WORKFLOW_RUN_STATUSES] },
-          finishedAt: null,
-        },
-        include: { preset: { select: { name: true } } },
-        orderBy: [{ queuePriority: "desc" }, { createdAt: "asc" }],
-        take: 50,
+    const activeRuns = await db.workflowRun.findMany({
+      where: {
+        ownerId,
+        playbook: parsed.data.playbook,
+        status: { in: [...ACTIVE_WORKFLOW_RUN_STATUSES] },
+        finishedAt: null,
+      },
+      include: { preset: { select: { name: true } } },
+      orderBy: [{ queuePriority: "desc" }, { createdAt: "asc" }],
+      take: 50,
+    });
+    const existing = parsed.data.playbook === "research-brief"
+      ? findActiveResearchBriefRun(activeRuns, researchBriefIdentityFromInput(parsed.data))
+      : activeRuns.find((run) => workflowRunInputMatchesActiveRun(parsed.data, run));
+    if (existing) {
+      return NextResponse.json({
+        run: workflowRunPayload(existing),
+        queued: false,
+        existing: true,
+        queue: await visibleWorkflowQueueSnapshotForOwner(ownerId),
       });
-      const existing = findActiveResearchBriefRun(activeRuns, researchBriefIdentityFromInput(parsed.data));
-      if (existing) {
-        return NextResponse.json({
-          run: workflowRunPayload(existing),
-          queued: false,
-          existing: true,
-          queue: await visibleWorkflowQueueSnapshotForOwner(ownerId),
-        });
-      }
     }
 
     const run = await createWorkflowRun(ownerId, parsed.data, "QUEUED");

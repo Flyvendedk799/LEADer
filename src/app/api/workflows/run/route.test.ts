@@ -44,7 +44,7 @@ vi.mock("@/lib/workflows/research-targets", () => ({
   researchBriefIdentityFromInput: mocks.researchBriefIdentityFromInput,
 }));
 
-import { GET, PATCH } from "./route";
+import { GET, PATCH, POST } from "./route";
 
 function getRequest(query = "") {
   return new Request(`http://localhost/api/workflows/run${query}`);
@@ -53,6 +53,14 @@ function getRequest(query = "") {
 function patchRequest(body: unknown) {
   return new Request("http://localhost/api/workflows/run", {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function postRequest(body: unknown) {
+  return new Request("http://localhost/api/workflows/run", {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -149,6 +157,59 @@ describe("workflow run API controls", () => {
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
       error: "Wait for this workflow run to finish before rerunning it.",
+    });
+    expect(mocks.createWorkflowRun).not.toHaveBeenCalled();
+    expect(mocks.enqueueWorkflowRun).not.toHaveBeenCalled();
+  });
+
+  it("returns an existing active operational run instead of queueing a duplicate", async () => {
+    mocks.db.workflowRun.findMany.mockResolvedValue([
+      {
+        id: "run-active",
+        ownerId: "owner-1",
+        playbook: "candidate-harvest",
+        workspace: "DK",
+        status: "QUEUED",
+        finishedAt: null,
+        result: null,
+        input: {
+          playbook: "candidate-harvest",
+          workspace: "DK",
+          options: { candidateHarvest: { minScore: 70, limit: 5 } },
+        },
+        preset: { name: "Harvest hot candidates" },
+      },
+    ]);
+    mocks.visibleWorkflowQueueSnapshotForOwner.mockResolvedValue({
+      activeRunId: "run-active",
+      queuedRunIds: [],
+    });
+
+    const response = await POST(postRequest({
+      playbook: "candidate-harvest",
+      workspace: "DK",
+      options: {},
+    }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.db.workflowRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ownerId: "owner-1",
+          playbook: "candidate-harvest",
+          status: { in: ["QUEUED", "RUNNING"] },
+          finishedAt: null,
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      run: {
+        id: "run-active",
+        presetName: "Harvest hot candidates",
+      },
+      queued: false,
+      existing: true,
+      queue: { activeRunId: "run-active", queuedRunIds: [] },
     });
     expect(mocks.createWorkflowRun).not.toHaveBeenCalled();
     expect(mocks.enqueueWorkflowRun).not.toHaveBeenCalled();
