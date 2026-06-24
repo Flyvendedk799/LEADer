@@ -253,6 +253,55 @@ describe("discovery mission execution", () => {
     );
   });
 
+  it("records a phase timing breakdown when a mission completes", async () => {
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
+      id: "mission-timing",
+      status: "SUCCESS",
+      warnings: [],
+      log: [],
+      lane,
+      candidates: [],
+    });
+    mocks.runDiscoverySearch.mockResolvedValue({
+      candidates: [],
+      queries: ["software udbud"],
+      searchPlan: {
+        queries: ["software udbud"],
+        focusTerms: [],
+        avoidTerms: [],
+        rationale: "",
+        usedAi: false,
+      },
+      provider: "test",
+      providerConfigured: true,
+      sourceScanCount: 0,
+      warnings: [],
+    });
+
+    await executeDiscoveryMission("owner-1", "mission-timing", {
+      laneId: "lane-1",
+      query: "software udbud",
+      useAiPlanner: false,
+      searchMode: "focused",
+      maxResults: 8,
+      includeWeb: true,
+      includeSources: false,
+      provider: "auto",
+    });
+
+    expect(mocks.db.discoveryMission.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "SUCCESS",
+          log: expect.objectContaining({
+            push: expect.stringContaining("Timing breakdown: prepare"),
+          }),
+        }),
+      }),
+    );
+  });
+
   it("dedupes official tenders against legacy URL-key rows by buyer, title, and deadline", async () => {
     const tender = activeTenderCandidate();
     mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });

@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
 import { runDiscoverySearch, type DiscoveryCandidateDto } from "@/lib/discovery";
 import { discoveryCandidateDedupeKey } from "@/lib/crm/candidate-dedupe";
-import { discoveryCountLabel, discoveryLogEntry, formatDiscoveryElapsed } from "@/lib/crm/discovery-logging";
+import { discoveryCountLabel, discoveryLogEntry, discoveryPhaseTimingSummary, formatDiscoveryElapsed } from "@/lib/crm/discovery-logging";
 import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import {
   ensureDefaultDiscoveryLanes,
@@ -836,6 +836,7 @@ export async function executeDiscoveryMission(
       candidates.push(await persistCandidate(ownerId, missionId, prepared.scoringLane, candidate));
     }
     const persistMs = Date.now() - persistStartedAt;
+    const totalMs = Date.now() - workerStartedAt;
 
     const finished = await db.discoveryMission.updateMany({
       where: { ...missionWhere, status: { not: "CANCELED" } },
@@ -847,7 +848,7 @@ export async function executeDiscoveryMission(
         provider: result.provider,
         log: {
           push: discoveryLogEntry(
-            `Saved ${discoveryCountLabel(candidates.length, "candidate")} in ${formatDiscoveryElapsed(persistMs)}; mission complete after ${formatDiscoveryElapsed(Date.now() - workerStartedAt)}.`,
+            `Saved ${discoveryCountLabel(candidates.length, "candidate")} in ${formatDiscoveryElapsed(persistMs)}; mission complete after ${formatDiscoveryElapsed(totalMs)}. Timing breakdown: ${discoveryPhaseTimingSummary({ prepareMs, searchMs, persistMs, totalMs })}.`,
           ),
         },
       },

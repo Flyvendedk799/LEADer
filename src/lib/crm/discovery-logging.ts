@@ -17,6 +17,25 @@ export function discoveryCountLabel(count: number, singular: string, plural = `$
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+export function discoveryPhaseTimingSummary({
+  prepareMs,
+  searchMs,
+  persistMs,
+  totalMs,
+}: {
+  prepareMs: number;
+  searchMs: number;
+  persistMs: number;
+  totalMs: number;
+}) {
+  return [
+    `prepare ${formatDiscoveryElapsed(prepareMs)}`,
+    `search ${formatDiscoveryElapsed(searchMs)}`,
+    `save ${formatDiscoveryElapsed(persistMs)}`,
+    `total ${formatDiscoveryElapsed(totalMs)}`,
+  ].join(", ");
+}
+
 export function discoveryLiveQueueCancelMessage(count: number) {
   return `${discoveryCountLabel(count, "mission")} stopped`;
 }

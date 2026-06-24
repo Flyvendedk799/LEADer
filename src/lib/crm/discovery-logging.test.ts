@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   discoveryCountLabel,
+  discoveryPhaseTimingSummary,
   discoveryLiveQueueCancelMessage,
   discoveryLogEntry,
   discoveryQueueLogMessage,
@@ -13,6 +14,15 @@ describe("discovery logging helpers", () => {
     expect(formatDiscoveryElapsed(2400)).toBe("2s");
     expect(formatDiscoveryElapsed(64_100)).toBe("1m 04s");
     expect(formatDiscoveryElapsed(-10)).toBe("0s");
+  });
+
+  it("summarizes discovery phase timing in one line", () => {
+    expect(discoveryPhaseTimingSummary({
+      prepareMs: 2400,
+      searchMs: 64_100,
+      persistMs: 950,
+      totalMs: 67_450,
+    })).toBe("prepare 2s, search 1m 04s, save 1s, total 1m 07s");
   });
 
   it("describes queue background state", () => {
