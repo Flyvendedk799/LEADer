@@ -39,6 +39,7 @@ export type WorkflowRunQueueItem = {
   trigger: string;
   presetId: string | null;
   presetName: string | null;
+  searchText?: string | null;
 };
 
 type WorkflowQueueSnapshot = {
@@ -99,6 +100,7 @@ function apiRunToItem(run: Partial<WorkflowRunQueueItem> & { id: string; playboo
     trigger: typeof run.trigger === "string" ? run.trigger : "manual",
     presetId: typeof run.presetId === "string" ? run.presetId : null,
     presetName: typeof run.presetName === "string" ? run.presetName : null,
+    searchText: typeof run.searchText === "string" ? run.searchText : null,
   };
 }
 
@@ -134,6 +136,7 @@ function workflowRunSearchText(run: WorkflowRunQueueItem) {
     run.trigger,
     run.presetName,
     run.summary,
+    run.searchText,
     ...(run.log ?? []),
   ]
     .filter(Boolean)
@@ -174,6 +177,24 @@ export function WorkflowRunQueue({
   const historySearchActive = historySearch.trim().length > 0;
   const canLoadOlderRuns = items.length >= historyLimit && historyLimit < 100;
 
+  const loadRuns = React.useCallback(async (limit: number, search = historySearch, quiet = false) => {
+    try {
+      const params = new URLSearchParams({ limit: String(limit) });
+      const trimmed = search.trim();
+      if (trimmed) params.set("q", trimmed);
+      const res = await fetch(`/api/workflows/run?${params.toString()}`, { cache: "no-store" });
+      const data = (await res.json().catch(() => null)) as WorkflowRunQueueResponse | null;
+      if (!res.ok || !data) throw new Error(data?.error || "Could not load workflow history");
+      if (Array.isArray(data.runs)) setItems(data.runs.map(apiRunToItem));
+      setQueueState(normalizeQueue(data.queue));
+      setLastUpdatedAt(new Date());
+    } catch (err) {
+      if (!quiet) {
+        toast.error("Could not load workflow history", err instanceof Error ? err.message : "Try again");
+      }
+    }
+  }, [historySearch]);
+
   React.useEffect(() => {
     setItems(runs);
   }, [runs]);
@@ -197,6 +218,8 @@ export function WorkflowRunQueue({
     async function refreshRuns() {
       try {
         const params = new URLSearchParams({ limit: String(historyLimit) });
+        const search = historySearch.trim();
+        if (search) params.set("q", search);
         const res = await fetch(`/api/workflows/run?${params.toString()}`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as WorkflowRunQueueResponse | null;
         if (!res.ok || !data) return;
@@ -217,23 +240,23 @@ export function WorkflowRunQueue({
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [historyLimit, live]);
+  }, [historyLimit, historySearch, live]);
 
   const loadOlderRuns = React.useCallback(async () => {
     const nextLimit = nextHistoryLimit(historyLimit, historySearchActive);
     setHistoryLimit(nextLimit);
-    try {
-      const params = new URLSearchParams({ limit: String(nextLimit) });
-      const res = await fetch(`/api/workflows/run?${params.toString()}`, { cache: "no-store" });
-      const data = (await res.json().catch(() => null)) as WorkflowRunQueueResponse | null;
-      if (!res.ok || !data) throw new Error(data?.error || "Could not load workflow history");
-      if (Array.isArray(data.runs)) setItems(data.runs.map(apiRunToItem));
-      setQueueState(normalizeQueue(data.queue));
-      setLastUpdatedAt(new Date());
-    } catch (err) {
-      toast.error("Could not load workflow history", err instanceof Error ? err.message : "Try again");
-    }
-  }, [historyLimit, historySearchActive]);
+    void loadRuns(nextLimit, historySearch);
+  }, [historyLimit, historySearch, historySearchActive, loadRuns]);
+
+  React.useEffect(() => {
+    if (!historySearchActive) return undefined;
+    const timer = window.setTimeout(() => {
+      const nextLimit = nextHistoryLimit(historyLimit, true);
+      if (nextLimit !== historyLimit) setHistoryLimit(nextLimit);
+      void loadRuns(nextLimit, historySearch, true);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [historyLimit, historySearch, historySearchActive, loadRuns]);
 
   async function controlRun(run: WorkflowRunQueueItem, action: WorkflowRunAction) {
     setBusyId(`${action}-${run.id}`);
@@ -347,7 +370,7 @@ export function WorkflowRunQueue({
         </div>
         <p className="text-[11px] text-muted-foreground">
           {historySearchActive
-            ? `${filteredItems.length} of ${orderedItems.length} loaded playbook runs match`
+            ? `${filteredItems.length} matching playbook ${filteredItems.length === 1 ? "run" : "runs"} loaded`
             : `${orderedItems.length} playbook runs loaded`}
         </p>
       </div>
@@ -490,7 +513,7 @@ export function WorkflowRunQueue({
         })
       ) : (
         <p className="py-3 text-center text-sm text-muted-foreground">
-          {historySearchActive ? "No loaded playbook runs match this search." : "No playbook runs yet."}
+          {historySearchActive ? "No playbook runs match this search." : "No playbook runs yet."}
         </p>
       )}
       {canLoadOlderRuns ? (

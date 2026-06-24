@@ -118,6 +118,68 @@ describe("workflow run API controls", () => {
     );
   });
 
+  it("searches expanded workflow history server-side including input subjects", async () => {
+    mocks.db.workflowRun.findMany.mockResolvedValue([
+      {
+        id: "run-input-hit",
+        playbook: "research-brief",
+        workspace: "DK",
+        status: "SUCCESS",
+        trigger: "manual",
+        log: [],
+        input: {
+          playbook: "research-brief",
+          workspace: "DK",
+          options: {
+            researchBrief: {
+              subject: "Mette Jensen",
+              objective: "find-contact",
+            },
+          },
+        },
+        result: { createdTasks: 0, skippedExistingTasks: 0 },
+        preset: null,
+      },
+      {
+        id: "run-other",
+        playbook: "research-brief",
+        workspace: "DK",
+        status: "SUCCESS",
+        trigger: "manual",
+        log: [],
+        input: {
+          playbook: "research-brief",
+          workspace: "DK",
+          options: {
+            researchBrief: {
+              subject: "Aarhus Kommune",
+              objective: "map-opportunity",
+            },
+          },
+        },
+        result: { createdTasks: 0, skippedExistingTasks: 0 },
+        preset: null,
+      },
+    ]);
+
+    const response = await GET(getRequest("?q=Mette%20Jensen&limit=20"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.db.workflowRun.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { ownerId: "owner-1" },
+        take: 100,
+      }),
+    );
+    expect(body.runs).toEqual([
+      expect.objectContaining({
+        id: "run-input-hit",
+        searchText: expect.stringContaining("mette jensen"),
+      }),
+    ]);
+  });
+
   it("preserves expanded workflow history after canceling live runs", async () => {
     mocks.db.workflowRun.findMany
       .mockResolvedValueOnce([])

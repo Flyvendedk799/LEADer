@@ -162,7 +162,8 @@ describe("udbud.dk discovery source", () => {
   it("keeps auto DK tender opportunity searches on the official active-notice index", () => {
     expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "opportunities", true)).toBe(true);
     expect(shouldUseOfficialOnlyTenderSearch({ provider: "brave" }, "DK", "opportunities", true)).toBe(false);
-    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "all", true)).toBe(false);
+    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "all", true)).toBe(true);
+    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "sources", true)).toBe(false);
     expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "GLOBAL", "opportunities", true)).toBe(false);
     expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "opportunities", false)).toBe(false);
   });

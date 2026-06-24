@@ -417,8 +417,7 @@ export function LaneMissionControl({
   const officialTenderMode =
     selectedLane?.slug === "tenders-procurement" &&
     workspace === "DK" &&
-    provider === "auto" &&
-    searchMode !== "wide";
+    provider === "auto";
   const effectiveIncludeSources = officialTenderMode ? false : includeSources;
   const candidates = result?.mission.candidates ?? [];
   const hiddenCandidateCount = result?.hiddenCandidateCount ?? 0;

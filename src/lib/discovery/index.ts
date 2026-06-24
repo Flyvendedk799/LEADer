@@ -1398,7 +1398,7 @@ function shouldUseOfficialOnlyTenderSearch(
   resultKind: DiscoverySearchInput["resultKind"],
   tenderIntent: boolean,
 ) {
-  return tenderIntent && workspace === "DK" && resultKind === "opportunities" && (input.provider ?? "auto") === "auto";
+  return tenderIntent && workspace === "DK" && resultKind !== "sources" && (input.provider ?? "auto") === "auto";
 }
 
 function searchResultUrlParts(url?: string) {
@@ -1670,31 +1670,36 @@ async function udbudDkCandidates(
   const seen = new Set<string>();
   const seeds = udbudDkSearchSeeds(query, queries);
   const perQuery = Math.min(25, Math.max(10, Math.ceil((maxResults * 2) / Math.max(1, seeds.length))));
+  const seededResults = await runSearchQueriesWithConcurrency(
+    seeds,
+    perQuery,
+    SEARCH_PROVIDER_CONCURRENCY,
+    async (seed, limit) => {
+      const results = await udbudDkSearch(seed, limit);
+      return results.map((result) => ({ seed, result }));
+    },
+  );
 
-  for (const seed of seeds) {
+  for (const { seed, result } of seededResults) {
     if (candidates.length >= maxResults) break;
-    const results = await udbudDkSearch(seed, perQuery);
-    for (const result of results) {
-      if (candidates.length >= maxResults) break;
-      const candidate = udbudDkResultToCandidate(result, seed);
-      if (!candidate) continue;
-      const key = titleKey(`${candidate.title}:${candidate.organization}:${candidate.deadline}`) ?? candidate.url;
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      candidates.push(
-        await toDiscoveryDto(
-          candidate,
-          user,
-          {
-            sourceName: "udbud.dk",
-            sourceKind: "web-search",
-            provider: "udbud.dk",
-            query: seed,
-          },
-          feedbackModel,
-        ),
-      );
-    }
+    const candidate = udbudDkResultToCandidate(result, seed);
+    if (!candidate) continue;
+    const key = titleKey(`${candidate.title}:${candidate.organization}:${candidate.deadline}`) ?? candidate.url;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(
+      await toDiscoveryDto(
+        candidate,
+        user,
+        {
+          sourceName: "udbud.dk",
+          sourceKind: "web-search",
+          provider: "udbud.dk",
+          query: seed,
+        },
+        feedbackModel,
+      ),
+    );
   }
 
   return candidates;
@@ -1718,13 +1723,13 @@ async function runProviderSearch(
   return runSearchQueriesWithConcurrency(queries, perQuery, SEARCH_PROVIDER_CONCURRENCY, searchOne);
 }
 
-async function runSearchQueriesWithConcurrency(
+async function runSearchQueriesWithConcurrency<T = SearchResult>(
   queries: string[],
   perQuery: number,
   concurrency: number,
-  searchOne: (query: string, limit: number) => Promise<SearchResult[]>,
-): Promise<SearchResult[]> {
-  const results: SearchResult[][] = Array.from({ length: queries.length }, () => []);
+  searchOne: (query: string, limit: number) => Promise<T[]>,
+): Promise<T[]> {
+  const results: T[][] = Array.from({ length: queries.length }, () => []);
   let nextIndex = 0;
   let lastError: unknown;
 

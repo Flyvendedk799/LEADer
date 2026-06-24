@@ -42,12 +42,59 @@ function workflowRunHistoryLimit(req: Request) {
   return Math.min(100, Math.max(20, Math.floor(parsed)));
 }
 
-function workflowRunPayload(run: WorkflowRunPayload | null) {
+function workflowRunHistorySearch(req: Request) {
+  return (new URL(req.url).searchParams.get("q") || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+}
+
+function safeJsonSearchText(value: unknown) {
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value).slice(0, 12000);
+  } catch {
+    return "";
+  }
+}
+
+function workflowRunHistorySearchText(run: WorkflowRunPayload | null) {
+  if (!run) return "";
+  return [
+    run.id,
+    run.playbook,
+    run.workspace,
+    run.status,
+    run.trigger,
+    run.preset?.name,
+    workflowRunResultSummary(run.playbook, run.result),
+    ...(run.log ?? []),
+    safeJsonSearchText(run.input),
+    safeJsonSearchText(run.result),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function workflowRunMatchesHistorySearch(run: WorkflowRunPayload, search: string) {
+  const terms = search
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = workflowRunHistorySearchText(run);
+  return terms.every((term) => haystack.includes(term));
+}
+
+function workflowRunPayload(run: WorkflowRunPayload | null, includeSearchText = false) {
   if (!run) return null;
   return {
     ...run,
     presetName: run.preset?.name ?? null,
     summary: workflowRunResultSummary(run.playbook, run.result),
+    ...(includeSearchText ? { searchText: workflowRunHistorySearchText(run) } : {}),
   };
 }
 
@@ -55,13 +102,19 @@ export async function GET(req: Request) {
   try {
     const ownerId = await requireOwnerId();
     const queue = await recoverWorkflowQueue(ownerId);
+    const search = workflowRunHistorySearch(req);
+    const limit = workflowRunHistoryLimit(req);
+    const take = search ? 100 : limit;
     const runs = await db.workflowRun.findMany({
       where: { ownerId },
       include: { preset: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
-      take: workflowRunHistoryLimit(req),
+      take,
     });
-    return NextResponse.json({ runs: runs.map(workflowRunPayload), queue });
+    const filtered = search
+      ? runs.filter((run) => workflowRunMatchesHistorySearch(run, search)).slice(0, limit)
+      : runs;
+    return NextResponse.json({ runs: filtered.map((run) => workflowRunPayload(run, Boolean(search))), queue });
   } catch (err) {
     return apiError(err);
   }
@@ -161,7 +214,7 @@ export async function PATCH(req: Request) {
         take: parsed.data.limit ?? 20,
       });
       return NextResponse.json({
-        runs: runs.map(workflowRunPayload),
+        runs: runs.map((run) => workflowRunPayload(run)),
         queue: await visibleWorkflowQueueSnapshotForOwner(ownerId),
         canceled: liveRuns.length,
       });

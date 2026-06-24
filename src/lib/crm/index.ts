@@ -113,13 +113,12 @@ function missionSurfaces(input: Pick<DiscoveryMissionInput, "includeWeb" | "incl
 function isOfficialOnlyTenderInput(
   lane: Pick<MissionLane, "slug">,
   workspace: Workspace,
-  input: Pick<DiscoveryMissionInput, "provider" | "searchMode">,
+  input: Pick<DiscoveryMissionInput, "provider">,
 ) {
   return (
     lane.slug === "tenders-procurement" &&
     workspace === "DK" &&
-    input.provider === "auto" &&
-    input.searchMode !== "wide"
+    input.provider === "auto"
   );
 }
 
@@ -751,7 +750,7 @@ export async function executeDiscoveryMission(
     const includeSources = officialOnlyTenderMode ? false : input.includeSources;
     if (officialOnlyTenderMode) {
       await appendLog(
-        "Tender lane using official udbud.dk active notices only; choose Wide or an explicit provider for broad web and source expansion.",
+        "Tender lane using official udbud.dk active notices only; choose an explicit provider for broad web and source expansion.",
       );
     }
 

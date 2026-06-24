@@ -435,6 +435,59 @@ describe("discovery mission execution", () => {
     );
   });
 
+  it("keeps wide auto Danish tender missions on the official index", async () => {
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
+      id: "mission-wide-tender",
+      status: "SUCCESS",
+      warnings: [],
+      log: [],
+      lane: tenderLane,
+      candidates: [],
+    });
+    mocks.db.discoveryLane.findFirst.mockResolvedValue(tenderLane);
+    mocks.runDiscoverySearch.mockResolvedValue({
+      candidates: [],
+      queries: ["site:udbud.dk/detaljevisning software tilbudsfrist"],
+      searchPlan: {
+        queries: ["site:udbud.dk/detaljevisning software tilbudsfrist"],
+        focusTerms: [],
+        avoidTerms: [],
+        rationale: "",
+        usedAi: false,
+      },
+      provider: "udbud.dk",
+      providerConfigured: true,
+      sourceScanCount: 0,
+      warnings: [],
+    });
+
+    await executeDiscoveryMission("owner-1", "mission-wide-tender", {
+      laneId: "tender-lane-1",
+      query: "software udbud",
+      useAiPlanner: false,
+      searchMode: "wide",
+      maxResults: 8,
+      includeWeb: true,
+      includeSources: true,
+      provider: "auto",
+    });
+
+    expect(mocks.runDiscoverySearch).toHaveBeenCalledWith(
+      "owner-1",
+      expect.objectContaining({ includeSources: false, provider: "none", resultKind: "opportunities" }),
+    );
+    expect(mocks.db.discoveryMission.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          log: expect.objectContaining({
+            push: expect.stringContaining("choose an explicit provider for broad web and source expansion"),
+          }),
+        }),
+      }),
+    );
+  });
+
   it("describes queued automatic Danish tender missions as official udbud.dk searches", async () => {
     mocks.db.discoveryLane.findFirst.mockResolvedValue(tenderLane);
 
