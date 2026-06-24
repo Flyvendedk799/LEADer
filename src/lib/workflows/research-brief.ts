@@ -146,6 +146,48 @@ function subjectClues(subject: string): SubjectClues {
   return { emails, phones, domains, handles, nameHints };
 }
 
+function isGenericEmailLocal(local: string) {
+  return /^(?:admin|contact|hello|hi|info|kontakt|mail|office|post|sales|support|kundeservice)$/i.test(local.trim());
+}
+
+function hasCompanyCue(subject: string) {
+  return /\b(?:a\/s|aps|i\/s|ab|agency|bureau|company|consulting|digital|gmbh|group|hospital|inc|kommune|ltd|ministeriet|municipality|oy|region|saas|school|skole|solutions|styrelsen|systems|technologies|university|universitet|virksomhed)\b/i.test(
+    subject,
+  );
+}
+
+function isPersonNameLike(subject: string) {
+  const cleaned = cleanText(subject, 160);
+  if (!cleaned || hasCompanyCue(cleaned)) return false;
+  if (/[0-9@:/\\]|\.com\b|\.dk\b|\.net\b|\.org\b/i.test(cleaned)) return false;
+  return /^[\p{L}'’-]+(?:\s+[\p{L}'’-]+){1,3}$/u.test(cleaned);
+}
+
+function inferredSubjectType(subject: string, requested: ResearchSubjectType): ResearchSubjectType {
+  if (requested !== "unknown") return requested;
+  const clues = subjectClues(subject);
+  if (clues.emails.length) {
+    const local = clues.emails[0].split("@")[0]?.replace(/[._%+-]+/g, " ").trim() ?? "";
+    return local && !isGenericEmailLocal(local) && local.split(/\s+/).length >= 2 ? "person" : "company";
+  }
+  if (clues.domains.length || hasCompanyCue(subject)) return "company";
+  if (isPersonNameLike(subject)) return "person";
+  return "unknown";
+}
+
+function inferredObjective(
+  subject: string,
+  subjectType: ResearchSubjectType,
+  requested: ResearchObjective,
+): ResearchObjective {
+  if (requested !== "qualify-lead") return requested;
+  const clues = subjectClues(subject);
+  if (clues.phones.length && !clues.emails.length && !clues.domains.length) return "verify-identity";
+  if (subjectType === "person") return "find-contact";
+  if (subjectType === "company" && (clues.emails.length || clues.domains.length)) return "find-contact";
+  return requested;
+}
+
 function uniqueLoose(values: (string | undefined | null)[], limit = values.length) {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -483,10 +525,13 @@ function item(
 export function normalizeResearchBriefOptions(
   options: Partial<ResearchBriefOptions> | null | undefined,
 ): NormalizedResearchBriefOptions {
+  const subject = cleanText(options?.subject, 160);
+  const subjectType = inferredSubjectType(subject, typedValue(options?.subjectType, SUBJECT_TYPES, "unknown"));
+  const objective = inferredObjective(subject, subjectType, typedValue(options?.objective, OBJECTIVES, "qualify-lead"));
   return {
-    subject: cleanText(options?.subject, 160),
-    subjectType: typedValue(options?.subjectType, SUBJECT_TYPES, "unknown"),
-    objective: typedValue(options?.objective, OBJECTIVES, "qualify-lead"),
+    subject,
+    subjectType,
+    objective,
     depth: typedValue(options?.depth, DEPTHS, "standard"),
     accountId: cleanText(options?.accountId, 120) || undefined,
     personId: cleanText(options?.personId, 120) || undefined,

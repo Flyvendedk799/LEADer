@@ -1,3 +1,9 @@
+import {
+  normalizeResearchBriefOptions,
+  type ResearchObjective,
+  type ResearchSubjectType,
+} from "./research-brief";
+
 type ContactRoute = {
   email?: string | null;
   phone?: string | null;
@@ -226,30 +232,62 @@ export function researchBriefIdentityFromInput(input: unknown): ResearchBriefIde
   const root = objectValue(input);
   const options = objectValue(root?.options);
   const brief = objectValue(options?.researchBrief);
+  const normalized = normalizeResearchBriefOptions({
+    subject: stringValue(brief?.subject) ?? "",
+    subjectType: stringValue(brief?.subjectType) as ResearchSubjectType | undefined,
+    objective: stringValue(brief?.objective) as ResearchObjective | undefined,
+    accountId: stringValue(brief?.accountId) ?? undefined,
+    personId: stringValue(brief?.personId) ?? undefined,
+    dealId: stringValue(brief?.dealId) ?? undefined,
+    candidateId: stringValue(brief?.candidateId) ?? undefined,
+  });
   return {
-    accountId: stringValue(brief?.accountId),
-    personId: stringValue(brief?.personId),
-    dealId: stringValue(brief?.dealId),
-    candidateId: stringValue(brief?.candidateId),
-    subject: stringValue(brief?.subject),
-    subjectType: stringValue(brief?.subjectType),
-    objective: stringValue(brief?.objective),
+    accountId: normalized.accountId ?? null,
+    personId: normalized.personId ?? null,
+    dealId: normalized.dealId ?? null,
+    candidateId: normalized.candidateId ?? null,
+    subject: normalized.subject || null,
+    subjectType: normalized.subjectType,
+    objective: normalized.objective,
     workspace: stringValue(root?.workspace),
+  };
+}
+
+function normalizeResearchBriefIdentity(identity: ResearchBriefIdentity): ResearchBriefIdentity {
+  const normalized = normalizeResearchBriefOptions({
+    subject: identity.subject ?? "",
+    subjectType: identity.subjectType as ResearchSubjectType | undefined,
+    objective: identity.objective as ResearchObjective | undefined,
+    accountId: identity.accountId ?? undefined,
+    personId: identity.personId ?? undefined,
+    dealId: identity.dealId ?? undefined,
+    candidateId: identity.candidateId ?? undefined,
+  });
+  return {
+    accountId: normalized.accountId ?? null,
+    personId: normalized.personId ?? null,
+    dealId: normalized.dealId ?? null,
+    candidateId: normalized.candidateId ?? null,
+    subject: normalized.subject || null,
+    subjectType: normalized.subjectType,
+    objective: normalized.objective,
+    workspace: identity.workspace ?? null,
   };
 }
 
 export function researchBriefMatchesIdentity(run: ResearchBriefRunLike, identity: ResearchBriefIdentity) {
   const runIdentity = researchBriefIdentityFromInput(run.input);
-  if (identity.candidateId) return runIdentity.candidateId === identity.candidateId;
-  if (!researchBriefModeMatches(runIdentity, identity)) return false;
-  if (identity.personId) {
-    if (runIdentity.personId === identity.personId) return true;
-    const subject = normalizedSubject(identity.subject);
+  const targetIdentity = normalizeResearchBriefIdentity(identity);
+  if (targetIdentity.candidateId) return runIdentity.candidateId === targetIdentity.candidateId;
+  if (!researchBriefModeMatches(runIdentity, targetIdentity)) return false;
+  if (targetIdentity.personId) {
+    if (runIdentity.personId === targetIdentity.personId) return true;
+    const subject = normalizedSubject(targetIdentity.subject);
     return Boolean(subject && normalizedSubject(runIdentity.subject) === subject);
   }
-  if (identity.dealId && runIdentity.dealId === identity.dealId) return true;
-  if (identity.accountId && runIdentity.accountId === identity.accountId) return true;
-  const subject = normalizedSubject(identity.subject);
+  if (targetIdentity.dealId && runIdentity.dealId === targetIdentity.dealId) return true;
+  if (targetIdentity.accountId && runIdentity.accountId === targetIdentity.accountId) return true;
+  const subject = normalizedSubject(targetIdentity.subject);
   if (!subject || normalizedSubject(runIdentity.subject) !== subject) return false;
   return true;
 }
@@ -258,6 +296,15 @@ export function findActiveResearchBriefRun<T extends ResearchBriefRunLike>(
   runs: T[],
   identity: ResearchBriefIdentity,
 ): T | null {
-  if (!identity.accountId && !identity.personId && !identity.dealId && !identity.candidateId && !normalizedSubject(identity.subject)) return null;
-  return runs.find((run) => researchBriefMatchesIdentity(run, identity)) ?? null;
+  const targetIdentity = normalizeResearchBriefIdentity(identity);
+  if (
+    !targetIdentity.accountId &&
+    !targetIdentity.personId &&
+    !targetIdentity.dealId &&
+    !targetIdentity.candidateId &&
+    !normalizedSubject(targetIdentity.subject)
+  ) {
+    return null;
+  }
+  return runs.find((run) => researchBriefMatchesIdentity(run, targetIdentity)) ?? null;
 }

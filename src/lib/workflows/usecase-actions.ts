@@ -1,5 +1,11 @@
 import type { WorkflowRunOptions } from "./types";
 import type { Workspace } from "@/lib/types";
+import {
+  normalizeResearchBriefOptions,
+  type ResearchDepth,
+  type ResearchObjective,
+  type ResearchSubjectType,
+} from "./research-brief";
 
 function stamp(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -30,10 +36,10 @@ export function operatingDayPresetPayload(
 
 export function researchBriefRunPayload({
   subject,
-  subjectType = "unknown",
-  objective = "qualify-lead",
-  depth = "standard",
-  createTasks = true,
+  subjectType,
+  objective,
+  depth,
+  createTasks,
   workspace = "DK",
   accountId,
   personId,
@@ -41,9 +47,9 @@ export function researchBriefRunPayload({
   candidateId,
 }: {
   subject: string;
-  subjectType?: "person" | "company" | "unknown";
-  objective?: "find-contact" | "qualify-lead" | "map-opportunity" | "verify-identity" | "general";
-  depth?: "quick" | "standard" | "deep";
+  subjectType?: ResearchSubjectType;
+  objective?: ResearchObjective;
+  depth?: ResearchDepth;
   createTasks?: boolean;
   workspace?: "DK" | "GLOBAL";
   accountId?: string | null;
@@ -51,20 +57,31 @@ export function researchBriefRunPayload({
   dealId?: string | null;
   candidateId?: string | null;
 }) {
+  const normalized = normalizeResearchBriefOptions({
+    subject,
+    subjectType,
+    objective,
+    depth,
+    createTasks,
+    ...(accountId ? { accountId } : {}),
+    ...(personId ? { personId } : {}),
+    ...(dealId ? { dealId } : {}),
+    ...(candidateId ? { candidateId } : {}),
+  });
   return {
     playbook: "research-brief",
     workspace,
     options: {
       researchBrief: {
-        subject: subject.trim(),
-        subjectType,
-        objective,
-        depth,
-        createTasks,
-        ...(accountId ? { accountId } : {}),
-        ...(personId ? { personId } : {}),
-        ...(dealId ? { dealId } : {}),
-        ...(candidateId ? { candidateId } : {}),
+        subject: normalized.subject,
+        subjectType: normalized.subjectType,
+        objective: normalized.objective,
+        depth: normalized.depth,
+        createTasks: normalized.createTasks,
+        ...(normalized.accountId ? { accountId: normalized.accountId } : {}),
+        ...(normalized.personId ? { personId: normalized.personId } : {}),
+        ...(normalized.dealId ? { dealId: normalized.dealId } : {}),
+        ...(normalized.candidateId ? { candidateId: normalized.candidateId } : {}),
       },
     },
   };

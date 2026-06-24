@@ -8,6 +8,30 @@ import {
 } from "./research-brief";
 
 describe("research brief workflow helpers", () => {
+  it("infers practical contact or verification intent from raw clues", () => {
+    expect(normalizeResearchBriefOptions({ subject: "Mette Jensen" })).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+    expect(normalizeResearchBriefOptions({ subject: "mette.jensen@northwind.dk" })).toMatchObject({
+      subjectType: "person",
+      objective: "find-contact",
+    });
+    expect(normalizeResearchBriefOptions({ subject: "info@northwind.dk" })).toMatchObject({
+      subjectType: "company",
+      objective: "find-contact",
+    });
+    expect(normalizeResearchBriefOptions({ subject: "northwind.dk" })).toMatchObject({
+      subjectType: "company",
+      objective: "find-contact",
+    });
+    expect(normalizeResearchBriefOptions({ subject: "+45 12 34 56 78" })).toMatchObject({
+      subjectType: "unknown",
+      objective: "verify-identity",
+    });
+  });
+
   it("builds a public-source contact checklist from a person clue", () => {
     const options = normalizeResearchBriefOptions({
       subject: "  Mette Jensen  ",
@@ -182,7 +206,7 @@ describe("research brief workflow helpers", () => {
       "Domain/email pattern candidates marked unverified",
     );
     expect(runbook.flatMap((step) => step.searchPrompts)).toEqual(
-      expect.arrayContaining(["site:northwind.dk", "northwind.dk kontakt", "site:northwind.dk kontakt"]),
+      expect.arrayContaining(["site:northwind.dk", "northwind.dk kontakt", '"mette jensen" site:northwind.dk']),
     );
   });
 

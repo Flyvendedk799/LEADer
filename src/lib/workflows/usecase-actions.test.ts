@@ -73,4 +73,20 @@ describe("workflow usecase actions", () => {
       },
     });
   });
+
+  it("infers practical research brief defaults from a raw name clue", () => {
+    expect(researchBriefRunPayload({ subject: " Mette Jensen " })).toMatchObject({
+      playbook: "research-brief",
+      workspace: "DK",
+      options: {
+        researchBrief: {
+          subject: "Mette Jensen",
+          subjectType: "person",
+          objective: "find-contact",
+          depth: "standard",
+          createTasks: true,
+        },
+      },
+    });
+  });
 });

@@ -413,4 +413,34 @@ describe("workflow research targets", () => {
       })?.id,
     ).toBe("run-phone");
   });
+
+  it("dedupes a generic raw-name run against the inferred person contact route", () => {
+    const runs = [
+      {
+        id: "run-generic-name",
+        status: "QUEUED",
+        input: {
+          playbook: "research-brief",
+          workspace: "DK",
+          options: { researchBrief: { subject: "Mette Jensen" } },
+        },
+      },
+    ];
+
+    expect(
+      researchBriefIdentityFromInput(runs[0].input),
+    ).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+    });
+    expect(
+      findActiveResearchBriefRun(runs, {
+        subject: "Mette Jensen",
+        subjectType: "person",
+        objective: "find-contact",
+        workspace: "DK",
+      })?.id,
+    ).toBe("run-generic-name");
+  });
 });
