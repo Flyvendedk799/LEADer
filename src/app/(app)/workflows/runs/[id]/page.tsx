@@ -15,6 +15,7 @@ import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import { researchBriefRunbookFromResult, researchBriefWorksheetFromResult } from "@/lib/workflows/research-brief-result";
 import { researchSearchHref, uniqueResearchPrompts } from "@/lib/workflows/research-links";
 import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
+import { workflowResearchLinkedTargets } from "@/lib/workflows/linked-context";
 import { workflowTaskHref } from "@/lib/workflows/task-links";
 
 export const dynamic = "force-dynamic";
@@ -85,6 +86,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
   const linkedCandidateHref = linkedCandidateId && linkedCandidateMissionId
     ? discoveryCandidateHref(linkedCandidateMissionId, linkedCandidateId)
     : "";
+  const linkedTargets = workflowResearchLinkedTargets(linked);
   const operatingSources = objectValue(dailySweep?.sources);
   const operatingDigest = objectValue(dailySweep?.digest);
   const operatingCandidates = objectValue(candidateHarvest?.candidates);
@@ -197,6 +199,42 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
           <RunMetric label="Digests" value={numberValue(digest?.created)} icon={<ListChecks />} />
         </section>
       )}
+
+      {run.playbook === "research-brief" && linkedTargets.length ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Linked CRM context</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 md:grid-cols-3">
+              {linkedTargets.map((target) => {
+                const content = (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Badge variant="outline">{target.kind}</Badge>
+                      <p className="truncate text-sm font-medium">{target.label}</p>
+                    </div>
+                    {target.detail ? (
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{target.detail}</p>
+                    ) : null}
+                  </>
+                );
+                const className =
+                  "rounded-md border border-border bg-surface/40 p-3 transition-colors hover:border-primary/50";
+                return target.href ? (
+                  <Link key={`${target.kind}-${target.label}`} href={target.href} className={className}>
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={`${target.kind}-${target.label}`} className={className}>
+                    {content}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {run.playbook === "research-brief" && (linkedCandidateId || linkedCandidateTitle || linkedCandidateUrl) ? (
         <Card>
