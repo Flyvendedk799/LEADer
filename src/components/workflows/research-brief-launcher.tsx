@@ -4,12 +4,14 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Loader2, MapPinned, Search, ShieldCheck, UserSearch } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
+import { buildResearchRunbook, normalizeResearchBriefOptions } from "@/lib/workflows/research-brief";
 import { researchBriefRunPayload } from "@/lib/workflows/usecase-actions";
 
 type ResearchSubjectType = "unknown" | "person" | "company";
@@ -95,6 +97,21 @@ export function ResearchBriefLauncher({
   const [selectedDepth, setSelectedDepth] = React.useState<ResearchDepth>(depth);
   const [createTasks, setCreateTasks] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
+  const preview = React.useMemo(() => {
+    const trimmed = subject.trim();
+    if (trimmed.length < 2) return null;
+    const normalized = normalizeResearchBriefOptions({
+      subject: trimmed,
+      subjectType: selectedType,
+      objective: selectedObjective,
+      depth: selectedDepth,
+      createTasks,
+    });
+    return {
+      normalized,
+      runbook: buildResearchRunbook(normalized, workspace).slice(0, 3),
+    };
+  }, [createTasks, selectedDepth, selectedObjective, selectedType, subject, workspace]);
 
   React.useEffect(() => {
     setSubject(defaultSubject);
@@ -233,6 +250,41 @@ export function ResearchBriefLauncher({
           </div>
         </div>
       </div>
+
+      {preview ? (
+        <div className="rounded-md border border-border bg-surface/40 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{preview.normalized.subjectType}</Badge>
+            <Badge variant="outline">{preview.normalized.objective.replace("-", " ")}</Badge>
+            <Badge variant="outline">{preview.normalized.depth}</Badge>
+            <p className="min-w-0 truncate text-sm font-medium">{preview.normalized.subject}</p>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {preview.runbook.map((step) => (
+              <div key={step.id} className="rounded-md border border-border bg-background/50 p-2">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{step.title}</p>
+                    <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">{step.goal}</p>
+                  </div>
+                  {step.routePriority?.[0] ? (
+                    <Badge variant="outline" className="shrink-0">{step.routePriority[0]}</Badge>
+                  ) : null}
+                </div>
+                {step.searchPrompts.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {step.searchPrompts.slice(0, 3).map((prompt) => (
+                      <Badge key={prompt} variant="outline" className="max-w-full truncate" title={prompt}>
+                        {prompt}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

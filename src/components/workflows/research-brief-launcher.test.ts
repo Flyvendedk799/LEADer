@@ -37,5 +37,9 @@ describe("ResearchBriefLauncher", () => {
     expect(html).toContain("Company contact");
     expect(html).toContain("Opportunity map");
     expect(html).toContain("Verify match");
+    expect(html).toContain("find contact");
+    expect(html).toContain("Resolve the exact subject");
+    expect(html).toContain("Find current affiliation");
+    expect(html).toContain("Mette Jensen");
   });
 });
