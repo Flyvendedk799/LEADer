@@ -74,6 +74,33 @@ describe("research brief workflow helpers", () => {
     expect(checklist.map((step) => step.stage)).toEqual(["identity", "sources", "contact", "route-validation"]);
   });
 
+  it("keeps Danish search pivots in international research briefs", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "Nordic SaaS-opgaver",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "standard",
+    });
+
+    const checklist = buildResearchChecklist(options, "GLOBAL");
+    const worksheet = buildResearchWorksheet(options, "GLOBAL");
+    const runbook = buildResearchRunbook(options, "GLOBAL");
+    const promptText = [
+      ...checklist.flatMap((step) => step.searchPrompts),
+      ...worksheet.flatMap((section) => section.fields.flatMap((field) => field.sourcePrompts)),
+      ...runbook.flatMap((step) => step.searchPrompts),
+    ].join(" ");
+
+    expect(promptText).toContain('"Nordic SaaS-opgaver" tender');
+    expect(promptText).toContain('"Nordic SaaS-opgaver" procurement');
+    expect(promptText).toContain('"Nordic SaaS-opgaver" udbud');
+    expect(promptText).toContain('"Nordic SaaS-opgaver" offentligt indkøb');
+    expect(promptText).toContain('"Nordic SaaS-opgaver" leverandør');
+    expect(promptText).toContain('"Nordic SaaS-opgaver" kontakt');
+    expect(promptText).toContain('"Nordic SaaS-opgaver" virksomhedsregister');
+    expect(promptText).not.toContain("site:proff.dk OR site:datacvr.virk.dk");
+  });
+
   it("keeps quick person contact research in practical lookup order", () => {
     const options = normalizeResearchBriefOptions({
       subject: "Mette Jensen",

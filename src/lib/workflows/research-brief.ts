@@ -169,6 +169,7 @@ function cluePrompts(subject: string, workspace: Workspace) {
       `site:${domain}`,
       `${domain} contact`,
       workspace === "DK" ? `${domain} kontakt` : `${domain} team`,
+      ...(workspace === "GLOBAL" ? [`${domain} kontakt`] : []),
     ]),
     ...clues.nameHints.flatMap((name) => [
       quoted(name),
@@ -187,6 +188,9 @@ function domainSurfacePrompts(subject: string, workspace: Workspace) {
       workspace === "DK" ? `site:${domain} medarbejdere` : `site:${domain} team`,
       workspace === "DK" ? `site:${domain} presse` : `site:${domain} press`,
       workspace === "DK" ? `${domain} telefon` : `${domain} phone`,
+      ...(workspace === "GLOBAL"
+        ? [`site:${domain} kontakt`, `site:${domain} medarbejdere`, `site:${domain} presse`, `${domain} telefon`]
+        : []),
       `${domain} email pattern`,
     ]),
     12,
@@ -208,10 +212,14 @@ function personSurfacePrompts(subject: string, workspace: Workspace) {
       : [
           `${quoted(subject)} site:linkedin.com/in`,
           `${quoted(subject)} LinkedIn current organization`,
+          `${quoted(subject)} LinkedIn nuværende organisation`,
           `${quoted(subject)} current employer`,
+          `${quoted(subject)} nuværende rolle`,
           `${quoted(subject)} staff`,
+          `${quoted(subject)} medarbejder`,
           `${quoted(subject)} team`,
           `${quoted(subject)} organization`,
+          `${quoted(subject)} organisation`,
           `${quoted(subject)} professional profile`,
         ];
   return uniqueLoose([...publicSurfaces, ...domainSurfacePrompts(subject, workspace), ...cluePrompts(subject, workspace)], 14);
@@ -239,6 +247,8 @@ function officialPrompts(subject: string, workspace: Workspace, subjectType: Res
     : [
         `${quoted(subject)} official website`,
         `${quoted(subject)} contact`,
+        `${quoted(subject)} officiel hjemmeside`,
+        `${quoted(subject)} kontakt`,
         `${quoted(subject)} LinkedIn`,
       ];
   if (pivots.length) {
@@ -251,10 +261,15 @@ function officialPrompts(subject: string, workspace: Workspace, subjectType: Res
     base.push(
       workspace === "DK" ? `${quoted(subject)} ledelse` : `${quoted(subject)} management`,
       workspace === "DK" ? `${quoted(subject)} pressemeddelelse` : `${quoted(subject)} press release`,
+      ...(workspace === "GLOBAL" ? [`${quoted(subject)} ledelse`, `${quoted(subject)} pressemeddelelse`] : []),
     );
   }
   if (subjectType === "person") {
-    base.push(`${quoted(subject)} rolle organisation`, `${quoted(subject)} email site:linkedin.com/in`);
+    base.push(
+      `${quoted(subject)} rolle organisation`,
+      ...(workspace === "GLOBAL" ? [`${quoted(subject)} current organization`, `${quoted(subject)} current role`] : []),
+      `${quoted(subject)} email site:linkedin.com/in`,
+    );
   }
   return base;
 }
@@ -288,8 +303,12 @@ function affiliationPrompts(subject: string, workspace: Workspace) {
     : [
         `${quoted(subject)} LinkedIn`,
         `${quoted(subject)} role organization`,
+        `${quoted(subject)} rolle organisation`,
         `${quoted(subject)} current role`,
+        `${quoted(subject)} nuværende rolle`,
         `${quoted(subject)} company`,
+        `${quoted(subject)} firma`,
+        `${quoted(subject)} virksomhed`,
         `${quoted(subject)} email site:linkedin.com/in`,
       ];
   base.push(...pivots);
@@ -307,8 +326,18 @@ function opportunityPrompts(subject: string, workspace: Workspace) {
     `${quoted(subject)} automation`,
     workspace === "DK" ? `${quoted(subject)} udbud` : `${quoted(subject)} tender`,
     workspace === "DK" ? `${quoted(subject)} offentligt indkøb` : `${quoted(subject)} procurement`,
+    ...(workspace === "GLOBAL"
+      ? [`${quoted(subject)} udbud`, `${quoted(subject)} offentligt indkøb`, `${quoted(subject)} opgave`, `${quoted(subject)} leverandør`]
+      : []),
     ...clues.domains.map((domain) => (workspace === "DK" ? `${domain} udbud` : `${domain} procurement`)),
+    ...(workspace === "GLOBAL" ? clues.domains.flatMap((domain) => [`${domain} udbud`, `${domain} leverandør`]) : []),
   ];
+}
+
+function registryPrompts(subject: string, workspace: Workspace) {
+  return workspace === "DK"
+    ? [`${quoted(subject)} site:proff.dk OR site:datacvr.virk.dk`]
+    : [`${quoted(subject)} company registry`, `${quoted(subject)} virksomhedsregister`, `${quoted(subject)} official domain`];
 }
 
 function worksheetField(
@@ -504,7 +533,7 @@ export function buildResearchChecklist(
       "Map authoritative public sources",
       "Record the official website, organization domain, registry/profile, staff/team page, public profile, and any relevant source URL with the date checked.",
       "HIGH",
-      [...prompts.surface, ...prompts.official, `${quoted(subject)} site:proff.dk OR site:datacvr.virk.dk`],
+      [...prompts.surface, ...prompts.official, ...registryPrompts(subject, workspace)],
     ],
     [
       "contact",
@@ -776,6 +805,7 @@ export function buildResearchWorksheet(
           [
             workspace === "DK" ? `${quoted(subject)} udbud` : `${quoted(subject)} tender`,
             workspace === "DK" ? `${quoted(subject)} offentligt indkøb` : `${quoted(subject)} procurement`,
+            ...(workspace === "GLOBAL" ? [`${quoted(subject)} udbud`, `${quoted(subject)} offentligt indkøb`] : []),
             `${quoted(subject)} contact`,
           ],
         ),
