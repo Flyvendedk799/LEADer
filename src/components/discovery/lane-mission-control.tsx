@@ -55,6 +55,7 @@ type Provider = "auto" | "tavily" | "brave" | "serper" | "none";
 type CandidateAction = "review" | "save" | "dismiss" | "duplicate";
 type MissionAction = "CANCEL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
 type HistoryScope = "current-lane" | "all";
+export const DEFAULT_HISTORY_SCOPE: HistoryScope = "all";
 
 type MissionLaneSummary = { id: string; name: string; slug?: string | null };
 
@@ -185,6 +186,41 @@ function missionCandidateSummary(mission: MissionSummary) {
   const hidden = missionHiddenCandidateCount(mission);
   if (!reviewable && hidden) return `0 reviewable · ${hidden} rejected only`;
   return hidden ? `${reviewable} reviewable · ${hidden} rejected` : `${reviewable} reviewable`;
+}
+
+function plural(count: number, singular: string, pluralLabel = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : pluralLabel}`;
+}
+
+type MissionTenderQualitySummaryInput = Pick<
+  MissionSummary,
+  "lane" | "provider" | "warnings" | "log" | "_count" | "hiddenCandidateCount" | "status"
+>;
+
+export function missionTenderQualitySummary(mission: MissionTenderQualitySummaryInput) {
+  if (mission.lane?.slug !== "tenders-procurement") return null;
+  const reviewable = mission._count?.candidates ?? 0;
+  const rejected = mission.hiddenCandidateCount ?? 0;
+  const logText = [...(mission.log ?? []), ...(mission.warnings ?? [])].join(" ");
+  const official =
+    mission.provider === "udbud.dk" ||
+    mission.provider === "udbud.dk+brave" ||
+    /udbud\.dk returned|official udbud\.dk active notices/i.test(logText);
+  const qualityLine = (mission.warnings ?? []).find((warning) =>
+    /(?:lane guard|quality gate) rejected/i.test(warning),
+  );
+
+  if (reviewable > 0) {
+    return `${plural(reviewable, "active tender")} ready for review${rejected ? ` · ${plural(rejected, "rejected result")}` : ""}${official ? " · official udbud.dk" : ""}.`;
+  }
+  if (rejected > 0) {
+    return `${plural(rejected, "result")} found, all rejected by tender quality gates.${qualityLine ? ` ${qualityLine}` : ""}`;
+  }
+  if (mission.status === "SUCCESS" && official) {
+    return "No active software tender notices survived the official udbud.dk filters.";
+  }
+  if (official) return "Searching official udbud.dk active notices.";
+  return null;
 }
 
 function missionStatusVariant(status: string): React.ComponentProps<typeof Badge>["variant"] {
@@ -348,7 +384,7 @@ export function LaneMissionControl({
   const [refreshing, setRefreshing] = React.useState(false);
   const [missions, setMissions] = React.useState<MissionSummary[]>([]);
   const [historySearch, setHistorySearch] = React.useState("");
-  const [historyScope, setHistoryScope] = React.useState<HistoryScope>("current-lane");
+  const [historyScope, setHistoryScope] = React.useState<HistoryScope>(DEFAULT_HISTORY_SCOPE);
   const [historyLimit, setHistoryLimit] = React.useState(20);
   const [queueState, setQueueState] = React.useState<DiscoveryQueueSnapshot>(() => normalizeQueue());
   const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
@@ -387,6 +423,15 @@ export function LaneMissionControl({
   const activeQueueLabel = activeMissionId ? missionQueueLabel(activeMissionId, queueState) : null;
   const latestLog = result?.mission.log?.at(-1);
   const latestLogMessage = latestLog ? missionLogParts(latestLog).message : null;
+  const tenderQualitySummary = result ? missionTenderQualitySummary({
+    lane: result.mission.lane,
+    provider: result.mission.provider,
+    warnings: result.mission.warnings,
+    log: result.mission.log,
+    _count: { candidates: candidates.length },
+    hiddenCandidateCount,
+    status: result.mission.status,
+  }) : null;
   const counts = candidates.reduce<Record<string, number>>((acc, candidate) => {
     acc[candidate.status] = (acc[candidate.status] ?? 0) + 1;
     return acc;
@@ -924,6 +969,9 @@ export function LaneMissionControl({
                   {latestLogMessage ? (
                     <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{latestLogMessage}</p>
                   ) : null}
+                  {tenderQualitySummary ? (
+                    <p className="mt-1 text-xs font-medium text-foreground">{tenderQualitySummary}</p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <Button
@@ -963,7 +1011,7 @@ export function LaneMissionControl({
                       ? "Mission running in background. It stays available in mission history."
                       : hiddenCandidateCount > 0
                         ? `${hiddenCandidateCount} results were found but rejected by the lane quality gate.`
-                        : "No candidates found for this mission."}
+                        : (tenderQualitySummary ?? "No candidates found for this mission.")}
                   </p>
                   {!missionRunning && hiddenCandidateCount > 0 ? (
                     <Button
@@ -1106,6 +1154,7 @@ export function LaneMissionControl({
                 const queueLabel = missionQueueLabel(mission.id, queueState);
                 const latestMissionLog = mission.log?.at(-1);
                 const latestMissionLogMessage = latestMissionLog ? missionLogParts(latestMissionLog).message : null;
+                const missionQualitySummary = missionTenderQualitySummary(mission);
                 const queuedIndex = queueState.queuedMissionIds.indexOf(mission.id);
                 const moveable = mission.status === "QUEUED" && queuedIndex >= 0;
                 const lastQueuedIndex = queueState.queuedMissionIds.length - 1;
@@ -1138,6 +1187,9 @@ export function LaneMissionControl({
                       <p className="mt-1 truncate text-xs text-muted-foreground">{queryPreview(mission.query)}</p>
                       {latestMissionLogMessage ? (
                         <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{latestMissionLogMessage}</p>
+                      ) : null}
+                      {missionQualitySummary ? (
+                        <p className="mt-1 truncate text-[11px] font-medium text-foreground">{missionQualitySummary}</p>
                       ) : null}
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                         <span className="inline-flex items-center gap-1">

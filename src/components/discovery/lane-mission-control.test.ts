@@ -6,7 +6,13 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-import { mergeMissionHistory, missionMatchesHistoryScope, type MissionSummary } from "./lane-mission-control";
+import {
+  DEFAULT_HISTORY_SCOPE,
+  mergeMissionHistory,
+  missionMatchesHistoryScope,
+  missionTenderQualitySummary,
+  type MissionSummary,
+} from "./lane-mission-control";
 
 function mission(index: number, laneId?: string): MissionSummary {
   return {
@@ -22,6 +28,10 @@ function mission(index: number, laneId?: string): MissionSummary {
 }
 
 describe("lane mission history", () => {
+  it("defaults history to all lanes so old runs stay recoverable", () => {
+    expect(DEFAULT_HISTORY_SCOPE).toBe("all");
+  });
+
   it("preserves the loaded history window when a mission refresh is merged", () => {
     const loaded = Array.from({ length: 40 }, (_, index) => mission(index));
     const refreshed = { ...mission(12), status: "RUNNING" };
@@ -52,5 +62,30 @@ describe("lane mission history", () => {
     expect(missionMatchesHistoryScope(tenderMission, "tender-lane", "current-lane")).toBe(true);
     expect(missionMatchesHistoryScope(startupMission, "tender-lane", "current-lane")).toBe(false);
     expect(missionMatchesHistoryScope(startupMission, "tender-lane", "all")).toBe(true);
+  });
+
+  it("summarizes official tender run quality in mission history", () => {
+    expect(
+      missionTenderQualitySummary({
+        ...mission(3, "tender-lane"),
+        lane: { id: "tender-lane", name: "Tenders / procurement", slug: "tenders-procurement" },
+        provider: "udbud.dk",
+        _count: { candidates: 4 },
+        hiddenCandidateCount: 1,
+      }),
+    ).toBe("4 active tenders ready for review · 1 rejected result · official udbud.dk.");
+
+    expect(
+      missionTenderQualitySummary({
+        ...mission(4, "tender-lane"),
+        lane: { id: "tender-lane", name: "Tenders / procurement", slug: "tenders-procurement" },
+        provider: "brave",
+        _count: { candidates: 0 },
+        hiddenCandidateCount: 8,
+        warnings: ["Tender quality gate rejected 8 candidates: 5 generic tender title without active deadline."],
+      }),
+    ).toBe(
+      "8 results found, all rejected by tender quality gates. Tender quality gate rejected 8 candidates: 5 generic tender title without active deadline.",
+    );
   });
 });
