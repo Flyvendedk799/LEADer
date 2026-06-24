@@ -105,7 +105,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
       : Array.isArray(result?.runbook)
         ? result.runbook.filter((item) => objectValue(item))
         : [];
-  const taskIds = stringList(result?.taskIds);
+  const taskIds = [...new Set([...stringList(result?.taskIds), ...stringList(result?.existingTaskIds)])];
   const dealIds = stringList(result?.dealIds);
   const tasks = taskIds.length
     ? await db.task.findMany({

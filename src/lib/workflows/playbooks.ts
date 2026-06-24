@@ -102,6 +102,7 @@ export type ResearchBriefResult = {
   createdTasks: number;
   skippedExistingTasks: number;
   taskIds: string[];
+  existingTaskIds: string[];
   checklist: ResearchChecklistItem[];
   worksheet: ResearchWorksheetSection[];
   runbook: ResearchRunbookStep[];
@@ -766,6 +767,7 @@ export async function runResearchBrief(
   const worksheet = buildResearchWorksheet(normalized, workspace);
   const runbook = buildResearchRunbook(normalized, workspace);
   const taskIds: string[] = [];
+  const existingTaskIds: string[] = [];
   let createdTasks = 0;
   let skippedExistingTasks = 0;
 
@@ -776,10 +778,13 @@ export async function runResearchBrief(
       select: { id: true, title: true },
     });
     const existingTitles = new Set(existingTasks.map((task) => task.title));
+    const existingIdsByTitle = new Map(existingTasks.map((task) => [task.title, task.id]));
 
     for (const step of checklist) {
       await throwIfWorkflowCanceled(context);
       if (existingTitles.has(step.title)) {
+        const existingTaskId = existingIdsByTitle.get(step.title);
+        if (existingTaskId) existingTaskIds.push(existingTaskId);
         skippedExistingTasks++;
         continue;
       }
@@ -798,6 +803,7 @@ export async function runResearchBrief(
       });
       taskIds.push(task.id);
       existingTitles.add(step.title);
+      existingIdsByTitle.set(step.title, task.id);
       createdTasks++;
     }
     log.push(workflowLogEntry(`Created ${createdTasks} research tasks; skipped ${skippedExistingTasks} existing tasks.`));
@@ -831,6 +837,7 @@ export async function runResearchBrief(
     createdTasks,
     skippedExistingTasks,
     taskIds,
+    existingTaskIds,
     checklist,
     worksheet,
     runbook,

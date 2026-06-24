@@ -115,4 +115,28 @@ describe("workflow playbook cancellation", () => {
       }),
     );
   });
+
+  it("returns existing research task ids when duplicate steps are skipped", async () => {
+    mocks.db.task.findMany.mockResolvedValue([
+      { id: "task-existing", title: "Research identity: Aarhus Kommune" },
+    ]);
+    mocks.db.task.create
+      .mockResolvedValueOnce({ id: "task-new-1" })
+      .mockResolvedValueOnce({ id: "task-new-2" })
+      .mockResolvedValueOnce({ id: "task-new-3" });
+
+    const result = await runResearchBrief("owner-1", "DK", {
+      subject: "Aarhus Kommune",
+      subjectType: "company",
+      objective: "find-contact",
+      depth: "quick",
+      createTasks: true,
+    });
+
+    expect(result.skippedExistingTasks).toBe(1);
+    expect(result.createdTasks).toBe(3);
+    expect(result.existingTaskIds).toEqual(["task-existing"]);
+    expect(result.taskIds).toEqual(["task-new-1", "task-new-2", "task-new-3"]);
+    expect(mocks.db.task.create).toHaveBeenCalledTimes(3);
+  });
 });
