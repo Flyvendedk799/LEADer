@@ -113,6 +113,18 @@ describe("CRM discovery lanes", () => {
 
     expect(
       laneCandidateGate(lane, {
+        title: "Godkendte rådgivere på SMV:Digital og SMV:PRO",
+        description: "Voucher and grant programme advisers for digitalization projects.",
+        rawContent: "Hvis du har fået en voucher eller bevilling kan du kontakte en godkendt rådgiver.",
+        url: "https://www.teknologisk.dk/ydelser/smv-digital-og-smv-pro/44758",
+        sourceName: "Teknologisk",
+        candidateKind: "opportunity",
+        applicationRoute: "APPLICATION",
+      }),
+    ).toEqual({ allowed: false, reason: "missing tender evidence" });
+
+    expect(
+      laneCandidateGate(lane, {
         title: "bids&tenders: Digital eProcurement Platform for USA & Canada",
         description: "bids&tenders is a digital eProcurement platform for public agencies.",
         url: "https://bidsandtenders.com/",
@@ -202,6 +214,20 @@ describe("CRM discovery lanes", () => {
         applicationRoute: "APPLICATION",
       }),
     ).toEqual({ allowed: false, reason: "research/policy services, not software delivery" });
+
+    expect(
+      laneCandidateGate(lane, {
+        title: "Concrete software tender",
+        description: "Procurement notice for software development and support. Submission deadline 30-06-2099.",
+        rawContent:
+          "Ordregiver: Kommune. Procurement notice for software development and support. Tilbudsfrist 30-06-2099.",
+        url: "https://example.dk/tenders/software-support-2026/",
+        organization: "Kommune",
+        candidateKind: "opportunity",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+      }),
+    ).toEqual({ allowed: true });
 
     expect(
       laneCandidateGate(lane, {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { __discoveryTesting } from ".";
 
 const {
+  filterTenderSearchResults,
   sanitizeUdbudDkQuery,
   udbudDkResultToCandidate,
   udbudDkSearchSeeds,
@@ -22,6 +23,88 @@ describe("udbud.dk discovery source", () => {
     expect(
       udbudDkSearchSeeds("site:mercell.com/da-dk/udbud software udvikling udbud", []),
     ).toContain("software");
+  });
+
+  it("prefilters generic, archive, and job-style web results before tender enrichment", () => {
+    const result = filterTenderSearchResults([
+      {
+        title: "Dennis på LinkedIn: software udbud og udviklerjob",
+        url: "https://dk.linkedin.com/posts/dennis-software-udbud",
+        snippet: "LinkedIn activity about startup jobs and software.",
+        sourceName: "LinkedIn",
+        provider: "brave",
+        query: "software udbud",
+      },
+      {
+        title: "Tech & Startup Jobs in Denmark | The Hub",
+        url: "https://thehub.io/jobs/location/denmark/copenhagen",
+        snippet: "Full-time and cofounder startup jobs.",
+        sourceName: "The Hub",
+        provider: "brave",
+        query: "software udbud",
+      },
+      {
+        title: "Udbud.co software tender archive",
+        url: "https://udbud.co/archive/software",
+        snippet: "Browse archived public tenders.",
+        sourceName: "Udbud.co",
+        provider: "brave",
+        query: "software udbud",
+      },
+      {
+        title: "udbud.dk",
+        url: "https://udbud.dk/Pages/Tenders/ShowTender?tenderid=61801",
+        snippet: "Old udbud.dk tender page.",
+        sourceName: "Udbud",
+        provider: "brave",
+        query: "software udbud",
+      },
+      {
+        title: "Latest 2026 IT-Software Tenders & Government Contracts",
+        url: "https://tenderimpulse.com/it-software-tenders",
+        snippet: "A tender portal and database of IT tenders with alerts.",
+        sourceName: "Tender Impulse",
+        provider: "brave",
+        query: "software udbud",
+      },
+      {
+        title: "Godkendte rådgivere på SMV:Digital og SMV:PRO",
+        url: "https://www.teknologisk.dk/ydelser/smv-digital-og-smv-pro/44758",
+        snippet: "Voucher and grant programme advisers for digitalization projects.",
+        sourceName: "Teknologisk",
+        provider: "brave",
+        query: "software udbud",
+      },
+      {
+        title: "Kontrakt om levering af drift og support af hostet servermiljø",
+        url: "https://udbud.dk/detaljevisning?noticeId=32f47e2a-3bff-4727-a49e-f68f3729982c&noticeVersion=01",
+        snippet: "Aktivt offentligt udbud om software, drift og support.",
+        sourceName: "udbud.dk",
+        provider: "brave",
+        query: "software udbud",
+      },
+      {
+        title: "Konkret softwareudbud for supportaftale",
+        url: "https://example.dk/tenders/software-support-2026/",
+        snippet: "Concrete tender page with buyer, scope and active deadline.",
+        sourceName: "Example procurement",
+        provider: "brave",
+        query: "software udbud",
+      },
+    ]);
+
+    expect(result.results.map((item) => item.title)).toEqual([
+      "Kontrakt om levering af drift og support af hostet servermiljø",
+      "Konkret softwareudbud for supportaftale",
+    ]);
+    expect(result.removed).toBe(6);
+    expect(result.reasons).toEqual([
+      "2 job/social result",
+      "1 archived tender URL",
+      "1 legacy udbud.dk archive URL",
+      "1 generic tender source, not a concrete opportunity",
+      "1 missing tender evidence",
+    ]);
   });
 
   it("maps active udbud.dk search results to concrete tender candidates", () => {

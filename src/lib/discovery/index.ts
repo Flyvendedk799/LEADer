@@ -24,6 +24,7 @@ import { detectApplicationRoute, extractBudget, extractDeadline } from "@/lib/in
 import { assertPublicUrl, safeFetch } from "@/lib/ingestion/net";
 import { fetchRssCandidates } from "@/lib/ingestion/rss";
 import { fetchWebCandidates } from "@/lib/ingestion/web";
+import { DEFAULT_DISCOVERY_LANES, filterLaneCandidates } from "@/lib/crm/lanes";
 import { hasConcreteSoftwareTenderScope, isBroadFrameworkTender, isResearchPolicyTender } from "./tender-quality";
 export { DISCOVERY_PRESETS } from "./presets";
 
@@ -187,8 +188,13 @@ const MAX_PAGE_FETCHES = 10;
 const MAX_SCAN_SOURCES = 8;
 const MAX_ATTACHMENTS = 8;
 const SEARCH_PROVIDER_TIMEOUT_MS = Math.max(3000, Number(process.env.SEARCH_PROVIDER_TIMEOUT_MS || 12000));
+const SEARCH_PROVIDER_CONCURRENCY = Math.max(
+  1,
+  Math.min(6, Number(process.env.SEARCH_PROVIDER_CONCURRENCY || 3)),
+);
 const STALE_WITHOUT_DEADLINE_DAYS = 180;
 const MAX_FEEDBACK_ROWS = 500;
+const TENDER_DISCOVERY_LANE = DEFAULT_DISCOVERY_LANES.find((lane) => lane.slug === "tenders-procurement")!;
 
 type DiscoveryFeedbackValue = "GOOD_RESULT" | "NON_LEAD";
 
@@ -1382,6 +1388,95 @@ function isTenderSearchIntent(query: string, queries: string[] = []) {
   );
 }
 
+function searchResultUrlParts(url?: string) {
+  if (!url) return { host: "", path: "", href: "" };
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname.replace(/^www\./, "").toLowerCase(),
+      path: parsed.pathname.toLowerCase(),
+      href: parsed.toString().toLowerCase(),
+    };
+  } catch {
+    return { host: "", path: "", href: url.toLowerCase() };
+  }
+}
+
+function tenderSearchResultRejectReason(result: SearchResult): string | null {
+  const { host, path, href } = searchResultUrlParts(result.url);
+  const text = `${result.title} ${result.snippet ?? ""} ${result.sourceName ?? ""}`.toLowerCase();
+  const genericListingPath =
+    path === "/" ||
+    /\/(?:alle|sources?|kilder?|udbud|indkoeb\/alle|indkøb\/alle)\/?$/.test(path);
+
+  if (/linkedin\.com/.test(host) || /thehub\.io/.test(host)) return "job/social result";
+  if (
+    /\/jobs?\b|\/careers?\b|\/stillinger?\b|\/jobopslag\b/.test(path) ||
+    /startup jobs|job posting|jobannonce|job ad|how to get .*job|full.?time|part.?time|internship|praktik|cofounder|co-founder|equity.?based|recruitment|hiring/.test(
+      text,
+    )
+  ) {
+    return "job/social result";
+  }
+
+  if (/\/(?:arkiv|archive)(?:\/|$)/.test(href)) return "archived tender URL";
+  if (host.endsWith("udbud.dk") && /\/pages\/tenders\/showtender/.test(path)) {
+    return "legacy udbud.dk archive URL";
+  }
+  if (/^(pre|test|staging)\./.test(host)) return "non-production tender URL";
+  if (/\/handlers\/file\.ashx|\/vedhaeftning\/|\.(?:pdf|docx?|xlsx?)(?:[?#]|$)/.test(`${path} ${href}`)) {
+    return "tender attachment, not notice page";
+  }
+  if (
+    !/udbud|udbudsfrist|tilbudsfrist|afgiv tilbud|indsend tilbud|public rft|request for tender|contract notice|procurement|tender|noticeid|publicpurchase|mercell|eu-supply|ethics|comdia|ted\.europa\.eu|e-avrop/.test(
+      `${text} ${href}`,
+    )
+  ) {
+    return "missing tender evidence";
+  }
+  if (
+    /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen|info\.mercell|(?:^|\.)udbud\.co$/.test(
+      host,
+    ) ||
+    genericListingPath ||
+    /find tenders?|tender portal|procurement platform|udbudsportal|udbudsliste|alle udbud|liste over|oversigt over|database|markedsplads|offentlige udbud|søg efter udbud|soeg efter udbud|komplette guide|guide til offentlige indkøb|udbudsindsigter/.test(
+      text,
+    )
+  ) {
+    return "generic tender source, not a concrete opportunity";
+  }
+
+  return null;
+}
+
+function reasonCounts(reasons: string[]) {
+  const counts = new Map<string, number>();
+  for (const reason of reasons) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => `${count} ${reason}`);
+}
+
+function filterTenderSearchResults(results: SearchResult[]) {
+  const kept: SearchResult[] = [];
+  const rejected: string[] = [];
+
+  for (const result of results) {
+    const reason = tenderSearchResultRejectReason(result);
+    if (reason) {
+      rejected.push(reason);
+      continue;
+    }
+    kept.push(result);
+  }
+
+  return {
+    results: kept,
+    removed: rejected.length,
+    reasons: reasonCounts(rejected),
+  };
+}
+
 function sanitizeUdbudDkQuery(value?: string | null) {
   const stop = new Set([
     "and",
@@ -1594,25 +1689,46 @@ async function runProviderSearch(
   workspace: Workspace,
 ): Promise<SearchResult[]> {
   const perQuery = Math.max(3, Math.ceil(maxResults / Math.max(1, queries.length)));
-  const out: SearchResult[] = [];
+  const searchOne = (query: string, limit: number) =>
+    provider === "tavily"
+      ? tavilySearch(query, limit, apiKey)
+      : provider === "brave"
+        ? braveSearch(query, limit, apiKey, workspace)
+        : serperSearch(query, limit, apiKey, workspace);
+
+  return runSearchQueriesWithConcurrency(queries, perQuery, SEARCH_PROVIDER_CONCURRENCY, searchOne);
+}
+
+async function runSearchQueriesWithConcurrency(
+  queries: string[],
+  perQuery: number,
+  concurrency: number,
+  searchOne: (query: string, limit: number) => Promise<SearchResult[]>,
+): Promise<SearchResult[]> {
+  const results: SearchResult[][] = Array.from({ length: queries.length }, () => []);
+  let nextIndex = 0;
   let lastError: unknown;
-  for (const query of queries) {
-    try {
-      const results =
-        provider === "tavily"
-          ? await tavilySearch(query, perQuery, apiKey)
-          : provider === "brave"
-            ? await braveSearch(query, perQuery, apiKey, workspace)
-            : await serperSearch(query, perQuery, apiKey, workspace);
-      out.push(...results);
-    } catch (error) {
-      lastError = error;
-    }
-    if (out.length >= maxResults * 2) break;
-  }
-  if (!out.length && lastError) {
-    throw lastError;
-  }
+
+  const workerCount = Math.max(1, Math.min(concurrency, queries.length));
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      for (;;) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= queries.length) return;
+
+        try {
+          results[index] = await searchOne(queries[index], perQuery);
+        } catch (error) {
+          lastError = error;
+          results[index] = [];
+        }
+      }
+    }),
+  );
+
+  const out = results.flat();
+  if (!out.length && lastError) throw lastError;
   return out;
 }
 
@@ -1962,6 +2078,8 @@ export const __discoveryTesting = {
   deterministicSearchPlan,
   evaluateFeedbackSignal,
   feedbackFeaturesFromCandidate,
+  filterTenderSearchResults,
+  runSearchQueriesWithConcurrency,
   savedCandidateMatch,
   sanitizeUdbudDkQuery,
   udbudDkResultToCandidate,
@@ -2023,14 +2141,13 @@ export async function runDiscoverySearch(
   let candidates: DiscoveryCandidateDto[] = [];
   let sourceScanCount = 0;
   const resultKind = input.resultKind ?? "all";
+  const tenderIntent =
+    workspace === "DK" &&
+    resultKind !== "sources" &&
+    isTenderSearchIntent(input.query, queries);
   let usedOfficialTenderIndex = false;
 
-  if (
-    workspace === "DK" &&
-    input.includeWeb !== false &&
-    resultKind !== "sources" &&
-    isTenderSearchIntent(input.query, queries)
-  ) {
+  if (input.includeWeb !== false && tenderIntent) {
     const udbudStartedAt = Date.now();
     try {
       await progress("Searching udbud.dk public tender index for active notices.");
@@ -2057,6 +2174,7 @@ export async function runDiscoverySearch(
     try {
       const webStartedAt = Date.now();
       await progress(`Starting web search with ${queries.length} probes via ${providerState.provider}.`);
+      const providerStartedAt = Date.now();
       const webResults = await runProviderSearch(
         providerState.provider,
         providerState.apiKey,
@@ -2064,10 +2182,43 @@ export async function runDiscoverySearch(
         collectionLimit,
         workspace,
       );
-      const webCandidates = await searchResultsToCandidates(webResults, user, workspace, collectionLimit, feedbackModel);
+      const providerMs = Date.now() - providerStartedAt;
+      await progress(
+        `Web provider returned ${webResults.length} raw results in ${Math.round(providerMs / 1000)}s.`,
+      );
+      if (providerMs > 30_000) {
+        warnings.push(`Web provider phase took ${Math.round(providerMs / 1000)}s.`);
+      }
+
+      const filteredWebResults = tenderIntent
+        ? filterTenderSearchResults(webResults)
+        : { results: webResults, removed: 0, reasons: [] as string[] };
+      if (filteredWebResults.removed > 0) {
+        const message =
+          `Web tender prefilter rejected ${filteredWebResults.removed} raw results: ${filteredWebResults.reasons.slice(0, 3).join("; ")}.`;
+        warnings.push(message);
+        await progress(message);
+      }
+
+      const enrichStartedAt = Date.now();
+      const webCandidates = await searchResultsToCandidates(
+        filteredWebResults.results,
+        user,
+        workspace,
+        collectionLimit,
+        feedbackModel,
+      );
       candidates.push(...webCandidates);
+      const enrichMs = Date.now() - enrichStartedAt;
+      await progress(
+        `Web result enrichment produced ${webCandidates.length} candidates in ${Math.round(enrichMs / 1000)}s.`,
+      );
+      if (enrichMs > 30_000) {
+        warnings.push(`Web result enrichment took ${Math.round(enrichMs / 1000)}s.`);
+      }
+
       const webMs = Date.now() - webStartedAt;
-      await progress(`Web search returned ${webCandidates.length} candidates in ${Math.round(webMs / 1000)}s.`);
+      await progress(`Web search returned ${webCandidates.length} candidates in ${Math.round(webMs / 1000)}s total.`);
       if (webMs > 30_000) {
         warnings.push(`Web discovery phase took ${Math.round(webMs / 1000)}s.`);
       }
@@ -2125,7 +2276,17 @@ export async function runDiscoverySearch(
     warnings.push(`${hiddenCount} expired or stale candidates were kept out of review.`);
   }
 
-  const termFiltered = filterBySearchTerms(freshCandidates, input.requiredTerms, input.excludedTerms);
+  const tenderQualityFiltered = tenderIntent
+    ? filterLaneCandidates(TENDER_DISCOVERY_LANE, freshCandidates)
+    : { candidates: freshCandidates, removed: 0, reasons: [] as string[] };
+  if (tenderQualityFiltered.removed > 0) {
+    const message =
+      `Tender quality gate rejected ${tenderQualityFiltered.removed} candidates: ${tenderQualityFiltered.reasons.slice(0, 3).join("; ")}.`;
+    warnings.push(message);
+    await progress(message);
+  }
+
+  const termFiltered = filterBySearchTerms(tenderQualityFiltered.candidates, input.requiredTerms, input.excludedTerms);
   if (termFiltered.removed > 0) {
     warnings.push(`Filtered ${termFiltered.removed} candidates by required/excluded search terms.`);
   }
@@ -2148,9 +2309,9 @@ export async function runDiscoverySearch(
   }
   await progress(`Ranked ${unique.length} candidates after filters and dedupe.`);
   const provider = usedOfficialTenderIndex
-    ? providerState.provider === "none"
-      ? "udbud.dk"
-      : `udbud.dk+${providerState.provider}`
+    ? providerState.configured && providerState.provider !== "none"
+      ? `udbud.dk+${providerState.provider}`
+      : "udbud.dk"
     : providerState.provider;
   return {
     candidates: unique,

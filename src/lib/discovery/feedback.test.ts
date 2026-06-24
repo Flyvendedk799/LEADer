@@ -8,6 +8,7 @@ const {
   deterministicSearchPlan,
   evaluateFeedbackSignal,
   feedbackFeaturesFromCandidate,
+  runSearchQueriesWithConcurrency,
   savedCandidateMatch,
 } =
   __discoveryTesting;
@@ -101,6 +102,27 @@ describe("discovery feedback learning", () => {
     expect(plan.queries.some((query) => query.includes("tilbudsfrist"))).toBe(true);
     expect(plan.avoidTerms).toContain("guide");
     expect(plan.usedAi).toBe(false);
+  });
+
+  it("runs search probes with bounded concurrency while preserving query order", async () => {
+    let active = 0;
+    let maxActive = 0;
+
+    const results = await runSearchQueriesWithConcurrency(
+      ["first", "second", "third", "fourth"],
+      1,
+      2,
+      async (query) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, query === "first" ? 12 : 1));
+        active -= 1;
+        return [{ title: query, provider: "test", query }];
+      },
+    );
+
+    expect(maxActive).toBe(2);
+    expect(results.map((result) => result.title)).toEqual(["first", "second", "third", "fourth"]);
   });
 
   it("keeps Danish search anchors in deterministic international plans", () => {

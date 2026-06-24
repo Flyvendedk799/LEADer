@@ -444,8 +444,11 @@ function hasStartupOpportunityIntent(candidate: CandidateLike, text: string, hos
 }
 
 function isGenericTenderSource(text: string, host: string, path: string) {
+  const genericListingPath =
+    path === "/" ||
+    /\/(?:alle|sources?|kilder?|udbud|indkoeb\/alle|indkøb\/alle)\/?$/.test(path);
   return /tenderimpulse|bidsandtenders|in-tend|procuman|herkules|udbudsportalen|info\.mercell|(?:^|\.)udbud\.co$/.test(host) ||
-    /\/$|\/alle\/?$|\/sources?\/?$|\/kilder?\/?$|\/udbud\/?$|\/indkoeb\/alle\/?$|\/indkøb\/alle\/?$/.test(path) ||
+    genericListingPath ||
     /find tenders?|tender portal|procurement platform|udbudsportal|udbudsliste|alle udbud|liste over|oversigt over|database|markedsplads|offentlige udbud|søg efter udbud|soeg efter udbud|komplette guide|guide til offentlige indkøb|udbudsindsigter/.test(
       text,
     );
