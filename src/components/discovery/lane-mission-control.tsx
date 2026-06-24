@@ -122,6 +122,7 @@ type MissionSummary = {
   log?: string[];
   sourceScanCount?: number;
   _count?: { candidates: number };
+  hiddenCandidateCount?: number;
 };
 
 type DiscoveryQueueSnapshot = {
@@ -164,6 +165,16 @@ function listFromInput(value: string) {
 
 function missionCandidateCount(mission: MissionSummary) {
   return mission._count?.candidates ?? 0;
+}
+
+function missionHiddenCandidateCount(mission: MissionSummary) {
+  return mission.hiddenCandidateCount ?? 0;
+}
+
+function missionCandidateSummary(mission: MissionSummary) {
+  const reviewable = missionCandidateCount(mission);
+  const hidden = missionHiddenCandidateCount(mission);
+  return hidden ? `${reviewable} reviewable · ${hidden} hidden` : `${reviewable} candidates`;
 }
 
 function missionStatusVariant(status: string): React.ComponentProps<typeof Badge>["variant"] {
@@ -246,6 +257,7 @@ function apiMissionToSummary(mission: Partial<MissionSummary> & { id: string; ca
     log: Array.isArray(mission.log) ? mission.log : [],
     sourceScanCount: mission.sourceScanCount,
     _count: mission._count ?? { candidates: mission.candidates?.length ?? 0 },
+    hiddenCandidateCount: mission.hiddenCandidateCount ?? 0,
   };
 }
 
@@ -264,6 +276,7 @@ function missionHistorySearchText(mission: MissionSummary) {
     mission.provider,
     mission.lane?.name,
     mission.query,
+    missionCandidateSummary(mission),
     ...(mission.warnings ?? []),
     ...(mission.log ?? []),
   ]
@@ -394,6 +407,7 @@ export function LaneMissionControl({
         log: data.mission.log ?? [],
         sourceScanCount: data.mission.sourceScanCount,
         _count: { candidates: data.mission.candidates?.length ?? 0 },
+        hiddenCandidateCount: data.hiddenCandidateCount ?? 0,
       });
     } catch (err) {
       if (!quiet) toast.error("Could not load mission", err instanceof Error ? err.message : "Try again");
@@ -513,6 +527,7 @@ export function LaneMissionControl({
         log: data.mission.log ?? [],
         sourceScanCount: data.mission.sourceScanCount,
         _count: { candidates: data.mission.candidates?.length ?? 0 },
+        hiddenCandidateCount: data.hiddenCandidateCount ?? 0,
       });
       toast.success(
         data.existing ? "Discovery mission already active" : "Discovery mission queued",
@@ -1026,7 +1041,7 @@ export function LaneMissionControl({
                           {missionTime(mission.startedAt)}
                         </span>
                         <span>{missionDuration(mission.startedAt, mission.finishedAt)}</span>
-                        <span>{missionCandidateCount(mission)} candidates</span>
+                        <span>{missionCandidateSummary(mission)}</span>
                       </div>
                     </button>
                     <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-border pt-2">

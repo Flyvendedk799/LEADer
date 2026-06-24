@@ -114,6 +114,22 @@ function visibleMissionCandidateMeta(mission: {
   };
 }
 
+function discoveryMissionActivityDescription(mission: {
+  lane: LaneLike | null;
+  candidates: CandidateLike[];
+  provider?: string | null;
+  log?: string[];
+  warnings: string[];
+  _count: { candidates: number };
+  query: string;
+}) {
+  const visible = visibleMissionCandidateMeta(mission);
+  const counts = visible.hiddenCandidateCount
+    ? `${visible.candidateCount} reviewable · ${visible.hiddenCandidateCount} hidden`
+    : `${visible.candidateCount} candidates`;
+  return `${counts} · ${firstQuery(mission.query)}`;
+}
+
 function alertPayload(raw: unknown) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const payload = raw as Record<string, unknown>;
@@ -696,7 +712,7 @@ export default async function WorkflowsPage() {
       id: `mission-${mission.id}`,
       kind: "mission" as const,
       title: `${mission.lane.name} mission`,
-      description: firstQuery(mission.query),
+      description: discoveryMissionActivityDescription(mission),
       status: mission.status,
       href: discoveryMissionHref(mission.id),
       createdAt: (mission.finishedAt ?? mission.startedAt).toISOString(),
