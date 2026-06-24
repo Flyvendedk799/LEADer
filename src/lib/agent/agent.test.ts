@@ -20,12 +20,34 @@ describe("platform agent", () => {
     expect(discoveryCalls[0]?.args).toMatchObject({ laneSlug: "sme-ai-automation", searchMode: "wide" });
   });
 
+  it("plans practical research briefs for contact and opportunity lookup", () => {
+    const contactCalls = planMockToolCalls("Find phone number for Mette Jensen");
+    expect(contactCalls[0]?.tool).toBe("queue_research_brief");
+    expect(contactCalls[0]?.args).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "unknown",
+      objective: "find-contact",
+      depth: "standard",
+      workspace: "DK",
+      createTasks: true,
+    });
+
+    const opportunityCalls = planMockToolCalls("Map opportunity around Acme Robotics top to bottom");
+    expect(opportunityCalls[0]?.tool).toBe("queue_research_brief");
+    expect(opportunityCalls[0]?.args).toMatchObject({
+      subject: "Acme Robotics",
+      objective: "map-opportunity",
+      depth: "deep",
+    });
+  });
+
   it("exposes both read and write platform tools", () => {
     const names = AGENT_TOOL_CATALOG.map((tool) => tool.name);
     expect(names).toContain("search_crm");
     expect(names).toContain("create_task");
     expect(names).toContain("update_deal");
     expect(names).toContain("run_discovery_lane");
+    expect(names).toContain("queue_research_brief");
     expect(AGENT_TOOL_CATALOG.some((tool) => tool.risk === "read")).toBe(true);
     expect(AGENT_TOOL_CATALOG.some((tool) => tool.risk === "write")).toBe(true);
   });

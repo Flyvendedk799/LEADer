@@ -73,6 +73,66 @@ function inferPriority(message: string): "LOW" | "MEDIUM" | "HIGH" | "URGENT" {
   return "MEDIUM";
 }
 
+function inferResearchObjective(message: string) {
+  const lower = message.toLowerCase();
+  if (/verify|confirm|identity|same person|same company|hvem er|who is/.test(lower)) return "verify-identity";
+  if (/opportunity|tender|procurement|udbud|buying signal|lead map|map.*lead|find more|explore/.test(lower)) return "map-opportunity";
+  if (/phone|telefon|mobile|email|e-mail|contact|kontakt|linkedin|reach/.test(lower)) return "find-contact";
+  return "general";
+}
+
+function inferResearchDepth(message: string) {
+  const lower = message.toLowerCase();
+  if (/deep|thorough|thorougher|top to bottom|everything|full|complete|explore/.test(lower)) return "deep";
+  if (/quick|fast|light|brief/.test(lower)) return "quick";
+  return "standard";
+}
+
+function inferResearchSubjectType(message: string) {
+  const lower = message.toLowerCase();
+  if (/person|name|founder|ceo|cto|owner|kontaktperson|medarbejder|employee/.test(lower)) return "person";
+  if (/company|account|buyer|business|organisation|organization|virksomhed|firma|kunde/.test(lower)) return "company";
+  return "unknown";
+}
+
+function cleanResearchSubject(value: string) {
+  return clean(
+    value
+      .replace(/^["'“”]+|["'“”.,;:!?]+$/g, "")
+      .replace(/\b(?:please|pls|tak|thanks)\b/gi, "")
+      .replace(/\b(?:quick|standard|deep|thorough|top to bottom|everything|full|complete)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim(),
+    160,
+  );
+}
+
+function extractResearchSubject(message: string) {
+  const text = clean(message, 500);
+  const patterns = [
+    /\b(?:find|get|look up|lookup|research|verify|map|explore)\s+(?:me\s+)?(?:the\s+)?(?:phone number|telefonnummer|phone|telefon|mobile|email|e-mail|contact route|contact details|contact info|contact|kontakt|linkedin|profile|identity)\s+(?:for|of|on|about|to)\s+(.+)$/i,
+    /\b(?:find|get|look up|lookup)\s+(.+?)\s+(?:phone number|telefonnummer|phone|telefon|mobile|email|e-mail|contact route|contact details|contact info|contact|kontakt|linkedin|profile)$/i,
+    /\b(?:research|osint|verify|map|explore)\s+(?:the\s+)?(?:person|company|account|buyer|lead|opportunity|contact)?\s*(?:for|on|about|around)?\s+(.+)$/i,
+    /\b(?:who is|hvem er)\s+(.+)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const subject = cleanResearchSubject(text.match(pattern)?.[1] ?? "");
+    if (subject.length >= 2) return subject;
+  }
+
+  return "";
+}
+
+function isResearchBriefRequest(message: string) {
+  const lower = message.toLowerCase();
+  return (
+    /\b(?:osint|research|verify|map|explore)\b/.test(lower) ||
+    /\b(?:find|get|look up|lookup)\b.*\b(?:phone|telefon|mobile|email|e-mail|contact|kontakt|linkedin|profile)\b/.test(lower) ||
+    /\b(?:who is|hvem er)\b/.test(lower)
+  );
+}
+
 export function planMockToolCalls(message: string): AgentToolCall[] {
   const text = clean(message, 1200);
   const id = extractLikelyId(text);
@@ -97,6 +157,23 @@ export function planMockToolCalls(message: string): AgentToolCall[] {
         maxResults: /many|more|wide/.test(lower) ? 12 : 8,
       },
     }];
+  }
+
+  if (isResearchBriefRequest(text)) {
+    const subject = extractResearchSubject(text);
+    if (subject) {
+      return [{
+        tool: "queue_research_brief",
+        args: {
+          subject,
+          subjectType: inferResearchSubjectType(text),
+          objective: inferResearchObjective(text),
+          depth: inferResearchDepth(text),
+          workspace: inferWorkspace(text),
+          createTasks: true,
+        },
+      }];
+    }
   }
 
   if (/save .*candidate|candidate .*deal|promote .*candidate/.test(lower) && id) {

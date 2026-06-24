@@ -5,6 +5,13 @@ import { db } from "@/lib/db";
 import { DEAL_INCLUDE, ensureAccount, getCockpit, runDiscoveryMission, saveCandidateAsDeal } from "@/lib/crm";
 import { ensureDefaultDiscoveryLanes, filterVisibleLaneCandidates } from "@/lib/crm/lanes";
 import { pursuitScore } from "@/lib/crm/scoring";
+import { workflowLogEntry, workflowQueueLogMessage } from "@/lib/workflows/logging";
+import { createWorkflowRun } from "@/lib/workflows/playbooks";
+import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
+import { enqueueWorkflowRun, visibleWorkflowQueueSnapshotForOwner, workflowQueueSnapshot } from "@/lib/workflows/queue";
+import { findActiveResearchBriefRun, researchBriefIdentityFromInput } from "@/lib/workflows/research-targets";
+import { workflowRunInputSchema } from "@/lib/workflows/types";
+import { researchBriefRunPayload } from "@/lib/workflows/usecase-actions";
 import type { ConversionAssetKind, DealStatus, TaskPriority, TaskStatus, TouchpointKind, Workspace } from "@/lib/types";
 
 const limitSchema = z.number().int().min(1).max(25).default(8);
@@ -218,6 +225,19 @@ const runDiscoveryLaneSchema = z.object({
 });
 
 const saveCandidateSchema = z.object({ candidateId: z.string().min(1) });
+
+const queueResearchBriefSchema = z.object({
+  subject: z.string().trim().min(2).max(160),
+  subjectType: z.enum(["person", "company", "unknown"]).default("unknown"),
+  objective: z.enum(["find-contact", "qualify-lead", "map-opportunity", "verify-identity", "general"]).default("find-contact"),
+  depth: z.enum(["quick", "standard", "deep"]).default("standard"),
+  workspace: workspaceSchema,
+  createTasks: z.boolean().default(true),
+  accountId: z.string().optional(),
+  personId: z.string().optional(),
+  dealId: z.string().optional(),
+  candidateId: z.string().optional(),
+});
 
 export const AGENT_TOOLS = [
   {
@@ -701,6 +721,76 @@ export const AGENT_TOOLS = [
             pursuitScore: candidate.pursuitScore,
             confidenceScore: candidate.confidenceScore,
           })),
+        },
+        mutated: true,
+      };
+    },
+  },
+  {
+    name: "queue_research_brief",
+    description: "Queue a durable OSINT-style research brief for a person, company, domain, phone, email or clue. Use for finding contact routes, phone/email, verifying identity, or mapping opportunity context.",
+    inputHint: `{ "subject": "Mette Jensen", "objective": "find-contact", "depth": "standard", "workspace": "DK" }`,
+    risk: "write",
+    schema: queueResearchBriefSchema,
+    async execute(ownerId, args) {
+      const input = workflowRunInputSchema.parse(
+        researchBriefRunPayload({
+          subject: args.subject,
+          subjectType: args.subjectType,
+          objective: args.objective,
+          depth: args.depth,
+          createTasks: args.createTasks,
+          workspace: args.workspace,
+          accountId: args.accountId,
+          personId: args.personId,
+          dealId: args.dealId,
+          candidateId: args.candidateId,
+        }),
+      );
+      const activeRuns = await db.workflowRun.findMany({
+        where: {
+          ownerId,
+          playbook: "research-brief",
+          status: { in: [...ACTIVE_WORKFLOW_RUN_STATUSES] },
+          finishedAt: null,
+        },
+        orderBy: [{ queuePriority: "desc" }, { createdAt: "asc" }],
+        take: 50,
+      });
+      const existing = findActiveResearchBriefRun(activeRuns, researchBriefIdentityFromInput(input));
+      if (existing) {
+        return {
+          tool: "queue_research_brief",
+          title: "Research brief already active",
+          summary: `Research brief already active for ${args.subject}.`,
+          data: {
+            runId: existing.id,
+            status: existing.status,
+            href: `/workflows/runs/${existing.id}`,
+            queue: await visibleWorkflowQueueSnapshotForOwner(ownerId),
+          },
+          mutated: false,
+        };
+      }
+
+      const run = await createWorkflowRun(ownerId, input, "QUEUED");
+      enqueueWorkflowRun(ownerId, run.id, input);
+      const queue = workflowQueueSnapshot(ownerId);
+      const queueLog = workflowLogEntry(workflowQueueLogMessage(run.id, queue));
+      await db.workflowRun.update({
+        where: { id: run.id },
+        data: { log: { push: queueLog } },
+      }).catch(() => {});
+
+      return {
+        tool: "queue_research_brief",
+        title: "Research brief queued",
+        summary: `Queued ${args.depth} ${args.objective.replace("-", " ")} research brief for ${args.subject}.`,
+        data: {
+          runId: run.id,
+          status: "QUEUED",
+          href: `/workflows/runs/${run.id}`,
+          queue,
         },
         mutated: true,
       };
