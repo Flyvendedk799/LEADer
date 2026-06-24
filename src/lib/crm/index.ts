@@ -89,6 +89,8 @@ type PreparedDiscoveryMission = {
   requiredTerms: string[];
   excludedTerms: string[];
   scoringLane: MissionLane;
+  discardedProbeCount: number;
+  discardedProbeReasons: string[];
 };
 
 type LaneFilteredDiscoveryCandidates = {
@@ -213,6 +215,90 @@ function queryLimitForMode(mode: DiscoverySearchMode = "balanced", explicit?: nu
   if (mode === "focused") return 3;
   if (mode === "wide") return 7;
   return 5;
+}
+
+function stripNegativeQueryModifiers(query: string) {
+  return query
+    .replace(/-\s*"[^"]*"/g, " ")
+    .replace(/-\s*'[^']*'/g, " ")
+    .replace(/-\S+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function escapedRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function positiveQueryIncludesTerm(query: string, term: string) {
+  const cleanTermValue = term.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!cleanTermValue) return false;
+  const positiveQuery = stripNegativeQueryModifiers(query);
+
+  if (cleanTermValue === "linkedin") return /(?:^|[^\w])linkedin(?:[^\w]|$)|linkedin\.com/.test(positiveQuery);
+  if (cleanTermValue === "the hub") return /the\s*hub|thehub\.io/.test(positiveQuery);
+  if (cleanTermValue === "udbud.co") return /udbud\.co/.test(positiveQuery);
+  if (cleanTermValue === "archive") return /(?:^|[^\w])archive(?:[^\w]|$)|\/archive\b/.test(positiveQuery);
+  if (cleanTermValue === "arkiv") return /(?:^|[^\w])arkiv(?:[^\w]|$)|\/arkiv\b/.test(positiveQuery);
+  if (cleanTermValue === "job" || cleanTermValue === "jobs") {
+    return /(?:^|[^\w])jobs?(?:[^\w]|$)|\/jobs?\b|careers?\b|stillinger?\b|jobopslag\b|thehub\.io/.test(
+      positiveQuery,
+    );
+  }
+
+  if (cleanTermValue.length <= 3) {
+    return new RegExp(`(^|[^a-z0-9æøå])${escapedRegExp(cleanTermValue)}([^a-z0-9æøå]|$)`, "i").test(
+      positiveQuery,
+    );
+  }
+  return positiveQuery.includes(cleanTermValue);
+}
+
+function blockedProbeReason(
+  lane: Pick<MissionLane, "negativeKeywords">,
+  query: string,
+) {
+  const priority = ["linkedin", "the hub", "udbud.co", "archive", "arkiv", "job", "jobs"];
+  const blocker = cleanTerms(lane.negativeKeywords ?? [], 24)
+    .sort((a, b) => {
+      const aIndex = priority.indexOf(a.toLowerCase());
+      const bIndex = priority.indexOf(b.toLowerCase());
+      return (aIndex === -1 ? priority.length : aIndex) - (bIndex === -1 ? priority.length : bIndex);
+    })
+    .find((term) => positiveQueryIncludesTerm(query, term));
+  return blocker ? `blocked term: ${blocker}` : null;
+}
+
+function countReasons(reasons: string[]) {
+  const counts = new Map<string, number>();
+  for (const reason of reasons) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => `${count} ${reason}`);
+}
+
+export function sanitizeDiscoveryMissionQueries(
+  lane: Pick<MissionLane, "negativeKeywords">,
+  queries: string[],
+) {
+  const accepted: string[] = [];
+  const rejectedReasons: string[] = [];
+
+  for (const query of queries) {
+    const reason = blockedProbeReason(lane, query);
+    if (reason) {
+      rejectedReasons.push(reason);
+      continue;
+    }
+    accepted.push(query);
+  }
+
+  return {
+    queries: accepted,
+    removed: rejectedReasons.length,
+    reasons: countReasons(rejectedReasons),
+  };
 }
 
 function profileString(user: {
@@ -504,10 +590,11 @@ async function prepareDiscoveryMission(
   const querySeeds = lane.slug === "tenders-procurement"
     ? [...laneQueries, ...planQueries]
     : [...planQueries, ...laneQueries];
-  const queries = cleanTerms([
+  const sanitizedQuerySeeds = sanitizeDiscoveryMissionQueries(lane as MissionLane, [
     ...querySeeds,
     ...(focus ? [`${focus} ${lane.positiveKeywords.slice(0, 5).join(" ")}`] : []),
-  ], queryCount, 360);
+  ]);
+  const queries = cleanTerms(sanitizedQuerySeeds.queries, queryCount, 360);
   const query = queries[0] || missionQuery(lane, input.query);
   const requiredTerms = cleanTerms(input.requiredTerms, 12);
   const excludedTerms = cleanTerms(
@@ -534,6 +621,8 @@ async function prepareDiscoveryMission(
     requiredTerms,
     excludedTerms,
     scoringLane,
+    discardedProbeCount: sanitizedQuerySeeds.removed,
+    discardedProbeReasons: sanitizedQuerySeeds.reasons,
   };
 }
 
@@ -650,6 +739,11 @@ export async function executeDiscoveryMission(
       const canceled = await canceledMission();
       return { mission: canceled, candidates: [] };
     }
+    if (prepared.discardedProbeCount > 0) {
+      await appendLog(
+        `Discarded ${discoveryCountLabel(prepared.discardedProbeCount, "probe")} before search: ${prepared.discardedProbeReasons.slice(0, 3).join("; ")}.`,
+      );
+    }
 
     const phaseStartedAt = Date.now();
     const officialOnlyTenderMode = isOfficialOnlyTenderInput(prepared.lane, prepared.workspace, input);
@@ -693,6 +787,11 @@ export async function executeDiscoveryMission(
       },
     });
     const warnings = [
+      ...(prepared.discardedProbeCount > 0
+        ? [
+            `Discarded ${discoveryCountLabel(prepared.discardedProbeCount, "probe")} before search: ${prepared.discardedProbeReasons.slice(0, 3).join("; ")}.`,
+          ]
+        : []),
       ...result.warnings,
       ...(laneFiltered.removed > 0
         ? [

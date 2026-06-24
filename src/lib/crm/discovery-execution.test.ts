@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => {
     evidence: {
       create: vi.fn(),
     },
+    user: {
+      findUnique: vi.fn(),
+    },
   };
   return {
     db,
@@ -33,7 +36,7 @@ vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("@/lib/discovery", () => ({ runDiscoverySearch: mocks.runDiscoverySearch }));
 vi.mock("@/lib/ai", () => ({ runAi: mocks.runAi }));
 
-import { createDiscoveryMission, executeDiscoveryMission } from ".";
+import { createDiscoveryMission, executeDiscoveryMission, sanitizeDiscoveryMissionQueries } from ".";
 
 const lane = {
   id: "lane-1",
@@ -151,6 +154,12 @@ describe("discovery mission execution", () => {
       lane,
     });
     mocks.db.evidence.create.mockResolvedValue({});
+    mocks.db.user.findUnique.mockResolvedValue({
+      headline: "Fullstack developer",
+      bio: null,
+      preferredProjectTypes: ["MVP"],
+      aiKeys: null,
+    });
     mocks.runDiscoverySearch.mockResolvedValue({
       candidates: [candidate],
       queries: ["software udbud"],
@@ -453,5 +462,118 @@ describe("discovery mission execution", () => {
         excludedTerms: expect.arrayContaining(["job", "linkedin", "the hub"]),
       }),
     );
+  });
+
+  it("drops AI-planned job and social probes before provider search", async () => {
+    const startupLane = {
+      ...lane,
+      slug: "direct-startup-mvp",
+      name: "Direct startup / MVP clients",
+      queryTemplates: ["startup MVP paid pilot Denmark"],
+      positiveKeywords: ["startup", "MVP", "prototype"],
+      negativeKeywords: ["job", "linkedin", "the hub"],
+      evidenceRequirements: ["explicit product or technical need"],
+    };
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
+      id: "mission-ai-probes",
+      status: "SUCCESS",
+      warnings: [],
+      log: [],
+      lane: startupLane,
+      candidates: [],
+    });
+    mocks.db.discoveryLane.findFirst.mockResolvedValue(startupLane);
+    mocks.runAi.mockResolvedValue({
+      mocked: false,
+      model: "test-model",
+      data: {
+        summary: "Find startup MVP work.",
+        queries: [
+          "site:linkedin.com/posts founder startup MVP udvikler Danmark",
+          "site:thehub.io startup MVP developer Denmark",
+          "startup MVP paid pilot Denmark",
+        ],
+        requiredTerms: [],
+        excludedTerms: [],
+        positiveKeywords: ["startup", "MVP"],
+        evidenceRequirements: ["explicit product or technical need"],
+        suggestedLaneSlug: "direct-startup-mvp",
+        confidence: 70,
+        notes: [],
+      },
+    });
+    mocks.runDiscoverySearch.mockResolvedValue({
+      candidates: [],
+      queries: ["startup MVP paid pilot Denmark"],
+      searchPlan: {
+        queries: ["startup MVP paid pilot Denmark"],
+        focusTerms: [],
+        avoidTerms: [],
+        rationale: "",
+        usedAi: false,
+      },
+      provider: "test",
+      providerConfigured: true,
+      sourceScanCount: 0,
+      warnings: [],
+    });
+
+    await executeDiscoveryMission("owner-1", "mission-ai-probes", {
+      laneId: "lane-1",
+      query: "Programmering af mvp",
+      useAiPlanner: true,
+      searchMode: "balanced",
+      maxResults: 8,
+      includeWeb: true,
+      includeSources: true,
+      provider: "auto",
+    });
+
+    expect(mocks.runDiscoverySearch).toHaveBeenCalledWith(
+      "owner-1",
+      expect.objectContaining({
+        queryVariants: expect.not.arrayContaining([
+          expect.stringContaining("linkedin.com"),
+          expect.stringContaining("thehub.io"),
+        ]),
+      }),
+    );
+    expect(mocks.runDiscoverySearch).toHaveBeenCalledWith(
+      "owner-1",
+      expect.objectContaining({
+        queryVariants: expect.arrayContaining(["startup MVP paid pilot Denmark"]),
+      }),
+    );
+    expect(mocks.db.discoveryMission.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          log: expect.objectContaining({
+            push: expect.stringContaining("Discarded 2 probes before search"),
+          }),
+        }),
+      }),
+    );
+    expect(mocks.db.discoveryMission.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          warnings: expect.arrayContaining([expect.stringContaining("Discarded 2 probes before search")]),
+        }),
+      }),
+    );
+  });
+
+  it("keeps negative query modifiers while blocking positive bad domains", () => {
+    const result = sanitizeDiscoveryMissionQueries(
+      { negativeKeywords: ["job", "linkedin", "the hub"] },
+      [
+        "startup MVP paid pilot Denmark -job -internship",
+        "site:linkedin.com/posts founder startup MVP udvikler Danmark",
+        "site:thehub.io startup MVP developer Denmark -internship",
+      ],
+    );
+
+    expect(result.queries).toEqual(["startup MVP paid pilot Denmark -job -internship"]);
+    expect(result.reasons).toEqual(["1 blocked term: linkedin", "1 blocked term: the hub"]);
   });
 });

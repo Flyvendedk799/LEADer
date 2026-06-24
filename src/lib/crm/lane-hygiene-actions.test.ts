@@ -55,4 +55,32 @@ describe("lane hygiene actions", () => {
       },
     });
   });
+
+  it("normalizes old auto-dismissed candidate scores", async () => {
+    mocks.db.discoveryCandidate.findMany.mockResolvedValue([
+      {
+        id: "dismissed-linkedin",
+        status: "DISMISSED",
+        dismissalReason: "Auto-dismissed by lane guard: social/profile result, not a tender notice",
+        matchScore: 92,
+        confidenceScore: 88,
+        pursuitScore: 95,
+        lane: DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "tenders-procurement")!,
+        title: "Dennis på LinkedIn: Jeg har fundet et software udbud",
+        url: "https://dk.linkedin.com/posts/dennis-software-udbud",
+      },
+    ]);
+
+    const result = await dismissInvalidNewLaneCandidates("owner-1");
+
+    expect(result).toMatchObject({ dismissed: 0, duplicated: 0, normalizedRejected: 1 });
+    expect(mocks.db.discoveryCandidate.updateMany).toHaveBeenCalledWith({
+      where: { id: "dismissed-linkedin", ownerId: "owner-1", status: "DISMISSED" },
+      data: {
+        matchScore: 0,
+        confidenceScore: 0,
+        pursuitScore: 0,
+      },
+    });
+  });
 });

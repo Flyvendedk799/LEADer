@@ -8,23 +8,54 @@ export function invalidLaneCandidateReason(candidate: CandidateLike & { lane?: L
   return gate.allowed ? null : gate.reason ?? "off-lane result";
 }
 
+const AUTO_DISMISSAL_PREFIX = "Auto-dismissed by lane guard:";
+
 function dismissalReason(reason: string) {
-  return `Auto-dismissed by lane guard: ${reason}`;
+  return `${AUTO_DISMISSAL_PREFIX} ${reason}`;
+}
+
+function dismissalSignal(reason: string) {
+  return `rejected:${reason}`;
 }
 
 export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 250) {
   const rows = await db.discoveryCandidate.findMany({
     where: {
       ownerId,
-      status: "NEW",
       laneId: { not: null },
+      OR: [
+        { status: "NEW" },
+        {
+          status: "DISMISSED",
+          dismissalReason: { startsWith: AUTO_DISMISSAL_PREFIX },
+          OR: [
+            { matchScore: { gt: 0 } },
+            { confidenceScore: { gt: 0 } },
+            { pursuitScore: { gt: 0 } },
+          ],
+        },
+      ],
     },
     include: { lane: true },
     orderBy: { createdAt: "desc" },
     take: limit,
   });
 
-  const invalid = rows
+  const newRows = rows.filter((candidate) => String(candidate.status ?? "NEW").toUpperCase() === "NEW");
+  const staleRejectedIds = rows
+    .filter((candidate) => {
+      const status = String(candidate.status ?? "").toUpperCase();
+      return (
+        status === "DISMISSED" &&
+        candidate.dismissalReason?.startsWith(AUTO_DISMISSAL_PREFIX) &&
+        ((candidate.matchScore ?? 0) > 0 ||
+          (candidate.confidenceScore ?? 0) > 0 ||
+          (candidate.pursuitScore ?? 0) > 0)
+      );
+    })
+    .map((candidate) => candidate.id);
+
+  const invalid = newRows
     .map((candidate) => ({
       id: candidate.id,
       reason: invalidLaneCandidateReason(candidate),
@@ -35,7 +66,7 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
   const seen = new Set<string>();
   const duplicateIds: string[] = [];
 
-  for (const candidate of rows) {
+  for (const candidate of newRows) {
     if (invalidIds.has(candidate.id) || !candidate.lane) continue;
     const key = discoveryCandidateDedupeKey(candidate.lane, candidate);
     if (!key) continue;
@@ -46,8 +77,14 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
     seen.add(key);
   }
 
-  if (!invalid.length && !duplicateIds.length) {
-    return { dismissed: 0, reasons: [] as string[], duplicated: 0, duplicateReasons: [] as string[] };
+  if (!invalid.length && !duplicateIds.length && !staleRejectedIds.length) {
+    return {
+      dismissed: 0,
+      reasons: [] as string[],
+      duplicated: 0,
+      duplicateReasons: [] as string[],
+      normalizedRejected: 0,
+    };
   }
 
   await Promise.all(
@@ -58,6 +95,11 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
           data: {
             status: "DISMISSED",
             dismissalReason: dismissalReason(candidate.reason),
+            matchScore: 0,
+            confidenceScore: 0,
+            pursuitScore: 0,
+            reasons: { push: `Rejected by lane guard: ${candidate.reason}` },
+            signals: { push: dismissalSignal(candidate.reason) },
           },
         }),
       ),
@@ -70,6 +112,16 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
           },
         }),
       ),
+      ...staleRejectedIds.map((id) =>
+        db.discoveryCandidate.updateMany({
+          where: { id, ownerId, status: "DISMISSED" },
+          data: {
+            matchScore: 0,
+            confidenceScore: 0,
+            pursuitScore: 0,
+          },
+        }),
+      ),
     ],
   );
 
@@ -78,5 +130,6 @@ export async function dismissInvalidNewLaneCandidates(ownerId: string, limit = 2
     reasons: [...new Set(invalid.map((candidate) => candidate.reason))],
     duplicated: duplicateIds.length,
     duplicateReasons: duplicateIds.length ? [DUPLICATE_CANDIDATE_REASON] : [],
+    normalizedRejected: staleRejectedIds.length,
   };
 }
