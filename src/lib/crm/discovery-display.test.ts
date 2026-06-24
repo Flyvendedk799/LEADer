@@ -136,4 +136,29 @@ describe("discovery display helpers", () => {
     ]);
     expect(result.reasons).toEqual(["1 archived tender URL", "1 dismissed or duplicate result"]);
   });
+
+  it("keeps tender-like rows without buyer evidence out of review", () => {
+    const lane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "tenders-procurement")!;
+    const activeDeadline = new Date(Date.now() + 30 * 86400000).toISOString();
+
+    const result = splitReviewableDiscoveryCandidates(lane, [
+      {
+        title: "Softwareudbud med aktiv tilbudsfrist",
+        description: "Aktivt udbud om softwareudvikling, drift og support. Tilbudsfrist 30-07-2099.",
+        rawContent:
+          "CPV: 72000000. Softwareudvikling, drift og support. Indsend tilbud via platform. Tilbudsfrist 30-07-2099.",
+        url: "https://example.com/tender/12345",
+        sourceName: "Tender portal",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+        status: "NEW",
+      },
+    ]);
+
+    expect(result.candidates).toEqual([]);
+    expect(result.hidden.map((candidate) => [candidate.title, candidate.hiddenReason])).toEqual([
+      ["Softwareudbud med aktiv tilbudsfrist", "missing buyer/contracting authority evidence"],
+    ]);
+    expect(result.reasons).toEqual(["1 missing buyer/contracting authority evidence"]);
+  });
 });

@@ -73,4 +73,23 @@ describe("lane hygiene", () => {
       }),
     ).toBe("social/profile result, not a tender notice");
   });
+
+  it("rejects tender-like hits that do not identify the buyer", () => {
+    const lane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "tenders-procurement")!;
+    const activeDeadline = new Date(Date.now() + 14 * 86400000).toISOString();
+
+    expect(
+      invalidLaneCandidateReason({
+        lane,
+        title: "Softwareudbud med aktiv tilbudsfrist",
+        description: "Aktivt udbud om softwareudvikling, drift og support. Tilbudsfrist 30-07-2099.",
+        rawContent:
+          "CPV: 72000000. Softwareudvikling, drift og support. Indsend tilbud via platform. Tilbudsfrist 30-07-2099.",
+        url: "https://example.com/tender/12345",
+        sourceName: "Tender portal",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+      }),
+    ).toBe("missing buyer/contracting authority evidence");
+  });
 });

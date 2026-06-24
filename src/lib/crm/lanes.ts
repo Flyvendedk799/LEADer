@@ -485,7 +485,9 @@ function isGenericTenderTitle(text: string) {
 
 function hasTenderBuyerEvidence(candidate: CandidateLike, text: string) {
   const org = `${candidate.organization ?? ""} ${candidate.sourceName ?? ""}`.toLowerCase().trim();
-  const genericOrg = !org || /^(?:udbud|udbud\.dk|mercell|eu-supply|tender impulse|bidsandtenders|in-tend|procuman|linkedin|the hub)\b/.test(org);
+  const genericOrg =
+    !org ||
+    /^(?:udbud|udbud\.dk|mercell|eu-supply|tender impulse|tender portal|procurement portal|e-procurement|bidsandtenders|in-tend|procuman|linkedin|the hub)\b/.test(org);
   return !genericOrg || /ordregiver|contracting authority|offentlig ordregiver|kommune|municipality|styrelse|ministeriet|ministry|region\b|universitet|university|hospital|agency/.test(text);
 }
 
@@ -568,6 +570,10 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
 
   if (!hasTechnicalTenderScope(evidenceText)) {
     return { allowed: false, reason: "missing software/technical scope" };
+  }
+
+  if (!hasTenderBuyerEvidence(candidate, text)) {
+    return { allowed: false, reason: "missing buyer/contracting authority evidence" };
   }
 
   return { allowed: true };
