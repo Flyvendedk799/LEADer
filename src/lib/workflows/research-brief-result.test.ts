@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   researchBriefClueSummaryFromResult,
+  researchBriefDecisionFocusFromFrame,
   researchBriefDecisionFrameFromResult,
   researchBriefRunbookFromResult,
   researchBriefWorksheetFromResult,
@@ -140,5 +141,55 @@ describe("research brief result fallbacks", () => {
       expect.arrayContaining(["primary-route", "phone-or-switchboard", "route-ownership", "next-action"]),
     );
     expect(reconstructed?.outcomes).toContain("use primary route");
+  });
+
+  it("selects operator decision focus fields for clue-based contact runs", () => {
+    const frame = researchBriefDecisionFrameFromResult(
+      { createdTasks: 0 },
+      "DK",
+      {
+        options: {
+          researchBrief: {
+            subject: "mette.jensen@northwind.dk",
+            objective: "find-contact",
+          },
+        },
+      },
+    );
+    const focus = researchBriefDecisionFocusFromFrame(frame, 5);
+
+    expect(focus.outcomes).toEqual(["use primary route", "use fallback route", "keep researching", "do not contact yet"]);
+    expect(focus.fields.map((field) => field.id)).toEqual([
+      "clue-ownership",
+      "clue-use",
+      "primary-route",
+      "phone-or-switchboard",
+      "email-or-inbox",
+    ]);
+  });
+
+  it("selects opportunity status before generic evidence fields", () => {
+    const frame = researchBriefDecisionFrameFromResult(
+      { createdTasks: 0 },
+      "DK",
+      {
+        options: {
+          researchBrief: {
+            subject: "Aarhus Kommune",
+            subjectType: "company",
+            objective: "map-opportunity",
+            depth: "deep",
+          },
+        },
+      },
+    );
+    const focus = researchBriefDecisionFocusFromFrame(frame, 4);
+
+    expect(focus.fields.map((field) => field.id)).toEqual([
+      "opportunity-status",
+      "buyer-trigger",
+      "buying-route",
+      "strongest-evidence",
+    ]);
   });
 });

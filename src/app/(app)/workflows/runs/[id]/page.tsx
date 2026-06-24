@@ -14,6 +14,7 @@ import { formatDate, truncate } from "@/lib/utils";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import {
   researchBriefClueSummaryFromResult,
+  researchBriefDecisionFocusFromFrame,
   researchBriefDecisionFrameFromResult,
   researchBriefRunbookFromResult,
   researchBriefWorksheetFromResult,
@@ -120,6 +121,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
     run.playbook === "research-brief"
       ? researchBriefDecisionFrameFromResult(result, run.workspace, input)
       : null;
+  const decisionFocus = researchBriefDecisionFocusFromFrame(decisionFrame);
   const taskIds = [...new Set([...stringList(result?.taskIds), ...stringList(result?.existingTaskIds)])];
   const dealIds = stringList(result?.dealIds);
   const tasks = taskIds.length
@@ -269,20 +271,40 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
       {run.playbook === "research-brief" && decisionFrame ? (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">{decisionFrame.title}</CardTitle>
+            <CardTitle className="text-sm">Operator decision focus</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {decisionFrame.purpose ? (
-              <p className="text-sm leading-6 text-muted-foreground">{decisionFrame.purpose}</p>
-            ) : null}
-            {decisionFrame.outcomes.length ? (
+            {decisionFocus.outcomes.length ? (
               <div className="flex flex-wrap gap-1.5">
-                {decisionFrame.outcomes.map((outcome) => (
+                {decisionFocus.outcomes.map((outcome) => (
                   <Badge key={outcome} variant="secondary" className="max-w-full truncate" title={outcome}>
                     {outcome}
                   </Badge>
                 ))}
               </div>
+            ) : null}
+            <div className="grid gap-2 lg:grid-cols-3">
+              {decisionFocus.fields.map((field) => (
+                <div key={field.id} className="rounded-md border border-border bg-surface/40 p-3">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">{field.label}</p>
+                  <p className="mt-1 text-sm leading-5">{field.prompt}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{field.evidence}</p>
+                  <SearchPromptLinks prompts={field.sourcePrompts} />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {run.playbook === "research-brief" && decisionFrame ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">{decisionFrame.title}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {decisionFrame.purpose ? (
+              <p className="text-sm leading-6 text-muted-foreground">{decisionFrame.purpose}</p>
             ) : null}
             <div className="grid gap-2 lg:grid-cols-2">
               {decisionFrame.fields.map((field) => (

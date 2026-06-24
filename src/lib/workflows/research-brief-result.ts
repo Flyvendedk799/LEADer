@@ -170,3 +170,50 @@ export function researchBriefDecisionFrameFromResult(
   if (!options) return null;
   return buildResearchDecisionFrame(normalizeResearchBriefOptions(options), researchBriefWorkspace(result, fallbackWorkspace));
 }
+
+const DECISION_FOCUS_PRIORITY = [
+  "clue-ownership",
+  "clue-use",
+  "primary-route",
+  "phone-or-switchboard",
+  "email-or-inbox",
+  "fallback-route",
+  "route-ownership",
+  "opportunity-status",
+  "buyer-trigger",
+  "buying-route",
+  "match-decision",
+  "matched-facts",
+  "conflicts",
+  "strongest-evidence",
+  "largest-risk",
+  "confidence",
+  "next-action",
+];
+
+export function researchBriefDecisionFocusFromFrame(
+  frame: ResearchDecisionFrame | null | undefined,
+  limit = 6,
+) {
+  if (!frame?.fields.length) {
+    return {
+      outcomes: [] as string[],
+      fields: [] as ResearchDecisionField[],
+    };
+  }
+  const byId = new Map(frame.fields.map((field) => [field.id, field]));
+  const selected: ResearchDecisionField[] = [];
+  for (const id of DECISION_FOCUS_PRIORITY) {
+    const field = byId.get(id);
+    if (field && !selected.some((item) => item.id === field.id)) selected.push(field);
+    if (selected.length >= limit) break;
+  }
+  for (const field of frame.fields) {
+    if (selected.length >= limit) break;
+    if (!selected.some((item) => item.id === field.id)) selected.push(field);
+  }
+  return {
+    outcomes: frame.outcomes.slice(0, 4),
+    fields: selected,
+  };
+}
