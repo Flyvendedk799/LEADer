@@ -390,6 +390,13 @@ function isJobOrRecruitingResult(text: string, host: string, path: string) {
     );
 }
 
+function isSocialOrProfileResult(host: string, path: string) {
+  return (
+    /(?:^|\.)linkedin\.com$|(?:^|\.)facebook\.com$|(?:^|\.)instagram\.com$|(?:^|\.)x\.com$|(?:^|\.)twitter\.com$/.test(host) ||
+    /\/(?:posts?|activity|in|company|people|profile)\//.test(path)
+  );
+}
+
 function isConcreteSupplierOpportunityUrl(host: string, path: string) {
   return (
     (host.endsWith("ehsys.dk") && /\/indkoeb\/tilbud\/indsend\//.test(path)) ||
@@ -486,6 +493,10 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
   if (lane.slug !== "tenders-procurement") return { allowed: true };
 
   const concreteTenderUrl = isConcreteTenderUrl(host, path, url);
+
+  if (isSocialOrProfileResult(host, path)) {
+    return { allowed: false, reason: "social/profile result, not a tender notice" };
+  }
 
   if (isJobOrRecruitingResult(text, host, path)) {
     return { allowed: false, reason: "job/recruiting result" };

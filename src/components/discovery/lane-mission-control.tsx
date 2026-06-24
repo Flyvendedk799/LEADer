@@ -46,6 +46,7 @@ import {
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
 import { discoveryMissionCanRerun, discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
+import { nextHistoryLimit } from "@/lib/history-window";
 import type { Workspace } from "@/lib/types";
 import { cn, formatBudget, formatDate, truncate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -448,10 +449,10 @@ export function LaneMissionControl({
   }, [historyLimit, loadMission]);
 
   const loadOlderMissions = React.useCallback(() => {
-    const nextLimit = Math.min(100, historyLimit + 20);
+    const nextLimit = nextHistoryLimit(historyLimit, historySearchActive);
     setHistoryLimit(nextLimit);
     void loadMissions(false, false, nextLimit);
-  }, [historyLimit, loadMissions]);
+  }, [historyLimit, historySearchActive, loadMissions]);
 
   React.useEffect(() => {
     const targetMissionId = initialMissionId?.trim() || null;
@@ -928,8 +929,28 @@ export function LaneMissionControl({
 
             {candidates.length === 0 ? (
               <Card>
-                <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                  {missionRunning ? "Mission running in background. It stays available in mission history." : "No candidates found for this mission."}
+                <CardContent className="flex flex-col items-center gap-3 py-10 text-center text-sm text-muted-foreground">
+                  <p>
+                    {missionRunning
+                      ? "Mission running in background. It stays available in mission history."
+                      : hiddenCandidateCount > 0
+                        ? `${hiddenCandidateCount} results were found but rejected by the lane quality gate.`
+                        : "No candidates found for this mission."}
+                  </p>
+                  {!missionRunning && hiddenCandidateCount > 0 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (!showHiddenCandidates) void toggleHiddenCandidates();
+                      }}
+                      disabled={refreshing || !activeMissionId}
+                    >
+                      <Eye className="h-4 w-4" />
+                      Inspect rejected results
+                    </Button>
+                  ) : null}
                 </CardContent>
               </Card>
             ) : (
@@ -1182,7 +1203,7 @@ export function LaneMissionControl({
                 onClick={loadOlderMissions}
               >
                 {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
-                Load older missions
+                {historySearchActive ? "Search older missions" : "Load older missions"}
               </Button>
             ) : null}
           </CardContent>

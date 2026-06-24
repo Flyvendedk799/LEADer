@@ -54,4 +54,23 @@ describe("lane hygiene", () => {
       }),
     ).toBe("research/policy services, not software delivery");
   });
+
+  it("rejects social posts that only talk about tenders", () => {
+    const lane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "tenders-procurement")!;
+    const activeDeadline = new Date(Date.now() + 14 * 86400000).toISOString();
+
+    expect(
+      invalidLaneCandidateReason({
+        lane,
+        title: "Dennis på LinkedIn: Jeg har fundet et software udbud",
+        description: "Post om et aktivt udbud med tilbudsfrist 30-07-2099 og software scope.",
+        rawContent:
+          "LinkedIn opslag om udbud. CPV: 72000000. Softwareudvikling. Indsend tilbud via platform. Tilbudsfrist 30-07-2099.",
+        url: "https://dk.linkedin.com/posts/dennis-software-udbud",
+        organization: "LinkedIn",
+        deadline: activeDeadline,
+        applicationRoute: "APPLICATION",
+      }),
+    ).toBe("social/profile result, not a tender notice");
+  });
 });

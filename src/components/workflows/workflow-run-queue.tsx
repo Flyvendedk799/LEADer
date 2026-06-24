@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
+import { nextHistoryLimit } from "@/lib/history-window";
 import { workflowRunCanRerun, workflowRunRerunBlockedMessage } from "@/lib/workflows/run-actions";
 import { formatDate, truncate } from "@/lib/utils";
 
@@ -219,7 +220,7 @@ export function WorkflowRunQueue({
   }, [historyLimit, live]);
 
   const loadOlderRuns = React.useCallback(async () => {
-    const nextLimit = Math.min(100, historyLimit + 20);
+    const nextLimit = nextHistoryLimit(historyLimit, historySearchActive);
     setHistoryLimit(nextLimit);
     try {
       const params = new URLSearchParams({ limit: String(nextLimit) });
@@ -232,7 +233,7 @@ export function WorkflowRunQueue({
     } catch (err) {
       toast.error("Could not load workflow history", err instanceof Error ? err.message : "Try again");
     }
-  }, [historyLimit]);
+  }, [historyLimit, historySearchActive]);
 
   async function controlRun(run: WorkflowRunQueueItem, action: WorkflowRunAction) {
     setBusyId(`${action}-${run.id}`);
@@ -495,7 +496,7 @@ export function WorkflowRunQueue({
       {canLoadOlderRuns ? (
         <Button type="button" variant="outline" size="sm" className="w-full" disabled={Boolean(busyId)} onClick={loadOlderRuns}>
           <History className="h-4 w-4" />
-          Load older playbook runs
+          {historySearchActive ? "Search older playbook runs" : "Load older playbook runs"}
         </Button>
       ) : null}
     </div>

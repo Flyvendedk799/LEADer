@@ -25,6 +25,7 @@ import { toast } from "@/hooks/use-toast";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
 import { discoveryMissionCanRerun, discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
+import { nextHistoryLimit } from "@/lib/history-window";
 import { formatDate, truncate } from "@/lib/utils";
 
 export type WorkflowDiscoveryMissionItem = {
@@ -238,7 +239,7 @@ export function WorkflowDiscoveryMissionQueue({
   }, [historyLimit, live]);
 
   const loadOlderMissions = React.useCallback(async () => {
-    const nextLimit = Math.min(100, historyLimit + 20);
+    const nextLimit = nextHistoryLimit(historyLimit, historySearchActive);
     setHistoryLimit(nextLimit);
     try {
       const params = new URLSearchParams({ limit: String(nextLimit) });
@@ -251,7 +252,7 @@ export function WorkflowDiscoveryMissionQueue({
     } catch (err) {
       toast.error("Could not load discovery history", err instanceof Error ? err.message : "Try again");
     }
-  }, [historyLimit]);
+  }, [historyLimit, historySearchActive]);
 
   async function controlMission(mission: WorkflowDiscoveryMissionItem, action: MissionAction) {
     setBusyId(`${action}-${mission.id}`);
@@ -523,7 +524,7 @@ export function WorkflowDiscoveryMissionQueue({
           onClick={loadOlderMissions}
         >
           <History className="h-4 w-4" />
-          Load older discovery runs
+          {historySearchActive ? "Search older discovery runs" : "Load older discovery runs"}
         </Button>
       ) : null}
     </div>

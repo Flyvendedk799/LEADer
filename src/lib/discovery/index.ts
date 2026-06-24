@@ -185,6 +185,10 @@ interface UserProfile {
 }
 
 const MAX_PAGE_FETCHES = 10;
+const MAX_TENDER_WEB_PAGE_FETCHES = Math.max(
+  0,
+  Math.min(MAX_PAGE_FETCHES, Number(process.env.TENDER_WEB_PAGE_FETCHES || 3)),
+);
 const MAX_SCAN_SOURCES = 8;
 const MAX_ATTACHMENTS = 8;
 const SEARCH_PROVIDER_TIMEOUT_MS = Math.max(3000, Number(process.env.SEARCH_PROVIDER_TIMEOUT_MS || 12000));
@@ -1409,7 +1413,13 @@ function tenderSearchResultRejectReason(result: SearchResult): string | null {
     path === "/" ||
     /\/(?:alle|sources?|kilder?|udbud|indkoeb\/alle|indkøb\/alle)\/?$/.test(path);
 
-  if (/linkedin\.com/.test(host) || /thehub\.io/.test(host)) return "job/social result";
+  if (
+    /linkedin\.com|facebook\.com|instagram\.com|(?:^|\.)x\.com|twitter\.com/.test(host) ||
+    /\/(?:posts?|activity|in|company|people|profile)\//.test(path) ||
+    /thehub\.io/.test(host)
+  ) {
+    return "job/social result";
+  }
   if (
     /\/jobs?\b|\/careers?\b|\/stillinger?\b|\/jobopslag\b/.test(path) ||
     /startup jobs|job posting|jobannonce|job ad|how to get .*job|full.?time|part.?time|internship|praktik|cofounder|co-founder|equity.?based|recruitment|hiring/.test(
@@ -1738,6 +1748,7 @@ async function searchResultsToCandidates(
   workspace: Workspace,
   maxResults: number,
   feedbackModel?: FeedbackSignalModel,
+  pageFetchLimit = MAX_PAGE_FETCHES,
 ): Promise<DiscoveryCandidateDto[]> {
   const candidates: DiscoveryCandidateDto[] = [];
   const seen = new Set<string>();
@@ -1745,8 +1756,9 @@ async function searchResultsToCandidates(
 
   for (const result of results) {
     if (candidates.length >= maxResults) break;
-    const page = result.url && pageFetches < MAX_PAGE_FETCHES ? await fetchReadablePage(result.url) : {};
-    if (result.url) pageFetches++;
+    const shouldFetchPage = Boolean(result.url) && pageFetches < pageFetchLimit;
+    const page = shouldFetchPage ? await fetchReadablePage(result.url) : {};
+    if (shouldFetchPage) pageFetches++;
 
     const title = cleanText(page.title || result.title, 220);
     if (!title || seen.has(result.url || title.toLowerCase())) continue;
@@ -2207,6 +2219,7 @@ export async function runDiscoverySearch(
         workspace,
         collectionLimit,
         feedbackModel,
+        tenderIntent ? MAX_TENDER_WEB_PAGE_FETCHES : MAX_PAGE_FETCHES,
       );
       candidates.push(...webCandidates);
       const enrichMs = Date.now() - enrichStartedAt;
