@@ -89,4 +89,32 @@ describe("workflow usecase actions", () => {
       },
     });
   });
+
+  it("turns operator-style research requests into clean research brief payloads", () => {
+    expect(researchBriefRunPayload({ subject: "Find phone number for Mette Jensen" })).toMatchObject({
+      playbook: "research-brief",
+      workspace: "DK",
+      options: {
+        researchBrief: {
+          subject: "Mette Jensen",
+          subjectType: "person",
+          objective: "find-contact",
+          depth: "standard",
+        },
+      },
+    });
+
+    expect(researchBriefRunPayload({ subject: "Map opportunity around Acme Robotics top to bottom" })).toMatchObject({
+      playbook: "research-brief",
+      workspace: "DK",
+      options: {
+        researchBrief: {
+          subject: "Acme Robotics",
+          subjectType: "company",
+          objective: "map-opportunity",
+          depth: "deep",
+        },
+      },
+    });
+  });
 });

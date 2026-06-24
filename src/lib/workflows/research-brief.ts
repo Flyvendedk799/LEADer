@@ -92,6 +92,71 @@ function typedValue<T extends string>(value: unknown, allowed: Set<T>, fallback:
   return typeof value === "string" && allowed.has(value as T) ? (value as T) : fallback;
 }
 
+function researchObjectiveCue(value: string): ResearchObjective | undefined {
+  const lower = value.toLowerCase();
+  if (/verify|confirm|identity|same person|same company|hvem er|who is/.test(lower)) return "verify-identity";
+  if (/opportunity|tender|procurement|udbud|buying signal|lead map|map.*lead|find more|explore/.test(lower)) {
+    return "map-opportunity";
+  }
+  if (/phone|telefon|mobile|email|e-mail|contact|kontakt|linkedin|reach/.test(lower)) return "find-contact";
+  return undefined;
+}
+
+function researchDepthCue(value: string): ResearchDepth | undefined {
+  const lower = value.toLowerCase();
+  if (/deep|thorough|thorougher|top to bottom|everything|full|complete|explore/.test(lower)) return "deep";
+  if (/quick|fast|light|brief/.test(lower)) return "quick";
+  return undefined;
+}
+
+function researchSubjectTypeCue(value: string): ResearchSubjectType | undefined {
+  const lower = value.toLowerCase();
+  if (/person|name|founder|ceo|cto|owner|kontaktperson|medarbejder|employee/.test(lower)) return "person";
+  if (/company|account|buyer|business|organisation|organization|virksomhed|firma|kunde/.test(lower)) return "company";
+  return undefined;
+}
+
+function cleanOperatorSubject(value: string) {
+  return cleanText(value, 220)
+    .replace(/^["'“”]+|["'“”.,;:!?]+$/g, "")
+    .replace(/\b(?:please|pls|tak|thanks)\b/gi, "")
+    .replace(/\b(?:quick|standard|deep|thorough|thorougher|top to bottom|everything|full|complete|brief)\b/gi, "")
+    .replace(/^(?:for|of|on|about|around|to)\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function researchSubjectFromOperatorText(value: string) {
+  const text = cleanText(value, 500);
+  const patterns = [
+    /\b(?:find|get|look up|lookup|research|verify|map|explore)\s+(?:me\s+)?(?:the\s+)?(?:phone number|telefonnummer|phone|telefon|mobile|email|e-mail|contact route|contact details|contact info|contact|kontakt|linkedin|profile|identity)\s+(?:for|of|on|about|to)\s+(.+)$/i,
+    /\b(?:find|get|look up|lookup)\s+(.+?)\s+(?:phone number|telefonnummer|phone|telefon|mobile|email|e-mail|contact route|contact details|contact info|contact|kontakt|linkedin|profile)$/i,
+    /\b(?:research|osint|verify|map|explore)\s+(?:the\s+)?(?:person|company|account|buyer|lead|opportunity|contact)?\s*(?:for|on|about|around)?\s+(.+)$/i,
+    /\b(?:who is|hvem er)\s+(.+)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const subject = cleanOperatorSubject(text.match(pattern)?.[1] ?? "");
+    if (subject.length >= 2) return subject;
+  }
+
+  return cleanOperatorSubject(text);
+}
+
+function normalizeResearchSubjectInput(value: unknown) {
+  const raw = cleanText(value, 500);
+  const objective = researchObjectiveCue(raw);
+  const depth = researchDepthCue(raw);
+  const subjectType = researchSubjectTypeCue(raw) ?? (objective === "map-opportunity" ? "company" : undefined);
+  const subject = researchSubjectFromOperatorText(raw);
+  return {
+    subject: cleanText(subject || raw, 160),
+    objective,
+    depth,
+    subjectType,
+  };
+}
+
 function quoted(subject: string) {
   return `"${subject.replace(/"/g, "")}"`;
 }
@@ -525,14 +590,22 @@ function item(
 export function normalizeResearchBriefOptions(
   options: Partial<ResearchBriefOptions> | null | undefined,
 ): NormalizedResearchBriefOptions {
-  const subject = cleanText(options?.subject, 160);
-  const subjectType = inferredSubjectType(subject, typedValue(options?.subjectType, SUBJECT_TYPES, "unknown"));
-  const objective = inferredObjective(subject, subjectType, typedValue(options?.objective, OBJECTIVES, "qualify-lead"));
+  const parsed = normalizeResearchSubjectInput(options?.subject);
+  const subject = parsed.subject;
+  const requestedSubjectType = typedValue(options?.subjectType, SUBJECT_TYPES, "unknown");
+  const requestedObjective = typedValue(options?.objective, OBJECTIVES, "qualify-lead");
+  const requestedDepth = typedValue(options?.depth, DEPTHS, "standard");
+  const subjectTypeSeed =
+    requestedSubjectType === "unknown" && parsed.subjectType ? parsed.subjectType : requestedSubjectType;
+  const objectiveSeed =
+    requestedObjective === "qualify-lead" && parsed.objective ? parsed.objective : requestedObjective;
+  const subjectType = inferredSubjectType(subject, subjectTypeSeed);
+  const objective = inferredObjective(subject, subjectType, objectiveSeed);
   return {
     subject,
     subjectType,
     objective,
-    depth: typedValue(options?.depth, DEPTHS, "standard"),
+    depth: requestedDepth === "standard" && parsed.depth ? parsed.depth : requestedDepth,
     accountId: cleanText(options?.accountId, 120) || undefined,
     personId: cleanText(options?.personId, 120) || undefined,
     dealId: cleanText(options?.dealId, 120) || undefined,

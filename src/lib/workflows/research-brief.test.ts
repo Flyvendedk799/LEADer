@@ -32,6 +32,27 @@ describe("research brief workflow helpers", () => {
     });
   });
 
+  it("normalizes operator-style research requests into clean subjects", () => {
+    expect(normalizeResearchBriefOptions({ subject: "Find phone number for Mette Jensen" })).toMatchObject({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+      depth: "standard",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Map opportunity around Acme Robotics top to bottom" })).toMatchObject({
+      subject: "Acme Robotics",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Who is +45 12 34 56 78?" })).toMatchObject({
+      subject: "+45 12 34 56 78",
+      objective: "verify-identity",
+    });
+  });
+
   it("builds a public-source contact checklist from a person clue", () => {
     const options = normalizeResearchBriefOptions({
       subject: "  Mette Jensen  ",
