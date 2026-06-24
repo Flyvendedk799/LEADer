@@ -38,6 +38,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ScoreBadge } from "@/components/shared/score-badge";
+import {
+  discoveryCandidateHashId,
+  discoveryRejectedAnchorKey,
+  shouldLoadRejectedDiscoveryAnchor,
+} from "@/lib/discovery-anchors";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
 import { discoveryMissionCanRerun, discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
@@ -307,6 +312,7 @@ export function LaneMissionControl({
 }) {
   const router = useRouter();
   const initialMissionLoadedRef = React.useRef<string | null>(null);
+  const hiddenAnchorLoadRef = React.useRef<string | null>(null);
   const [laneId, setLaneId] = React.useState(lanes[0]?.id ?? "");
   const [workspace, setWorkspace] = React.useState<Workspace>(initialWorkspace);
   const [query, setQuery] = React.useState("");
@@ -458,12 +464,34 @@ export function LaneMissionControl({
 
   React.useEffect(() => {
     if (!result || !window.location.hash) return;
-    const hashId = decodeURIComponent(window.location.hash.slice(1));
-    if (!hashId.startsWith("candidate-")) return;
+    const hashId = discoveryCandidateHashId(window.location.hash);
+    if (!hashId) return;
+    const target = document.getElementById(hashId);
+    if (target) {
+      hiddenAnchorLoadRef.current = null;
+      window.requestAnimationFrame(() => {
+        target.scrollIntoView({ block: "start" });
+      });
+      return;
+    }
+
+    if (shouldLoadRejectedDiscoveryAnchor({
+      activeMissionId,
+      hashId,
+      rejectedCandidateCount: hiddenCandidateCount,
+      rejectedResultsOpen: showHiddenCandidates,
+      attemptedKey: hiddenAnchorLoadRef.current,
+    }) && activeMissionId) {
+      hiddenAnchorLoadRef.current = discoveryRejectedAnchorKey(activeMissionId, hashId);
+      setShowHiddenCandidates(true);
+      void loadMission(activeMissionId, true, false, true);
+      return;
+    }
+
     window.requestAnimationFrame(() => {
       document.getElementById(hashId)?.scrollIntoView({ block: "start" });
     });
-  }, [result]);
+  }, [activeMissionId, hiddenCandidateCount, loadMission, result, showHiddenCandidates]);
 
   React.useEffect(() => {
     if (!activeMissionId || !missionRunning) return undefined;
