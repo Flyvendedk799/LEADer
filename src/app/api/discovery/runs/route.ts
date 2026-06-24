@@ -60,11 +60,15 @@ function discoveryHistorySearchText(mission: {
   workspace?: string | null;
   provider?: string | null;
   query?: string | null;
-  lane?: { name?: string | null; slug?: string | null } | null;
+  lane?: LaneLike | null;
   warnings?: string[];
   log?: string[];
   candidates?: CandidateLike[];
 }) {
+  const reviewableCandidates = filterReviewableDiscoveryCandidates(
+    mission.lane,
+    mission.candidates ?? [],
+  ).candidates;
   return [
     mission.id,
     mission.status,
@@ -75,7 +79,7 @@ function discoveryHistorySearchText(mission: {
     mission.lane?.slug,
     ...(mission.warnings ?? []),
     ...(mission.log ?? []),
-    ...(mission.candidates ?? []).flatMap((candidate) => [
+    ...reviewableCandidates.flatMap((candidate) => [
       candidate.title,
       candidate.description,
       candidate.rawContent,

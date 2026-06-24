@@ -184,7 +184,14 @@ function missionHiddenCandidateCount(mission: MissionSummary) {
 function missionCandidateSummary(mission: MissionSummary) {
   const reviewable = missionCandidateCount(mission);
   const hidden = missionHiddenCandidateCount(mission);
-  if (!reviewable && hidden) return `0 reviewable · ${hidden} rejected only`;
+  if (!reviewable && hidden) {
+    return mission.lane?.slug === "tenders-procurement"
+      ? `0 active tenders · ${hidden} rejected diagnostics`
+      : `0 reviewable · ${hidden} rejected diagnostics`;
+  }
+  if (mission.lane?.slug === "tenders-procurement") {
+    return hidden ? `${reviewable} active tenders · ${hidden} rejected diagnostics` : `${reviewable} active tenders`;
+  }
   return hidden ? `${reviewable} reviewable · ${hidden} rejected` : `${reviewable} reviewable`;
 }
 
@@ -211,10 +218,10 @@ export function missionTenderQualitySummary(mission: MissionTenderQualitySummary
   );
 
   if (reviewable > 0) {
-    return `${plural(reviewable, "active tender")} ready for review${rejected ? ` · ${plural(rejected, "rejected result")}` : ""}${official ? " · official udbud.dk" : ""}.`;
+    return `${plural(reviewable, "active tender")} ready for review${rejected ? ` · ${plural(rejected, "rejected diagnostic")}` : ""}${official ? " · official udbud.dk" : ""}.`;
   }
   if (rejected > 0) {
-    return `${plural(rejected, "result")} found, all rejected by tender quality gates.${qualityLine ? ` ${qualityLine}` : ""}`;
+    return `0 active tenders ready. ${plural(rejected, "non-tender/off-scope result")} rejected by tender quality gates.${qualityLine ? ` ${qualityLine}` : ""}`;
   }
   if (mission.status === "SUCCESS" && official) {
     return "No active software tender notices survived the official udbud.dk filters.";
@@ -482,12 +489,13 @@ export function LaneMissionControl({
     if (officialTenderMode) setIncludeSources(false);
   }, [officialTenderMode]);
 
-  const loadMission = React.useCallback(async (id: string, quiet = false, syncUrl = true, includeHidden = showHiddenCandidates) => {
+  const loadMission = React.useCallback(async (id: string, quiet = false, syncUrl = true, includeHidden = false) => {
     if (!quiet) setRefreshing(true);
     try {
       const res = await fetch(`/api/discovery/runs/${id}${includeHidden ? "?includeHidden=1" : ""}`, { cache: "no-store" });
       const data = (await res.json()) as MissionDetailResponse;
       if (!res.ok) throw new Error(data?.error || "Could not load mission");
+      if (!includeHidden) setShowHiddenCandidates(false);
       setResult(data);
       syncLaneFromMission(data.mission);
       setQueueState(normalizeQueue(data.queue));
@@ -515,7 +523,7 @@ export function LaneMissionControl({
     } finally {
       if (!quiet) setRefreshing(false);
     }
-  }, [mergeMission, showHiddenCandidates, syncLaneFromMission, syncMissionUrl]);
+  }, [mergeMission, syncLaneFromMission, syncMissionUrl]);
 
   const loadMissions = React.useCallback(async (
     openLatest = false,
@@ -604,11 +612,11 @@ export function LaneMissionControl({
   React.useEffect(() => {
     if (!activeMissionId || !missionRunning) return undefined;
     const timer = window.setInterval(() => {
-      void loadMission(activeMissionId, true);
+      void loadMission(activeMissionId, true, true, showHiddenCandidates);
       void loadMissions(false, true);
     }, 3500);
     return () => window.clearInterval(timer);
-  }, [activeMissionId, loadMission, loadMissions, missionRunning]);
+  }, [activeMissionId, loadMission, loadMissions, missionRunning, showHiddenCandidates]);
 
   React.useEffect(() => {
     if (!historySearchActive) return undefined;
@@ -1036,7 +1044,7 @@ export function LaneMissionControl({
                       disabled={refreshing || !activeMissionId}
                     >
                       <Eye className="h-4 w-4" />
-                      {showHiddenCandidates ? "Hide rejected" : `Rejected: ${hiddenCandidateCount}`}
+                      {showHiddenCandidates ? "Hide diagnostics" : `Diagnostics: ${hiddenCandidateCount}`}
                     </Button>
                   ) : null}
                   {["NEW", "REVIEWED", "SAVED", "DISMISSED", "DUPLICATE"].map((status) => (
@@ -1053,7 +1061,7 @@ export function LaneMissionControl({
                     {missionRunning
                       ? "Mission running in background. It stays available in mission history."
                       : hiddenCandidateCount > 0
-                        ? `${hiddenCandidateCount} results were found but rejected by the lane quality gate.`
+                        ? `${hiddenCandidateCount} results were filtered out by the lane quality gate.`
                         : (tenderQualitySummary ?? "No candidates found for this mission.")}
                   </p>
                   {!missionRunning && hiddenCandidateCount > 0 ? (
@@ -1067,7 +1075,7 @@ export function LaneMissionControl({
                       disabled={refreshing || !activeMissionId}
                     >
                       <Eye className="h-4 w-4" />
-                      Inspect rejected results
+                      Inspect rejection diagnostics
                     </Button>
                   ) : null}
                 </CardContent>
@@ -1081,7 +1089,12 @@ export function LaneMissionControl({
             {showHiddenCandidates && hiddenCandidates.length > 0 ? (
               <div className="space-y-2 rounded-lg border border-dashed border-warning/50 bg-warning/5 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium">Rejected results</p>
+                  <div>
+                    <p className="text-sm font-medium">Rejection diagnostics</p>
+                    <p className="text-xs text-muted-foreground">
+                      Filtered rows are kept for audit only; they are not reviewable discoveries.
+                    </p>
+                  </div>
                   <Badge variant="warning">{hiddenCandidates.length}</Badge>
                 </div>
                 {hiddenCandidates.map((candidate) => (
@@ -1627,7 +1640,7 @@ function CandidateCard({
 function RejectedCandidateRow({ candidate }: { candidate: Candidate }) {
   const sourceText =
     [candidate.organization, candidate.sourceName, candidate.provider].filter(Boolean).join(" · ") ||
-    "Rejected discovery result";
+    "Filtered discovery row";
   const reason = candidate.hiddenReason || candidate.status.toLowerCase();
 
   return (
@@ -1638,18 +1651,18 @@ function RejectedCandidateRow({ candidate }: { candidate: Candidate }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="warning">rejected</Badge>
+            <Badge variant="warning">filtered out</Badge>
             <Badge variant="outline" className="max-w-full truncate" title={reason}>{reason}</Badge>
-            <h3 className="min-w-0 text-sm font-medium leading-snug text-foreground">{candidate.title}</h3>
+            <h3 className="min-w-0 text-sm font-medium leading-snug text-muted-foreground">{candidate.title}</h3>
           </div>
-          <p className="text-xs text-muted-foreground">{sourceText}</p>
+          <p className="text-xs text-muted-foreground">Not a reviewable lead · {sourceText}</p>
           <p className="text-sm leading-6 text-muted-foreground">
             {truncate(candidate.description || candidate.rawContent, 320)}
           </p>
         </div>
         {candidate.url ? (
           <p className="max-w-full break-all font-mono text-[11px] leading-5 text-warning" title={candidate.url}>
-            Rejected URL: {truncate(candidate.url, 140)}
+            Filtered URL: {truncate(candidate.url, 140)}
           </p>
         ) : null}
       </div>

@@ -84,7 +84,7 @@ describe("lane mission history", () => {
         _count: { candidates: 4 },
         hiddenCandidateCount: 1,
       }),
-    ).toBe("4 active tenders ready for review · 1 rejected result · official udbud.dk.");
+    ).toBe("4 active tenders ready for review · 1 rejected diagnostic · official udbud.dk.");
 
     expect(
       missionTenderQualitySummary({
@@ -96,7 +96,7 @@ describe("lane mission history", () => {
         warnings: ["Tender quality gate rejected 8 candidates: 5 generic tender title without active deadline."],
       }),
     ).toBe(
-      "8 results found, all rejected by tender quality gates. Tender quality gate rejected 8 candidates: 5 generic tender title without active deadline.",
+      "0 active tenders ready. 8 non-tender/off-scope results rejected by tender quality gates. Tender quality gate rejected 8 candidates: 5 generic tender title without active deadline.",
     );
   });
 });

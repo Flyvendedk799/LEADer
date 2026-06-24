@@ -225,6 +225,48 @@ describe("discovery run API controls", () => {
     ]);
   });
 
+  it("does not match discovery history search on rejected candidate text", async () => {
+    mocks.filterReviewableDiscoveryCandidates.mockImplementation((_lane, candidates) => ({
+      candidates: candidates.filter((candidate: { status?: string }) => candidate.status !== "DISMISSED"),
+      removed: candidates.filter((candidate: { status?: string }) => candidate.status === "DISMISSED").length,
+      reasons: ["1 social/profile result, not a tender notice"],
+    }));
+    mocks.hiddenDiscoveryCandidatesWarning.mockReturnValue("1 rejected result was kept out of review.");
+    mocks.db.discoveryMission.findMany.mockResolvedValue([
+      {
+        id: "mission-rejected-only",
+        status: "SUCCESS",
+        workspace: "DK",
+        provider: "brave",
+        query: "software udbud",
+        lane: { id: "lane-tender", name: "Tenders", slug: "tenders-procurement" },
+        candidates: [
+          {
+            title: "Dennis på LinkedIn: Jeg har fundet et software udbud",
+            description: "LinkedIn activity about startup jobs and software.",
+            rawContent: "",
+            url: "https://dk.linkedin.com/posts/dennis-software-udbud",
+            organization: "LinkedIn",
+            sourceName: "LinkedIn",
+            sourceKind: "web-search",
+            category: "social",
+            status: "DISMISSED",
+            applicationRoute: "APPLICATION",
+          },
+        ],
+        warnings: [],
+        log: [],
+        _count: { candidates: 1 },
+      },
+    ]);
+
+    const response = await GET(getRequest("?q=Dennis%20LinkedIn&scope=all&limit=20"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.missions).toEqual([]);
+  });
+
   it("preserves expanded discovery history after canceling live missions", async () => {
     mocks.db.discoveryMission.findMany
       .mockResolvedValueOnce([])
