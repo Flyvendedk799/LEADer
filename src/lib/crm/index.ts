@@ -108,6 +108,33 @@ function missionSurfaces(input: Pick<DiscoveryMissionInput, "includeWeb" | "incl
   ].filter(Boolean).join(" + ") || "none";
 }
 
+function isOfficialOnlyTenderInput(
+  lane: Pick<MissionLane, "slug">,
+  workspace: Workspace,
+  input: Pick<DiscoveryMissionInput, "provider" | "searchMode">,
+) {
+  return (
+    lane.slug === "tenders-procurement" &&
+    workspace === "DK" &&
+    input.provider === "auto" &&
+    input.searchMode !== "wide"
+  );
+}
+
+function missionStartMessage(
+  status: string,
+  lane: Pick<MissionLane, "slug">,
+  workspace: Workspace,
+  input: Pick<DiscoveryMissionInput, "includeWeb" | "includeSources" | "provider" | "searchMode">,
+) {
+  const verb = status === "RUNNING" ? "Started" : "Queued";
+  const mode = input.searchMode ?? "balanced";
+  if (isOfficialOnlyTenderInput(lane, workspace, input)) {
+    return `${verb} ${mode} mission for official udbud.dk active notices using auto.`;
+  }
+  return `${verb} ${mode} mission for ${missionSurfaces(input)} using ${input.provider}.`;
+}
+
 function host(url?: string | null) {
   if (!url) return undefined;
   try {
@@ -483,7 +510,14 @@ async function prepareDiscoveryMission(
   ], queryCount, 360);
   const query = queries[0] || missionQuery(lane, input.query);
   const requiredTerms = cleanTerms(input.requiredTerms, 12);
-  const excludedTerms = cleanTerms([...(input.excludedTerms ?? []), ...(plan?.excludedTerms ?? [])], 12);
+  const excludedTerms = cleanTerms(
+    [
+      ...(input.excludedTerms ?? []),
+      ...(plan?.excludedTerms ?? []),
+      ...(lane.negativeKeywords ?? []),
+    ],
+    18,
+  );
   const scoringLane: MissionLane = {
     ...(lane as MissionLane),
     positiveKeywords: cleanTerms([...(lane.positiveKeywords ?? []), ...(plan?.positiveKeywords ?? [])], 24),
@@ -530,9 +564,7 @@ export async function createDiscoveryMission(
       provider: input.provider,
       status,
       log: [
-        discoveryLogEntry(
-          `${status === "RUNNING" ? "Started" : "Queued"} ${input.searchMode ?? "balanced"} mission for ${missionSurfaces(input)} using ${input.provider}.`,
-        ),
+        discoveryLogEntry(missionStartMessage(status, lane as MissionLane, workspace, input)),
         ...(input.useAiPlanner ? [discoveryLogEntry("AI query planner requested.")] : []),
       ],
     },
@@ -620,11 +652,7 @@ export async function executeDiscoveryMission(
     }
 
     const phaseStartedAt = Date.now();
-    const officialOnlyTenderMode =
-      prepared.lane.slug === "tenders-procurement" &&
-      prepared.workspace === "DK" &&
-      input.provider === "auto" &&
-      input.searchMode !== "wide";
+    const officialOnlyTenderMode = isOfficialOnlyTenderInput(prepared.lane, prepared.workspace, input);
     const broadWebProvider = officialOnlyTenderMode ? "none" : input.provider;
     const includeSources = officialOnlyTenderMode ? false : input.includeSources;
     if (officialOnlyTenderMode) {

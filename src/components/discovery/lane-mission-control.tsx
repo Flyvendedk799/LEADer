@@ -180,6 +180,7 @@ function missionHiddenCandidateCount(mission: MissionSummary) {
 function missionCandidateSummary(mission: MissionSummary) {
   const reviewable = missionCandidateCount(mission);
   const hidden = missionHiddenCandidateCount(mission);
+  if (!reviewable && hidden) return `0 reviewable · ${hidden} rejected only`;
   return hidden ? `${reviewable} reviewable · ${hidden} rejected` : `${reviewable} reviewable`;
 }
 
@@ -881,6 +882,7 @@ export function LaneMissionControl({
                     {result.mission.workspace ? (
                       <Badge variant="outline">{result.mission.workspace === "GLOBAL" ? "International" : "Denmark"}</Badge>
                     ) : null}
+                    {!candidates.length && hiddenCandidateCount > 0 ? <Badge variant="warning">all rejected</Badge> : null}
                     {activeQueueLabel ? <Badge variant="secondary">{activeQueueLabel}</Badge> : null}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -966,7 +968,7 @@ export function LaneMissionControl({
                   <Badge variant="warning">{hiddenCandidates.length}</Badge>
                 </div>
                 {hiddenCandidates.map((candidate) => (
-                  <CandidateCard key={`hidden-${candidate.id}`} candidate={candidate} onAction={candidateAction} hidden />
+                  <RejectedCandidateRow key={`hidden-${candidate.id}`} candidate={candidate} />
                 ))}
               </div>
             ) : null}
@@ -1474,6 +1476,46 @@ function CandidateCard({
           )}
         </div>
       ) : null}
+    </article>
+  );
+}
+
+function RejectedCandidateRow({ candidate }: { candidate: Candidate }) {
+  const sourceText =
+    [candidate.organization, candidate.sourceName, candidate.provider].filter(Boolean).join(" · ") ||
+    "Rejected discovery result";
+  const reason = candidate.hiddenReason || candidate.status.toLowerCase();
+
+  return (
+    <article
+      id={`candidate-${candidate.id}`}
+      className="scroll-mt-24 rounded-md border border-dashed border-warning/50 bg-warning/5 p-3"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="warning">rejected</Badge>
+            <Badge variant="outline" className="max-w-full truncate" title={reason}>{reason}</Badge>
+            <h3 className="min-w-0 text-sm font-medium leading-snug text-foreground">{candidate.title}</h3>
+          </div>
+          <p className="text-xs text-muted-foreground">{sourceText}</p>
+          <p className="text-sm leading-6 text-muted-foreground">
+            {truncate(candidate.description || candidate.rawContent, 320)}
+          </p>
+        </div>
+        {candidate.url ? (
+          <a
+            href={candidate.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex shrink-0 items-center gap-1 text-xs text-warning hover:underline"
+            title="Open rejected source for diagnostics"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Diagnostic source
+          </a>
+        ) : null}
+      </div>
     </article>
   );
 }

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const db = {
     discoveryMission: {
+      create: vi.fn(),
       updateMany: vi.fn(),
       update: vi.fn(),
       findFirst: vi.fn(),
@@ -32,7 +33,7 @@ vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("@/lib/discovery", () => ({ runDiscoverySearch: mocks.runDiscoverySearch }));
 vi.mock("@/lib/ai", () => ({ runAi: mocks.runAi }));
 
-import { executeDiscoveryMission } from ".";
+import { createDiscoveryMission, executeDiscoveryMission } from ".";
 
 const lane = {
   id: "lane-1",
@@ -117,6 +118,14 @@ function activeTenderCandidate() {
 describe("discovery mission execution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.db.discoveryMission.create.mockResolvedValue({
+      id: "created-mission",
+      status: "QUEUED",
+      warnings: [],
+      log: [],
+      lane,
+      candidates: [],
+    });
     mocks.db.discoveryMission.updateMany.mockResolvedValue({ count: 1 });
     mocks.db.discoveryMission.update.mockResolvedValue({});
     mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "CANCELED" });
@@ -364,6 +373,84 @@ describe("discovery mission execution", () => {
             push: expect.stringContaining("official udbud.dk active notices only"),
           }),
         }),
+      }),
+    );
+  });
+
+  it("describes queued automatic Danish tender missions as official udbud.dk searches", async () => {
+    mocks.db.discoveryLane.findFirst.mockResolvedValue(tenderLane);
+
+    await createDiscoveryMission("owner-1", {
+      laneId: "tender-lane-1",
+      query: "software udbud",
+      useAiPlanner: false,
+      searchMode: "balanced",
+      maxResults: 8,
+      includeWeb: true,
+      includeSources: true,
+      provider: "auto",
+    });
+
+    expect(mocks.db.discoveryMission.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          log: expect.arrayContaining([
+            expect.stringContaining("Queued balanced mission for official udbud.dk active notices using auto."),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it("passes lane negative keywords into discovery search exclusions", async () => {
+    const startupLane = {
+      ...lane,
+      slug: "direct-startup-mvp",
+      name: "Direct startup / MVP clients",
+      negativeKeywords: ["job", "linkedin", "the hub"],
+      evidenceRequirements: ["explicit product or technical need"],
+    };
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
+      id: "mission-4",
+      status: "SUCCESS",
+      warnings: [],
+      log: [],
+      lane: startupLane,
+      candidates: [],
+    });
+    mocks.db.discoveryLane.findFirst.mockResolvedValue(startupLane);
+    mocks.runDiscoverySearch.mockResolvedValue({
+      candidates: [],
+      queries: ["startup mvp"],
+      searchPlan: {
+        queries: ["startup mvp"],
+        focusTerms: [],
+        avoidTerms: [],
+        rationale: "",
+        usedAi: false,
+      },
+      provider: "test",
+      providerConfigured: true,
+      sourceScanCount: 0,
+      warnings: [],
+    });
+
+    await executeDiscoveryMission("owner-1", "mission-4", {
+      laneId: "lane-1",
+      query: "startup mvp",
+      useAiPlanner: false,
+      searchMode: "balanced",
+      maxResults: 8,
+      includeWeb: true,
+      includeSources: true,
+      provider: "auto",
+    });
+
+    expect(mocks.runDiscoverySearch).toHaveBeenCalledWith(
+      "owner-1",
+      expect.objectContaining({
+        excludedTerms: expect.arrayContaining(["job", "linkedin", "the hub"]),
       }),
     );
   });

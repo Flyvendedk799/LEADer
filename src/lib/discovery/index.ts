@@ -815,7 +815,7 @@ async function buildSearchPlan(
   }
 }
 
-function cleanSearchTerms(values: string[] = [], limit = 12) {
+function cleanSearchTerms(values: string[] = [], limit = 18) {
   return uniqueStrings(values.map((value) => cleanText(value, 80).toLowerCase()).filter(Boolean), limit);
 }
 

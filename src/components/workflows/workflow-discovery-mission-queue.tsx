@@ -129,6 +129,15 @@ function firstQuery(value = "") {
   return value.split("\n").map((item) => item.trim()).filter(Boolean)[0] || "Discovery mission";
 }
 
+function missionCandidateSummary(mission: WorkflowDiscoveryMissionItem) {
+  if (!mission.candidateCount && mission.hiddenCandidateCount) {
+    return `0 reviewable · ${mission.hiddenCandidateCount} rejected only`;
+  }
+  return mission.hiddenCandidateCount
+    ? `${mission.candidateCount} reviewable · ${mission.hiddenCandidateCount} rejected`
+    : `${mission.candidateCount} reviewable`;
+}
+
 function sortMissionsWithQueue(items: WorkflowDiscoveryMissionItem[], queue: DiscoveryQueueSnapshot) {
   const queueIndex = new Map(queue.queuedMissionIds.map((id, index) => [id, index]));
   const rank = (mission: WorkflowDiscoveryMissionItem) => {
@@ -392,6 +401,7 @@ export function WorkflowDiscoveryMissionQueue({
                   <p className="truncate text-sm font-medium">{mission.laneName}</p>
                   <Badge variant={statusVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
                   {mission.provider ? <Badge variant="outline">{mission.provider}</Badge> : null}
+                  {!mission.candidateCount && mission.hiddenCandidateCount ? <Badge variant="warning">all rejected</Badge> : null}
                   {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
                 </div>
                 <p className="mt-1 truncate text-xs text-muted-foreground">{firstQuery(mission.query)}</p>
@@ -405,14 +415,7 @@ export function WorkflowDiscoveryMissionQueue({
                 <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
                   <Radar className="h-3.5 w-3.5" />
                   <span className="whitespace-nowrap">{missionDuration(mission.startedAt, mission.finishedAt)}</span>
-                  <span className="whitespace-nowrap">
-                    {mission.hiddenCandidateCount
-                      ? `${mission.candidateCount} reviewable`
-                      : `${mission.candidateCount} reviewable`}
-                  </span>
-                  {mission.hiddenCandidateCount ? (
-                    <span className="whitespace-nowrap">{mission.hiddenCandidateCount} rejected</span>
-                  ) : null}
+                  <span className="whitespace-nowrap">{missionCandidateSummary(mission)}</span>
                 </div>
                 {moveable ? (
                   <>
