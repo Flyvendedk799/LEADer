@@ -116,5 +116,18 @@ describe("workflow usecase actions", () => {
         },
       },
     });
+
+    expect(researchBriefRunPayload({ subject: "Find new things about Acme Robotics top to bottom" })).toMatchObject({
+      playbook: "research-brief",
+      workspace: "DK",
+      options: {
+        researchBrief: {
+          subject: "Acme Robotics",
+          subjectType: "company",
+          objective: "map-opportunity",
+          depth: "deep",
+        },
+      },
+    });
   });
 });

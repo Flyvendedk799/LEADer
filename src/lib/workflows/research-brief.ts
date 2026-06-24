@@ -120,7 +120,7 @@ function typedValue<T extends string>(value: unknown, allowed: Set<T>, fallback:
 function researchObjectiveCue(value: string): ResearchObjective | undefined {
   const lower = value.toLowerCase();
   if (/verify|verificer|bekræft|bekraeft|confirm|identity|identitet|same person|same company|hvem er|who is/.test(lower)) return "verify-identity";
-  if (/opportunity|mulighed|muligheder|tender|procurement|udbud|buying signal|lead map|map.*lead|kortlæg|kortlaeg|find more|explore|udforsk/.test(lower)) {
+  if (/opportunity|mulighed|muligheder|tender|procurement|udbud|buying signal|lead map|map.*lead|kortlæg|kortlaeg|find more|find new things|new things|explore|udforsk/.test(lower)) {
     return "map-opportunity";
   }
   if (/phone|telefon|telefonnummer|mobile|email|e-mail|\bmail\b|contact|kontakt|kontaktinfo|kontaktoplysninger|linkedin|reach/.test(lower)) return "find-contact";
@@ -146,6 +146,7 @@ function cleanOperatorSubject(value: string) {
     .replace(/^["'“”]+|["'“”.,;:!?]+$/g, "")
     .replace(/\b(?:please|pls|tak|thanks)\b/gi, "")
     .replace(/\b(?:quick|standard|deep|thorough|thorougher|top to bottom|top til bund|everything|full|complete|brief)\b/gi, "")
+    .replace(/\s+\b(?:international|global|globally|remote|europe|eu|danmark|denmark|dk)\b$/i, "")
     .replace(/^(?:for|of|on|about|around|to|til|om|på|pa|hos|vedrørende|vedroerende|angående|angaaende)\s+/i, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -156,6 +157,7 @@ function researchSubjectFromOperatorText(value: string) {
   const patterns = [
     /\b(?:find|get|look up|lookup|research|undersøg|undersoeg|verify|verificer|bekræft|bekraeft|map|kortlæg|kortlaeg|explore|udforsk)\s+(?:me\s+)?(?:the\s+)?(?:phone number|telefonnummer|phone|telefon|mobile|email|e-mail|mail|contact route|contact details|contact info|kontaktinfo|kontaktoplysninger|contact|kontakt|linkedin|profile|identity|identitet)\s+(?:for|of|on|about|to|til|om|på|pa|hos|vedrørende|vedroerende|angående|angaaende)\s+(.+)$/i,
     /\b(?:find|get|look up|lookup|hent|slå op|slaa op)\s+(.+?)\s+(?:phone number|telefonnummer|phone|telefon|mobile|email|e-mail|mail|contact route|contact details|contact info|kontaktinfo|kontaktoplysninger|contact|kontakt|linkedin|profile)$/i,
+    /\b(?:find more|find new things|go deep|deep dive|top to bottom|explore more|udforsk mere|find nye ting)\s*(?:for|on|about|around|to|til|om|på|pa|hos|vedrørende|vedroerende|angående|angaaende)?\s+(.+)$/i,
     /\b(?:research|undersøg|undersoeg|osint|verify|verificer|bekræft|bekraeft|map|kortlæg|kortlaeg|explore|udforsk)\s+(?:the\s+)?(?:person|company|account|buyer|lead|opportunity|mulighed|muligheder|contact|kontakt)?\s*(?:for|on|about|around|to|til|om|på|pa|hos|vedrørende|vedroerende|angående|angaaende)?\s+(.+)$/i,
     /\b(?:who is|hvem er)\s+(.+)$/i,
   ];

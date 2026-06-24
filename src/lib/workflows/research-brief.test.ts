@@ -49,6 +49,20 @@ describe("research brief workflow helpers", () => {
       depth: "deep",
     });
 
+    expect(normalizeResearchBriefOptions({ subject: "Find new things about Acme Robotics top to bottom" })).toMatchObject({
+      subject: "Acme Robotics",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+    });
+
+    expect(normalizeResearchBriefOptions({ subject: "Find new things about Acme Robotics top to bottom international" })).toMatchObject({
+      subject: "Acme Robotics",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+    });
+
     expect(normalizeResearchBriefOptions({ subject: "Who is +45 12 34 56 78?" })).toMatchObject({
       subject: "+45 12 34 56 78",
       objective: "verify-identity",

@@ -9,7 +9,12 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-import { RESEARCH_BRIEF_STARTERS, ResearchBriefLauncher } from "./research-brief-launcher";
+import {
+  RESEARCH_BRIEF_STARTERS,
+  ResearchBriefLauncher,
+  selectResearchPreviewRunbookSteps,
+} from "./research-brief-launcher";
+import { buildResearchRunbook, normalizeResearchBriefOptions } from "@/lib/workflows/research-brief";
 
 describe("ResearchBriefLauncher", () => {
   it("renders practical starter presets for common research flows", () => {
@@ -34,14 +39,16 @@ describe("ResearchBriefLauncher", () => {
       objective: "map-opportunity",
       depth: "deep",
     });
-    expect(html).toContain("Name to contact");
-    expect(html).toContain("Company contact");
-    expect(html).toContain("Clue lookup");
-    expect(html).toContain("Opportunity map");
-    expect(html).toContain("Verify match");
+    expect(html).toContain("Name to phone/email");
+    expect(html).toContain("Resolve person, affiliation, and public route.");
+    expect(html).toContain("Company route");
+    expect(html).toContain("Email/domain/phone clue");
+    expect(html).toContain("Top-to-bottom opportunity");
+    expect(html).toContain("Verify same-name match");
     expect(html).toContain("find contact");
     expect(html).toContain("Resolve the exact subject");
-    expect(html).toContain("Find current affiliation");
+    expect(html).toContain("Build the contact route ladder");
+    expect(html).toContain("If no result:");
     expect(html).toContain("Mette Jensen");
   });
 
@@ -54,5 +61,22 @@ describe("ResearchBriefLauncher", () => {
     expect(html).toContain("Domain: northwind.dk");
     expect(html).toContain("Name hint: mette jensen");
     expect(html).toContain("find contact");
+  });
+
+  it("previews objective-critical runbook steps instead of only the first steps", () => {
+    const normalized = normalizeResearchBriefOptions({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+      depth: "standard",
+    });
+    const steps = selectResearchPreviewRunbookSteps(buildResearchRunbook(normalized, "DK"), normalized.objective);
+
+    expect(steps.map((step) => step.id)).toEqual([
+      "resolve-subject",
+      "search-public-surfaces",
+      "contact-route-ladder",
+      "next-action",
+    ]);
   });
 });

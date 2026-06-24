@@ -29,7 +29,7 @@ describe("platform agent", () => {
     expect(contactCalls[0]?.tool).toBe("queue_research_brief");
     expect(contactCalls[0]?.args).toMatchObject({
       subject: "Mette Jensen",
-      subjectType: "unknown",
+      subjectType: "person",
       objective: "find-contact",
       depth: "standard",
       workspace: "DK",
@@ -62,6 +62,19 @@ describe("platform agent", () => {
       subjectType: "company",
       objective: "map-opportunity",
       depth: "deep",
+    });
+  });
+
+  it("routes broad exploration language into deep opportunity research", () => {
+    const exploreCalls = planMockToolCalls("Find new things about Acme Robotics top to bottom international");
+
+    expect(exploreCalls[0]?.tool).toBe("queue_research_brief");
+    expect(exploreCalls[0]?.args).toMatchObject({
+      subject: "Acme Robotics",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+      workspace: "GLOBAL",
     });
   });
 

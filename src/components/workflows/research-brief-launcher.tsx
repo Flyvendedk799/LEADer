@@ -15,6 +15,7 @@ import {
   buildResearchRunbook,
   normalizeResearchBriefOptions,
   researchSubjectClueSummary,
+  type ResearchRunbookStep,
 } from "@/lib/workflows/research-brief";
 import { researchBriefRunPayload } from "@/lib/workflows/usecase-actions";
 
@@ -34,7 +35,8 @@ type WorkflowRunResponse = {
 export const RESEARCH_BRIEF_STARTERS = [
   {
     id: "name-contact",
-    label: "Name to contact",
+    label: "Name to phone/email",
+    description: "Resolve person, affiliation, and public route.",
     subjectType: "person",
     objective: "find-contact",
     depth: "standard",
@@ -42,7 +44,8 @@ export const RESEARCH_BRIEF_STARTERS = [
   },
   {
     id: "company-contact",
-    label: "Company contact",
+    label: "Company route",
+    description: "Official switchboard, role inbox, and owner.",
     subjectType: "company",
     objective: "find-contact",
     depth: "standard",
@@ -50,7 +53,8 @@ export const RESEARCH_BRIEF_STARTERS = [
   },
   {
     id: "clue-lookup",
-    label: "Clue lookup",
+    label: "Email/domain/phone clue",
+    description: "Turn one clue into identity and next pivots.",
     subjectType: "unknown",
     objective: "qualify-lead",
     depth: "standard",
@@ -58,7 +62,8 @@ export const RESEARCH_BRIEF_STARTERS = [
   },
   {
     id: "opportunity-map",
-    label: "Opportunity map",
+    label: "Top-to-bottom opportunity",
+    description: "Signals, routes, tenders, and next action.",
     subjectType: "company",
     objective: "map-opportunity",
     depth: "deep",
@@ -66,7 +71,8 @@ export const RESEARCH_BRIEF_STARTERS = [
   },
   {
     id: "verify-match",
-    label: "Verify match",
+    label: "Verify same-name match",
+    description: "Confirm, reject, or keep unresolved.",
     subjectType: "unknown",
     objective: "verify-identity",
     depth: "standard",
@@ -75,11 +81,37 @@ export const RESEARCH_BRIEF_STARTERS = [
 ] satisfies Array<{
   id: string;
   label: string;
+  description: string;
   subjectType: ResearchSubjectType;
   objective: ResearchObjective;
   depth: ResearchDepth;
   icon: React.ComponentType<{ className?: string }>;
 }>;
+
+export function selectResearchPreviewRunbookSteps(
+  steps: ResearchRunbookStep[],
+  objective: ResearchObjective,
+) {
+  const preferred =
+    objective === "find-contact"
+      ? ["resolve-subject", "search-public-surfaces", "contact-route-ladder", "next-action"]
+      : objective === "map-opportunity" || objective === "qualify-lead"
+        ? ["resolve-subject", "expand-source-pivots", "opportunity-signal-map", "next-action"]
+        : objective === "verify-identity"
+          ? ["resolve-subject", "verification-decision", "next-action"]
+          : ["resolve-subject", "expand-source-pivots", "next-action"];
+
+  const selected: ResearchRunbookStep[] = [];
+  for (const id of preferred) {
+    const step = steps.find((item) => item.id === id);
+    if (step && !selected.some((item) => item.id === step.id)) selected.push(step);
+  }
+  for (const step of steps) {
+    if (selected.length >= 4) break;
+    if (!selected.some((item) => item.id === step.id)) selected.push(step);
+  }
+  return selected.slice(0, 4);
+}
 
 export function ResearchBriefLauncher({
   defaultSubject = "",
@@ -122,7 +154,10 @@ export function ResearchBriefLauncher({
     return {
       normalized,
       clues: researchSubjectClueSummary(trimmed),
-      runbook: buildResearchRunbook(normalized, workspace).slice(0, 3),
+      runbook: selectResearchPreviewRunbookSteps(
+        buildResearchRunbook(normalized, workspace),
+        normalized.objective,
+      ),
     };
   }, [createTasks, selectedDepth, selectedObjective, selectedType, subject, workspace]);
 
@@ -188,7 +223,7 @@ export function ResearchBriefLauncher({
         </Button>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {RESEARCH_BRIEF_STARTERS.map((starter) => {
           const Icon = starter.icon;
           const active =
@@ -201,11 +236,16 @@ export function ResearchBriefLauncher({
               type="button"
               variant={active ? "secondary" : "outline"}
               size="sm"
-              className="h-auto min-h-8 justify-start whitespace-normal text-left"
+              className="h-auto min-h-14 items-start justify-start gap-2 whitespace-normal text-left"
               onClick={() => applyStarter(starter)}
             >
-              <Icon className="h-4 w-4" />
-              {starter.label}
+              <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">{starter.label}</span>
+                <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">
+                  {starter.description}
+                </span>
+              </span>
             </Button>
           );
         })}
@@ -301,6 +341,11 @@ export function ResearchBriefLauncher({
                       </Badge>
                     ))}
                   </div>
+                ) : null}
+                {step.ifNoResult?.[0] ? (
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    <span className="font-medium text-foreground">If no result:</span> {step.ifNoResult[0]}
+                  </p>
                 ) : null}
               </div>
             ))}
