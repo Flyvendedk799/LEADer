@@ -12,6 +12,7 @@ import { enqueueWorkflowRun, visibleWorkflowQueueSnapshotForOwner, workflowQueue
 import { findActiveResearchBriefRun, researchBriefIdentityFromInput } from "@/lib/workflows/research-targets";
 import { workflowRunInputSchema } from "@/lib/workflows/types";
 import { researchBriefRunPayload } from "@/lib/workflows/usecase-actions";
+import { discoveryMissionHref } from "@/lib/discovery-links";
 import type { ConversionAssetKind, DealStatus, TaskPriority, TaskStatus, TouchpointKind, Workspace } from "@/lib/types";
 
 const limitSchema = z.number().int().min(1).max(25).default(8);
@@ -711,6 +712,7 @@ export const AGENT_TOOLS = [
         summary: `Ran ${lane.name}; found ${result.mission.candidates.length} candidates.`,
         data: {
           missionId: result.mission.id,
+          href: discoveryMissionHref(result.mission.id),
           lane: lane.name,
           queries: result.queries,
           plan: result.plan,

@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, CheckCircle2, Loader2, Send, Sparkles, Wrench } from "lucide-react";
+import { Bot, CheckCircle2, ExternalLink, Loader2, Send, Sparkles, Wrench } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ type AgentMessage = {
     title: string;
     summary: string;
     mutated?: boolean;
+    data?: unknown;
   }[];
   mocked?: boolean;
 };
@@ -49,6 +51,32 @@ const STARTERS = [
 
 function messageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function toolResultData(result: Pick<NonNullable<AgentMessage["toolResults"]>[number], "data">) {
+  return result.data && typeof result.data === "object" && !Array.isArray(result.data)
+    ? result.data as Record<string, unknown>
+    : {};
+}
+
+export function agentToolResultAction(result: NonNullable<AgentMessage["toolResults"]>[number]) {
+  const data = toolResultData(result);
+  const href =
+    typeof data.href === "string"
+      ? data.href
+      : result.tool === "run_discovery_lane" && typeof data.missionId === "string"
+        ? `/discover?mission=${encodeURIComponent(data.missionId)}`
+        : result.tool === "queue_research_brief" && typeof data.runId === "string"
+          ? `/workflows/runs/${encodeURIComponent(data.runId)}`
+          : null;
+  if (!href) return null;
+  const label =
+    result.tool === "run_discovery_lane"
+      ? "Open mission"
+      : result.tool === "queue_research_brief"
+        ? "Open run"
+        : "Open";
+  return { href, label };
 }
 
 export function PlatformAgent() {
@@ -193,14 +221,7 @@ export function PlatformAgent() {
                 {message.toolResults?.length ? (
                   <div className="mt-3 space-y-2 border-t border-border pt-3">
                     {message.toolResults.map((result, index) => (
-                      <div key={`${result.tool}-${index}`} className="rounded-md bg-surface/70 p-2 text-xs">
-                        <div className="mb-1 flex items-center gap-2 font-medium">
-                          {result.mutated ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <Wrench className="h-3.5 w-3.5 text-muted-foreground" />}
-                          {result.title}
-                          <Badge variant={result.mutated ? "success" : "outline"}>{result.tool}</Badge>
-                        </div>
-                        <p className="leading-5 text-muted-foreground">{result.summary}</p>
-                      </div>
+                      <AgentToolResultCard key={`${result.tool}-${index}`} result={result} />
                     ))}
                   </div>
                 ) : null}
@@ -239,5 +260,27 @@ export function PlatformAgent() {
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function AgentToolResultCard({ result }: { result: NonNullable<AgentMessage["toolResults"]>[number] }) {
+  const action = agentToolResultAction(result);
+  return (
+    <div className="rounded-md bg-surface/70 p-2 text-xs">
+      <div className="mb-1 flex flex-wrap items-center gap-2 font-medium">
+        {result.mutated ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <Wrench className="h-3.5 w-3.5 text-muted-foreground" />}
+        {result.title}
+        <Badge variant={result.mutated ? "success" : "outline"}>{result.tool}</Badge>
+      </div>
+      <p className="leading-5 text-muted-foreground">{result.summary}</p>
+      {action ? (
+        <Button asChild variant="outline" size="sm" className="mt-2 h-7">
+          <Link href={action.href}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            {action.label}
+          </Link>
+        </Button>
+      ) : null}
+    </div>
   );
 }
