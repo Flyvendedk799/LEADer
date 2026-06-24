@@ -18,10 +18,19 @@ export default async function DiscoverPage({
   const initialWorkspace = workspaceFromRoute("/discover", searchParams);
   await ensureDefaultDiscoveryLanes(ownerId);
   await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
-  const lanes = await db.discoveryLane.findMany({
-    where: { ownerId, active: true },
-    orderBy: { createdAt: "asc" },
-  });
+  const [lanes, latestMission] = await Promise.all([
+    db.discoveryLane.findMany({
+      where: { ownerId, active: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    initialMissionId
+      ? Promise.resolve(null)
+      : db.discoveryMission.findFirst({
+          where: { ownerId },
+          orderBy: { startedAt: "desc" },
+          select: { laneId: true },
+        }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -29,7 +38,12 @@ export default async function DiscoverPage({
         title="Discovery mission control"
         description="Run focused acquisition lanes, inspect evidence, and promote candidates into deals."
       />
-      <LaneMissionControl lanes={lanes} initialMissionId={initialMissionId} initialWorkspace={initialWorkspace} />
+      <LaneMissionControl
+        lanes={lanes}
+        initialLaneId={latestMission?.laneId}
+        initialMissionId={initialMissionId}
+        initialWorkspace={initialWorkspace}
+      />
     </div>
   );
 }

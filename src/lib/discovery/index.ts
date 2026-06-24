@@ -1911,6 +1911,12 @@ async function maybeAiSummary(
   }
 }
 
+function shouldUseDeterministicDiscoverySummary(
+  meta: Pick<DiscoveryCandidateDto, "sourceName" | "provider">,
+) {
+  return meta.provider === "udbud.dk" || meta.sourceName === "udbud.dk";
+}
+
 async function toDiscoveryDto(
   c: OpportunityCandidate,
   user: UserProfile,
@@ -1946,7 +1952,8 @@ async function toDiscoveryDto(
     query: meta.query,
     signals: baseSignals,
   });
-  const aiSummary = feedbackInsight.suppress
+  const skipAiSummary = shouldUseDeterministicDiscoverySummary(meta);
+  const aiSummary = feedbackInsight.suppress || skipAiSummary
     ? undefined
     : await maybeAiSummary(c, user, candidateKind, priceText);
   const summaryDa = cleanText(aiSummary || buildDanishSummary(c, candidateKind, priceText), 900);
@@ -2094,6 +2101,7 @@ export const __discoveryTesting = {
   runSearchQueriesWithConcurrency,
   savedCandidateMatch,
   sanitizeUdbudDkQuery,
+  shouldUseDeterministicDiscoverySummary,
   udbudDkResultToCandidate,
   udbudDkSearchSeeds,
 };

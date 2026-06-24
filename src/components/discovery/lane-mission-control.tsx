@@ -55,7 +55,7 @@ type Provider = "auto" | "tavily" | "brave" | "serper" | "none";
 type CandidateAction = "review" | "save" | "dismiss" | "duplicate";
 type MissionAction = "CANCEL" | "RERUN" | "MOVE_UP" | "MOVE_DOWN" | "MOVE_TOP";
 type HistoryScope = "current-lane" | "all";
-export const DEFAULT_HISTORY_SCOPE: HistoryScope = "all";
+export const DEFAULT_HISTORY_SCOPE: HistoryScope = "current-lane";
 
 type MissionLaneSummary = { id: string; name: string; slug?: string | null };
 
@@ -357,19 +357,33 @@ export function missionMatchesHistoryScope(
   return mission.lane?.id === selectedLaneId;
 }
 
+export function selectMissionToOpen(
+  missions: MissionSummary[],
+  selectedLaneId: string | null | undefined,
+  scope: HistoryScope,
+) {
+  return missions.find((mission) => missionMatchesHistoryScope(mission, selectedLaneId, scope)) ?? missions[0] ?? null;
+}
+
 export function LaneMissionControl({
   lanes,
+  initialLaneId,
   initialMissionId,
   initialWorkspace = "DK",
 }: {
   lanes: DiscoveryLane[];
+  initialLaneId?: string | null;
   initialMissionId?: string | null;
   initialWorkspace?: Workspace;
 }) {
   const router = useRouter();
-  const initialMissionLoadedRef = React.useRef<string | null>(null);
+  const initialMissionLoadedRef = React.useRef<string | null | undefined>(undefined);
   const hiddenAnchorLoadRef = React.useRef<string | null>(null);
-  const [laneId, setLaneId] = React.useState(lanes[0]?.id ?? "");
+  const [laneId, setLaneId] = React.useState(() =>
+    initialLaneId && lanes.some((lane) => lane.id === initialLaneId)
+      ? initialLaneId
+      : lanes[0]?.id ?? "",
+  );
   const [workspace, setWorkspace] = React.useState<Workspace>(initialWorkspace);
   const [query, setQuery] = React.useState("");
   const [provider, setProvider] = React.useState<Provider>("auto");
@@ -459,6 +473,12 @@ export function LaneMissionControl({
   }, [initialWorkspace]);
 
   React.useEffect(() => {
+    if (initialLaneId && lanes.some((lane) => lane.id === initialLaneId)) {
+      setLaneId(initialLaneId);
+    }
+  }, [initialLaneId, lanes]);
+
+  React.useEffect(() => {
     if (officialTenderMode) setIncludeSources(false);
   }, [officialTenderMode]);
 
@@ -509,15 +529,16 @@ export function LaneMissionControl({
       setMissions(loaded);
       setQueueState(normalizeQueue(data.queue));
       setLastUpdatedAt(new Date());
-      if (openLatest && loaded[0]) {
-        void loadMission(loaded[0].id, true, false);
+      const missionToOpen = openLatest ? selectMissionToOpen(loaded, laneId, historyScope) : null;
+      if (missionToOpen) {
+        void loadMission(missionToOpen.id, true, false);
       }
     } catch (err) {
       if (!quiet) toast.error("Could not load missions", err instanceof Error ? err.message : "Try again");
     } finally {
       if (!quiet) setRefreshing(false);
     }
-  }, [historyLimit, loadMission]);
+  }, [historyLimit, historyScope, laneId, loadMission]);
 
   const loadOlderMissions = React.useCallback(() => {
     const nextLimit = nextHistoryLimit(historyLimit, historySearchActive);

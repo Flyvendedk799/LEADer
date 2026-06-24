@@ -11,6 +11,7 @@ import {
   mergeMissionHistory,
   missionMatchesHistoryScope,
   missionTenderQualitySummary,
+  selectMissionToOpen,
   type MissionSummary,
 } from "./lane-mission-control";
 
@@ -28,8 +29,8 @@ function mission(index: number, laneId?: string): MissionSummary {
 }
 
 describe("lane mission history", () => {
-  it("defaults history to all lanes so old runs stay recoverable", () => {
-    expect(DEFAULT_HISTORY_SCOPE).toBe("all");
+  it("defaults history to the active lane so unrelated old runs do not pollute review", () => {
+    expect(DEFAULT_HISTORY_SCOPE).toBe("current-lane");
   });
 
   it("preserves the loaded history window when a mission refresh is merged", () => {
@@ -62,6 +63,16 @@ describe("lane mission history", () => {
     expect(missionMatchesHistoryScope(tenderMission, "tender-lane", "current-lane")).toBe(true);
     expect(missionMatchesHistoryScope(startupMission, "tender-lane", "current-lane")).toBe(false);
     expect(missionMatchesHistoryScope(startupMission, "tender-lane", "all")).toBe(true);
+  });
+
+  it("opens the latest mission from the selected lane while keeping all-lane fallback available", () => {
+    const startupMission = mission(2, "startup-lane");
+    const tenderMission = { ...mission(1, "tender-lane"), startedAt: "2026-06-24T09:00:00.000Z" };
+    const loaded = [startupMission, tenderMission];
+
+    expect(selectMissionToOpen(loaded, "tender-lane", "current-lane")?.id).toBe("mission-1");
+    expect(selectMissionToOpen(loaded, "tender-lane", "all")?.id).toBe("mission-2");
+    expect(selectMissionToOpen(loaded, "missing-lane", "current-lane")?.id).toBe("mission-2");
   });
 
   it("summarizes official tender run quality in mission history", () => {

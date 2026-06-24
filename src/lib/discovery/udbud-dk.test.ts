@@ -5,6 +5,7 @@ import { __discoveryTesting } from ".";
 const {
   filterTenderSearchResults,
   sanitizeUdbudDkQuery,
+  shouldUseDeterministicDiscoverySummary,
   udbudDkResultToCandidate,
   udbudDkSearchSeeds,
 } = __discoveryTesting;
@@ -140,6 +141,21 @@ describe("udbud.dk discovery source", () => {
     expect(candidate?.deadline?.toISOString()).toBe(deadline);
     expect(candidate?.url).toContain("noticeId=3e7ca982-c07b-421e-ae75-c771014a708a");
     expect(candidate?.rawContent).toContain("CPV: 72000000");
+  });
+
+  it("keeps official udbud.dk notices on deterministic summaries", () => {
+    expect(
+      shouldUseDeterministicDiscoverySummary({
+        sourceName: "udbud.dk",
+        provider: "udbud.dk",
+      }),
+    ).toBe(true);
+    expect(
+      shouldUseDeterministicDiscoverySummary({
+        sourceName: "Brave",
+        provider: "brave",
+      }),
+    ).toBe(false);
   });
 
   it("drops decade-long DIS/catalogue notices from the official source", () => {
