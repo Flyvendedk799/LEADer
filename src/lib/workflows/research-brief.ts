@@ -55,6 +55,23 @@ export type ResearchRunbookStep = {
   routePriority?: string[];
 };
 
+export type ResearchDecisionField = {
+  id: string;
+  label: string;
+  prompt: string;
+  evidence: string;
+  sourcePrompts: string[];
+};
+
+export type ResearchDecisionFrame = {
+  id: string;
+  title: string;
+  purpose: string;
+  outcomes: string[];
+  confidenceScale: string[];
+  fields: ResearchDecisionField[];
+};
+
 type ResearchStepTemplate = [
   stage: string,
   title: string,
@@ -474,6 +491,22 @@ function worksheetField(
     id,
     label,
     capture,
+    evidence,
+    sourcePrompts: sourcePrompts.slice(0, 5),
+  };
+}
+
+function decisionField(
+  id: string,
+  label: string,
+  prompt: string,
+  evidence: string,
+  sourcePrompts: string[],
+): ResearchDecisionField {
+  return {
+    id,
+    label,
+    prompt,
     evidence,
     sourcePrompts: sourcePrompts.slice(0, 5),
   };
@@ -1022,6 +1055,179 @@ export function buildResearchWorksheet(
   });
 
   return sections;
+}
+
+export function buildResearchDecisionFrame(
+  options: NormalizedResearchBriefOptions,
+  workspace: Workspace,
+): ResearchDecisionFrame {
+  const { subject, subjectType, objective } = options;
+  const prompts = {
+    official: officialPrompts(subject, workspace, subjectType),
+    affiliation: affiliationPrompts(subject, workspace),
+    contact: contactPrompts(subject, workspace),
+    opportunity: opportunityPrompts(subject, workspace),
+    surface: subjectType === "person" ? personSurfacePrompts(subject, workspace) : domainSurfacePrompts(subject, workspace),
+  };
+  const fields: ResearchDecisionField[] = [
+    decisionField(
+      "outcome",
+      "Outcome",
+      "Choose the final label for this research pass.",
+      "The label follows from the evidence captured below, not from a hunch.",
+      [`${quoted(subject)} official`, `${quoted(subject)} profile`, `${quoted(subject)} contact`],
+    ),
+  ];
+
+  if (objective === "find-contact" || objective === "general") {
+    fields.push(
+      decisionField(
+        "primary-route",
+        "Primary route",
+        "The safest public route to use first.",
+        "Official contact page, switchboard, staff/team page, role inbox, or public professional profile tied to the subject.",
+        prompts.contact,
+      ),
+      decisionField(
+        "fallback-route",
+        "Fallback route",
+        "The second route if the primary route fails.",
+        "Fallback is public, role-relevant, and does not rely on private or leaked data.",
+        [...prompts.surface, ...prompts.contact],
+      ),
+      decisionField(
+        "phone-or-switchboard",
+        "Phone or switchboard",
+        "Public direct phone, department number, main switchboard, or reason no phone should be used.",
+        "Phone is tied to the exact person, role, department, or organization by an official/public source.",
+        [`${quoted(subject)} telefon`, `${quoted(subject)} phone`, `${quoted(subject)} CVR telefon`, ...prompts.contact],
+      ),
+      decisionField(
+        "email-or-inbox",
+        "Email or inbox",
+        "Direct email, role inbox, contact form, domain pattern candidate, or reason email should not be used.",
+        "Direct email is intentionally public and ownership is confirmed; guessed patterns stay marked unverified.",
+        [`${quoted(subject)} email`, `${quoted(subject)} kontakt`, `${quoted(subject)} contact form`, ...domainSurfacePrompts(subject, workspace)],
+      ),
+      decisionField(
+        "route-ownership",
+        "Route ownership",
+        "Why this route belongs to the exact person, role, company, or department.",
+        "Ownership is backed by current affiliation, official domain, staff page, public profile, or registry evidence.",
+        [...prompts.affiliation, ...prompts.surface],
+      ),
+    );
+  }
+
+  if (objective === "map-opportunity" || objective === "qualify-lead") {
+    fields.push(
+      decisionField(
+        "opportunity-status",
+        "Opportunity status",
+        "Concrete opportunity, weak signal, monitor only, or no opportunity.",
+        "Concrete opportunities have trigger, buyer, route, deadline or reason to act, and source-backed technical fit.",
+        prompts.opportunity,
+      ),
+      decisionField(
+        "buyer-trigger",
+        "Buyer and trigger",
+        "Likely buyer/team and the public event or pain signal that makes outreach timely.",
+        "Trigger is dated or tied to a current public source; assumptions are marked separately.",
+        [...prompts.opportunity, `${quoted(subject)} news`, `${quoted(subject)} announcement`],
+      ),
+      decisionField(
+        "buying-route",
+        "Buying route",
+        "Procurement route, tender/grant deadline, contact route, or why no route exists yet.",
+        "Route and deadline are checked before treating the lead as actionable.",
+        [
+          workspace === "DK" ? `${quoted(subject)} udbud` : `${quoted(subject)} tender`,
+          workspace === "DK" ? `${quoted(subject)} offentligt indkøb` : `${quoted(subject)} procurement`,
+          `${quoted(subject)} contact`,
+          ...(workspace === "GLOBAL" ? [`${quoted(subject)} udbud`, `${quoted(subject)} offentligt indkøb`] : []),
+        ],
+      ),
+    );
+  }
+
+  if (objective === "verify-identity") {
+    fields.push(
+      decisionField(
+        "match-decision",
+        "Match decision",
+        "Match, mismatch, or unresolved.",
+        "Decision is based on matching and conflicting facts, not only name similarity.",
+        prompts.official,
+      ),
+      decisionField(
+        "matched-facts",
+        "Matched facts",
+        "Facts that support this being the correct subject.",
+        "Each fact has a source and can be rechecked later.",
+        [...prompts.official, ...prompts.affiliation],
+      ),
+      decisionField(
+        "conflicts",
+        "Conflicts",
+        "Facts that weaken or block the match.",
+        "Wrong geography, stale role, duplicate name, domain mismatch, or source conflict is recorded explicitly.",
+        [`${quoted(subject)} former`, `${quoted(subject)} alias`, `${quoted(subject)} profile`],
+      ),
+    );
+  }
+
+  fields.push(
+    decisionField(
+      "strongest-evidence",
+      "Strongest evidence",
+      "The one or two source-backed facts that matter most.",
+      "Source URL, date checked, and what the source proves are captured.",
+      [...prompts.official, ...prompts.surface],
+    ),
+    decisionField(
+      "largest-risk",
+      "Largest risk",
+      "The biggest reason this could still be wrong.",
+      "Same-name risk, stale data, weak ownership, private-data concern, or missing route is named.",
+      [`${quoted(subject)} alias`, `${quoted(subject)} former`, `${quoted(subject)} profile`],
+    ),
+    decisionField(
+      "confidence",
+      "Confidence",
+      "High, medium, or low, plus what would change it.",
+      "Confidence is tied to number, quality, recency, and independence of public sources.",
+      [...prompts.official, ...prompts.contact],
+    ),
+    decisionField(
+      "next-action",
+      "Next action",
+      "One sentence with channel, reason, confidence, and fallback.",
+      "The action references a verified source-backed reason and avoids unverified assumptions.",
+      [`${quoted(subject)} contact`, `${quoted(subject)} LinkedIn`, `${quoted(subject)} official`],
+    ),
+  );
+
+  const outcomes =
+    objective === "find-contact"
+      ? ["use primary route", "use fallback route", "keep researching", "do not contact yet"]
+      : objective === "map-opportunity" || objective === "qualify-lead"
+        ? ["concrete opportunity", "weak signal", "monitor only", "no opportunity"]
+        : objective === "verify-identity"
+          ? ["match", "mismatch", "unresolved"]
+          : ["actionable", "research more", "stop"];
+
+  return {
+    id: "operator-decision",
+    title: "Operator decision",
+    purpose: "End the research pass with a source-backed decision that can be executed or resumed.",
+    outcomes,
+    confidenceScale: [
+      "High: official/current source plus independent corroboration.",
+      "Medium: plausible public evidence but one important gap remains.",
+      "Low: weak, stale, conflicting, or same-name evidence.",
+    ],
+    fields,
+  };
 }
 
 export function buildResearchRunbook(

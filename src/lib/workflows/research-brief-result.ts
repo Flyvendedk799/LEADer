@@ -1,11 +1,14 @@
 import type { Workspace } from "@prisma/client";
 
 import {
+  buildResearchDecisionFrame,
   buildResearchRunbook,
   buildResearchWorksheet,
   normalizeResearchBriefOptions,
   researchSubjectClueSummary,
   type ResearchBriefOptions,
+  type ResearchDecisionField,
+  type ResearchDecisionFrame,
   type ResearchSubjectClueSummary,
   type ResearchRunbookStep,
   type ResearchWorksheetSection,
@@ -34,6 +37,49 @@ function clueSummaryArray(value: unknown): ResearchSubjectClueSummary[] {
       return { id: id as ResearchSubjectClueSummary["id"], label, value: clueValue };
     })
     .filter((item): item is ResearchSubjectClueSummary => Boolean(item));
+}
+
+function decisionFieldArray(value: unknown): ResearchDecisionField[] {
+  return objectArray<Record<string, unknown>>(value)
+    .map((item) => {
+      const id = stringValue(item.id);
+      const label = stringValue(item.label);
+      const prompt = stringValue(item.prompt);
+      const evidence = stringValue(item.evidence);
+      if (!id || !label || !prompt || !evidence) return null;
+      return {
+        id,
+        label,
+        prompt,
+        evidence,
+        sourcePrompts: Array.isArray(item.sourcePrompts)
+          ? item.sourcePrompts.filter((prompt): prompt is string => typeof prompt === "string")
+          : [],
+      };
+    })
+    .filter((item): item is ResearchDecisionField => Boolean(item));
+}
+
+function decisionFrameValue(value: unknown): ResearchDecisionFrame | null {
+  const record = objectValue(value);
+  if (!record) return null;
+  const id = stringValue(record.id) ?? "operator-decision";
+  const title = stringValue(record.title) ?? "Operator decision";
+  const purpose = stringValue(record.purpose) ?? "";
+  const fields = decisionFieldArray(record.fields);
+  if (!fields.length) return null;
+  return {
+    id,
+    title,
+    purpose,
+    outcomes: Array.isArray(record.outcomes)
+      ? record.outcomes.filter((item): item is string => typeof item === "string")
+      : [],
+    confidenceScale: Array.isArray(record.confidenceScale)
+      ? record.confidenceScale.filter((item): item is string => typeof item === "string")
+      : [],
+    fields,
+  };
 }
 
 function workspaceValue(value: unknown, fallback: Workspace = "DK"): Workspace {
@@ -110,4 +156,17 @@ export function researchBriefClueSummaryFromResult(
   const options = researchBriefOptionsFromPayload(result, input);
   if (!options) return [];
   return researchSubjectClueSummary(normalizeResearchBriefOptions(options).subject);
+}
+
+export function researchBriefDecisionFrameFromResult(
+  result: unknown,
+  fallbackWorkspace: Workspace = "DK",
+  input?: unknown,
+): ResearchDecisionFrame | null {
+  const record = objectValue(result);
+  const existing = decisionFrameValue(record?.decisionFrame);
+  if (existing) return existing;
+  const options = researchBriefOptionsFromPayload(result, input);
+  if (!options) return null;
+  return buildResearchDecisionFrame(normalizeResearchBriefOptions(options), researchBriefWorkspace(result, fallbackWorkspace));
 }

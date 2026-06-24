@@ -14,6 +14,7 @@ import { formatDate, truncate } from "@/lib/utils";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
 import {
   researchBriefClueSummaryFromResult,
+  researchBriefDecisionFrameFromResult,
   researchBriefRunbookFromResult,
   researchBriefWorksheetFromResult,
 } from "@/lib/workflows/research-brief-result";
@@ -115,6 +116,10 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
     run.playbook === "research-brief"
       ? researchBriefClueSummaryFromResult(result, input)
       : [];
+  const decisionFrame =
+    run.playbook === "research-brief"
+      ? researchBriefDecisionFrameFromResult(result, run.workspace, input)
+      : null;
   const taskIds = [...new Set([...stringList(result?.taskIds), ...stringList(result?.existingTaskIds)])];
   const dealIds = stringList(result?.dealIds);
   const tasks = taskIds.length
@@ -257,6 +262,51 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                 </Badge>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {run.playbook === "research-brief" && decisionFrame ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">{decisionFrame.title}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {decisionFrame.purpose ? (
+              <p className="text-sm leading-6 text-muted-foreground">{decisionFrame.purpose}</p>
+            ) : null}
+            {decisionFrame.outcomes.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {decisionFrame.outcomes.map((outcome) => (
+                  <Badge key={outcome} variant="secondary" className="max-w-full truncate" title={outcome}>
+                    {outcome}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
+            <div className="grid gap-2 lg:grid-cols-2">
+              {decisionFrame.fields.map((field) => (
+                <div key={field.id} className="rounded-md border border-border bg-surface/40 p-3">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">{field.label}</p>
+                  <p className="mt-1 text-sm leading-5">{field.prompt}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{field.evidence}</p>
+                  <SearchPromptLinks prompts={field.sourcePrompts} />
+                </div>
+              ))}
+            </div>
+            {decisionFrame.confidenceScale.length ? (
+              <div className="rounded-md border border-border/70 bg-background/45 p-3">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Confidence scale</p>
+                <ul className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
+                  {decisionFrame.confidenceScale.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-primary" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}

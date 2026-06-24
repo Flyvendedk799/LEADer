@@ -9,12 +9,14 @@ import type { Workspace } from "@/lib/types";
 import { formatWorkflowElapsed, workflowLogEntry } from "./logging";
 import {
   buildResearchChecklist,
+  buildResearchDecisionFrame,
   buildResearchRunbook,
   buildResearchWorksheet,
   normalizeResearchBriefOptions,
   researchSubjectClueSummary,
   type NormalizedResearchBriefOptions,
   type ResearchChecklistItem,
+  type ResearchDecisionFrame,
   type ResearchSubjectClueSummary,
   type ResearchRunbookStep,
   type ResearchWorksheetSection,
@@ -106,6 +108,7 @@ export type ResearchBriefResult = {
   taskIds: string[];
   existingTaskIds: string[];
   clueSummary: ResearchSubjectClueSummary[];
+  decisionFrame: ResearchDecisionFrame;
   checklist: ResearchChecklistItem[];
   worksheet: ResearchWorksheetSection[];
   runbook: ResearchRunbookStep[];
@@ -803,6 +806,7 @@ export async function runResearchBrief(
   const worksheet = buildResearchWorksheet(normalized, workspace);
   const runbook = buildResearchRunbook(normalized, workspace);
   const clueSummary = researchSubjectClueSummary(normalized.subject);
+  const decisionFrame = buildResearchDecisionFrame(normalized, workspace);
   const taskIds: string[] = [];
   const existingTaskIds: string[] = [];
   let createdTasks = 0;
@@ -855,6 +859,7 @@ export async function runResearchBrief(
   );
   log.push(workflowLogEntry(`Prepared ${worksheet.length} worksheet sections for evidence capture.`));
   log.push(workflowLogEntry(`Prepared ${runbook.length} runbook steps for practical lookup order.`));
+  log.push(workflowLogEntry(`Prepared operator decision frame with ${decisionFrame.fields.length} fields.`));
   if (candidate) {
     log.push(workflowLogEntry(`Linked discovery candidate "${candidate.title}".`));
   }
@@ -876,6 +881,7 @@ export async function runResearchBrief(
     taskIds,
     existingTaskIds,
     clueSummary,
+    decisionFrame,
     checklist,
     worksheet,
     runbook,

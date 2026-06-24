@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   researchBriefClueSummaryFromResult,
+  researchBriefDecisionFrameFromResult,
   researchBriefRunbookFromResult,
   researchBriefWorksheetFromResult,
 } from "./research-brief-result";
@@ -94,5 +95,50 @@ describe("research brief result fallbacks", () => {
         { id: "name-hint", label: "Name hint", value: "mette jensen" },
       ]),
     );
+  });
+
+  it("preserves and reconstructs operator decision frames", () => {
+    const saved = researchBriefDecisionFrameFromResult({
+      subject: "Mette Jensen",
+      decisionFrame: {
+        id: "saved-decision",
+        title: "Saved decision",
+        purpose: "Saved purpose",
+        outcomes: ["use route"],
+        confidenceScale: ["high"],
+        fields: [
+          {
+            id: "next-action",
+            label: "Next action",
+            prompt: "Saved prompt",
+            evidence: "Saved evidence",
+            sourcePrompts: ["Mette Jensen contact"],
+          },
+        ],
+      },
+    });
+
+    expect(saved).toMatchObject({
+      id: "saved-decision",
+      title: "Saved decision",
+      fields: [{ id: "next-action", label: "Next action" }],
+    });
+
+    const reconstructed = researchBriefDecisionFrameFromResult(
+      { createdTasks: 0 },
+      "DK",
+      {
+        options: {
+          researchBrief: {
+            subject: "Find phone number for Mette Jensen",
+          },
+        },
+      },
+    );
+
+    expect(reconstructed?.fields.map((field) => field.id)).toEqual(
+      expect.arrayContaining(["primary-route", "phone-or-switchboard", "route-ownership", "next-action"]),
+    );
+    expect(reconstructed?.outcomes).toContain("use primary route");
   });
 });

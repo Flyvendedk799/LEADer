@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildResearchChecklist,
+  buildResearchDecisionFrame,
   buildResearchRunbook,
   buildResearchWorksheet,
   normalizeResearchBriefOptions,
@@ -293,6 +294,58 @@ describe("research brief workflow helpers", () => {
       expect.arrayContaining(['"Mette Jensen" kontakt', '"Mette Jensen" telefon']),
     );
     expect(runbook.find((step) => step.id === "next-action")?.stopWhen).toContain("single sentence");
+  });
+
+  it("builds a final decision frame for name-to-contact lookup", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "Mette Jensen",
+      subjectType: "person",
+      objective: "find-contact",
+      depth: "standard",
+    });
+
+    const frame = buildResearchDecisionFrame(options, "DK");
+
+    expect(frame.id).toBe("operator-decision");
+    expect(frame.outcomes).toEqual(["use primary route", "use fallback route", "keep researching", "do not contact yet"]);
+    expect(frame.confidenceScale.join(" ")).toContain("official/current source");
+    expect(frame.fields.map((field) => field.id)).toEqual(
+      expect.arrayContaining([
+        "primary-route",
+        "fallback-route",
+        "phone-or-switchboard",
+        "email-or-inbox",
+        "route-ownership",
+        "strongest-evidence",
+        "largest-risk",
+        "next-action",
+      ]),
+    );
+    expect(frame.fields.find((field) => field.id === "phone-or-switchboard")?.evidence).toContain(
+      "official/public source",
+    );
+    expect(frame.fields.find((field) => field.id === "route-ownership")?.prompt).toContain("exact person");
+    expect(frame.fields.find((field) => field.id === "next-action")?.prompt).toContain("confidence");
+  });
+
+  it("builds a final decision frame for opportunity mapping", () => {
+    const options = normalizeResearchBriefOptions({
+      subject: "Aarhus Kommune",
+      subjectType: "company",
+      objective: "map-opportunity",
+      depth: "deep",
+    });
+
+    const frame = buildResearchDecisionFrame(options, "DK");
+
+    expect(frame.outcomes).toEqual(["concrete opportunity", "weak signal", "monitor only", "no opportunity"]);
+    expect(frame.fields.map((field) => field.id)).toEqual(
+      expect.arrayContaining(["opportunity-status", "buyer-trigger", "buying-route", "largest-risk"]),
+    );
+    expect(frame.fields.find((field) => field.id === "buying-route")?.sourcePrompts).toEqual(
+      expect.arrayContaining(['"Aarhus Kommune" udbud', '"Aarhus Kommune" offentligt indkøb']),
+    );
+    expect(frame.fields.find((field) => field.id === "opportunity-status")?.evidence).toContain("Concrete opportunities");
   });
 
   it("keeps quick person contact runbooks practical without dropping the route decision", () => {
