@@ -2,9 +2,12 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { DEAL_INCLUDE, ensureAccount, getCockpit, runDiscoveryMission, saveCandidateAsDeal } from "@/lib/crm";
+import { DEAL_INCLUDE, createDiscoveryMission, ensureAccount, getCockpit, saveCandidateAsDeal } from "@/lib/crm";
 import { ensureDefaultDiscoveryLanes, filterVisibleLaneCandidates } from "@/lib/crm/lanes";
 import { pursuitScore } from "@/lib/crm/scoring";
+import { discoveryLogEntry, discoveryQueueLogMessage } from "@/lib/crm/discovery-logging";
+import { discoveryMissionInputMatchesActiveRun } from "@/lib/crm/discovery-run-actions";
+import { discoveryQueueSnapshot, enqueueDiscoveryMission, visibleDiscoveryQueueSnapshotForOwner } from "@/lib/crm/discovery-queue";
 import { workflowLogEntry, workflowQueueLogMessage } from "@/lib/workflows/logging";
 import { createWorkflowRun } from "@/lib/workflows/playbooks";
 import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
@@ -215,6 +218,7 @@ const runDiscoveryLaneSchema = z.object({
   laneSlug: z.string().optional(),
   query: z.string().max(500).optional(),
   freeformBrief: z.string().max(1200).optional(),
+  workspace: workspaceSchema,
   searchMode: z.enum(["focused", "balanced", "wide"]).default("balanced"),
   useAiPlanner: z.boolean().default(true),
   requiredTerms: z.array(z.string().max(80)).max(12).default([]),
@@ -675,8 +679,8 @@ export const AGENT_TOOLS = [
   },
   {
     name: "run_discovery_lane",
-    description: "Run a discovery lane search. Uses only configured public web providers and saved automatable sources; community/network lanes remain manual/user-assisted.",
-    inputHint: `{ "laneSlug": "sme-ai-automation", "freeformBrief": "...", "searchMode": "focused|balanced|wide", "maxResults": 8 }`,
+    description: "Queue a background discovery lane search. Uses only configured public web providers and saved automatable sources; community/network lanes remain manual/user-assisted.",
+    inputHint: `{ "laneSlug": "sme-ai-automation", "freeformBrief": "...", "workspace": "DK|GLOBAL", "searchMode": "focused|balanced|wide", "maxResults": 8 }`,
     risk: "write",
     schema: runDiscoveryLaneSchema,
     async execute(ownerId, args) {
@@ -693,10 +697,11 @@ export const AGENT_TOOLS = [
             },
           });
       if (!lane) throw new Error("Discovery lane not found");
-      const result = await runDiscoveryMission(ownerId, {
+      const input = {
         laneId: lane.id,
         query: args.query,
         freeformBrief: args.freeformBrief,
+        workspace: args.workspace as Workspace,
         searchMode: args.searchMode,
         useAiPlanner: args.useAiPlanner,
         requiredTerms: args.requiredTerms,
@@ -705,24 +710,48 @@ export const AGENT_TOOLS = [
         includeWeb: args.includeWeb,
         includeSources: args.includeSources,
         provider: args.provider,
+      };
+      const activeMissions = await db.discoveryMission.findMany({
+        where: { ownerId, status: { in: ["QUEUED", "RUNNING"] }, finishedAt: null },
+        select: { id: true, status: true, finishedAt: true, workspace: true, input: true },
+        orderBy: [{ queuePriority: "desc" }, { startedAt: "asc" }],
+        take: 50,
       });
+      const existing = activeMissions.find((mission) => discoveryMissionInputMatchesActiveRun(input, mission));
+      if (existing) {
+        return {
+          tool: "run_discovery_lane",
+          title: "Discovery mission already active",
+          summary: `${lane.name} discovery is already queued or running.`,
+          data: {
+            missionId: existing.id,
+            status: existing.status,
+            href: discoveryMissionHref(existing.id),
+            lane: lane.name,
+            queue: await visibleDiscoveryQueueSnapshotForOwner(ownerId),
+          },
+          mutated: false,
+        };
+      }
+
+      const mission = await createDiscoveryMission(ownerId, input, "QUEUED");
+      enqueueDiscoveryMission(ownerId, mission.id, input);
+      const queue = discoveryQueueSnapshot(ownerId);
+      await db.discoveryMission.update({
+        where: { id: mission.id },
+        data: { log: { push: discoveryLogEntry(discoveryQueueLogMessage(mission.id, queue)) } },
+      }).catch(() => {});
+
       return {
         tool: "run_discovery_lane",
-        title: "Discovery mission complete",
-        summary: `Ran ${lane.name}; found ${result.mission.candidates.length} candidates.`,
+        title: "Discovery mission queued",
+        summary: `Queued ${lane.name}; it will keep running in the background.`,
         data: {
-          missionId: result.mission.id,
-          href: discoveryMissionHref(result.mission.id),
+          missionId: mission.id,
+          status: "QUEUED",
+          href: discoveryMissionHref(mission.id),
           lane: lane.name,
-          queries: result.queries,
-          plan: result.plan,
-          candidates: result.mission.candidates.slice(0, 8).map((candidate) => ({
-            id: candidate.id,
-            title: candidate.title,
-            status: candidate.status,
-            pursuitScore: candidate.pursuitScore,
-            confidenceScore: candidate.confidenceScore,
-          })),
+          queue,
         },
         mutated: true,
       };

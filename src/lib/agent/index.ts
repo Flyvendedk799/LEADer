@@ -155,6 +155,7 @@ export function planMockToolCalls(message: string): AgentToolCall[] {
         freeformBrief: text,
         searchMode: /wide|broad|more/.test(lower) ? "wide" : /focused|narrow/.test(lower) ? "focused" : "balanced",
         useAiPlanner: true,
+        workspace: inferWorkspace(text),
         maxResults: /many|more|wide/.test(lower) ? 12 : 8,
       },
     }];

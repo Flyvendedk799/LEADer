@@ -17,7 +17,11 @@ describe("platform agent", () => {
 
     const discoveryCalls = planMockToolCalls("Run a wide AI automation discovery search for reporting workflows");
     expect(discoveryCalls[0]?.tool).toBe("run_discovery_lane");
-    expect(discoveryCalls[0]?.args).toMatchObject({ laneSlug: "sme-ai-automation", searchMode: "wide" });
+    expect(discoveryCalls[0]?.args).toMatchObject({ laneSlug: "sme-ai-automation", searchMode: "wide", workspace: "DK" });
+
+    const internationalCalls = planMockToolCalls("Run international tender discovery for software udbud");
+    expect(internationalCalls[0]?.tool).toBe("run_discovery_lane");
+    expect(internationalCalls[0]?.args).toMatchObject({ laneSlug: "tenders-procurement", workspace: "GLOBAL" });
   });
 
   it("plans practical research briefs for contact and opportunity lookup", () => {
