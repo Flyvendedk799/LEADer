@@ -256,7 +256,7 @@ function historyText(history: AgentHistoryMessage[] = []) {
 }
 
 async function planWithLlm(user: User, message: string, history: AgentHistoryMessage[]) {
-  const cfg = aiConfig(user.aiKeys);
+  const cfg = aiConfig(user.aiKeys, user.id);
   const raw = await chat(
     [
       {
@@ -304,7 +304,7 @@ function deterministicAnswer(message: string, results: AgentToolResult[]) {
 }
 
 async function synthesizeWithLlm(user: User, message: string, results: AgentToolResult[]) {
-  const cfg = aiConfig(user.aiKeys);
+  const cfg = aiConfig(user.aiKeys, user.id);
   return chat(
     [
       {
@@ -377,6 +377,6 @@ export async function runPlatformAgent(input: AgentRunInput): Promise<AgentRunRe
     toolResults,
     mutated: toolResults.some((result) => result.mutated),
     mocked: !usedLlm,
-    model: usedLlm ? aiConfig(input.user.aiKeys).model : "mock-agent",
+    model: usedLlm ? aiConfig(input.user.aiKeys, input.user.id).model : "mock-agent",
   };
 }

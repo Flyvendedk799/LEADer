@@ -29,6 +29,7 @@ import {
   initialAiProviderState,
   type PublicAiKeys,
 } from "@/components/settings/ai-provider-fields";
+import { ClaudeSubscriptionTerminal } from "@/components/settings/claude-subscription-terminal";
 
 type OnboardingUser = {
   name: string | null;
@@ -218,7 +219,7 @@ export function OnboardingFlow({ user }: { user: OnboardingUser }) {
             <div>
               <h2 className="text-sm font-semibold text-foreground">AI provider</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                API keys, Codex subscription, and Claude Code subscription can be changed later in Settings.
+                API keys, a Codex or Claude Code login on this machine, and your own Claude subscription can all be changed later in Settings.
               </p>
             </div>
             <AiProviderFields
@@ -226,6 +227,7 @@ export function OnboardingFlow({ user }: { user: OnboardingUser }) {
               onChange={setAiState}
               aiKeys={user.aiKeys}
               disabled={saving}
+              connectSlot={<ClaudeSubscriptionTerminal />}
             />
           </section>
 

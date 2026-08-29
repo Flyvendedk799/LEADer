@@ -206,29 +206,44 @@ model User {
   exportPrefs    Json? // ExportPreferences
   aiKeys         Json? // encrypted per-user AI provider config + masked key metadata
 
-  sources             Source[]
-  opportunities       Opportunity[]
-  lists               List[]
-  watchlistItems      WatchlistItem[]
-  savedSearches       SavedSearch[]
-  discoveryFeedback   DiscoveryFeedback[]
-  alerts              Alert[]
-  drafts              Draft[]
-  notes               Note[]
-  sessions            Session[]
-  accounts            Account[]
-  people              Person[]
-  deals               Deal[]
-  discoveryLanes      DiscoveryLane[]
-  discoveryMissions   DiscoveryMission[]
-  discoveryCandidates DiscoveryCandidate[]
-  workflowRuns        WorkflowRun[]
-  workflowPresets     WorkflowPreset[]
+  sources              Source[]
+  opportunities        Opportunity[]
+  lists                List[]
+  watchlistItems       WatchlistItem[]
+  savedSearches        SavedSearch[]
+  discoveryFeedback    DiscoveryFeedback[]
+  alerts               Alert[]
+  drafts               Draft[]
+  notes                Note[]
+  sessions             Session[]
+  accounts             Account[]
+  people               Person[]
+  deals                Deal[]
+  discoveryLanes       DiscoveryLane[]
+  discoveryMissions    DiscoveryMission[]
+  discoveryCandidates  DiscoveryCandidate[]
+  workflowRuns         WorkflowRun[]
+  workflowPresets      WorkflowPreset[]
   workflowPresetEvents WorkflowPresetEvent[]
-  evidence            Evidence[]
-  touchpoints         Touchpoint[]
-  tasks               Task[]
-  conversionAssets    ConversionAsset[]
+  evidence             Evidence[]
+  touchpoints          Touchpoint[]
+  tasks                Task[]
+  conversionAssets     ConversionAsset[]
+}
+
+// Credential storage for @flyvendedk799/ai-auth. One row per key; `payload` is a
+// sealed blob (AES-256-GCM, keyed from the host secret) that this schema never
+// looks inside, and `meta` holds only the non-secret facts a status page needs —
+// which plan is connected and when the token runs out — so rendering settings
+// costs no decryption. Keys are namespaced by the library ("claude:<userId>",
+// "pending:claude:<userId>"), which is why this is a flat table and not a
+// per-user column.
+model AiCredential {
+  key       String   @id
+  payload   String
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Server-side sessions (opaque token hashed at rest). The auth cookie holds the
@@ -718,23 +733,23 @@ model DiscoveryCandidate {
 }
 
 model WorkflowRun {
-  id         String    @id @default(cuid())
-  ownerId    String
-  owner      User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  presetId   String?
-  preset     WorkflowPreset? @relation(fields: [presetId], references: [id], onDelete: SetNull)
-  trigger    String    @default("manual")
-  playbook   String
-  workspace  Workspace @default(DK)
-  status     String    @default("QUEUED")
-  queuePriority Int       @default(0)
-  input      Json?
-  result     Json?
-  log        String[]  @default([])
-  startedAt  DateTime?
-  finishedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id            String          @id @default(cuid())
+  ownerId       String
+  owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  presetId      String?
+  preset        WorkflowPreset? @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  trigger       String          @default("manual")
+  playbook      String
+  workspace     Workspace       @default(DK)
+  status        String          @default("QUEUED")
+  queuePriority Int             @default(0)
+  input         Json?
+  result        Json?
+  log           String[]        @default([])
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   presetEvents WorkflowPresetEvent[]
 
@@ -746,22 +761,22 @@ model WorkflowRun {
 }
 
 model WorkflowPreset {
-  id           String    @id @default(cuid())
-  ownerId      String
-  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  name         String
-  description  String?   @db.Text
-  playbook     String
-  workspace    Workspace @default(DK)
-  options      Json?
-  pinned       Boolean   @default(false)
+  id                    String    @id @default(cuid())
+  ownerId               String
+  owner                 User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name                  String
+  description           String?   @db.Text
+  playbook              String
+  workspace             Workspace @default(DK)
+  options               Json?
+  pinned                Boolean   @default(false)
   scheduleEnabled       Boolean   @default(false)
   scheduleIntervalHours Int       @default(24)
   scheduleNextRunAt     DateTime?
   lastScheduledAt       DateTime?
-  lastQueuedAt DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  lastQueuedAt          DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   workflowRuns WorkflowRun[]
   events       WorkflowPresetEvent[]
@@ -773,18 +788,18 @@ model WorkflowPreset {
 }
 
 model WorkflowPresetEvent {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner     User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   presetId  String
   preset    WorkflowPreset @relation(fields: [presetId], references: [id], onDelete: Cascade)
   runId     String?
-  run       WorkflowRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  run       WorkflowRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
   eventType String
   reason    String?
-  message   String   @db.Text
+  message   String         @db.Text
   metadata  Json?
-  createdAt DateTime @default(now())
+  createdAt DateTime       @default(now())
 
   @@index([ownerId, createdAt])
   @@index([presetId, createdAt])

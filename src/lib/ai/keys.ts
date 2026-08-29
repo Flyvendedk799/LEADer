@@ -1,6 +1,13 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
-export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription";
+export type AiProvider =
+  | "openai"
+  | "anthropic"
+  | "codex"
+  /** The Claude Code login on the machine this server runs on. */
+  | "claude-subscription"
+  /** This LEADer account's own Claude subscription, connected in the browser. */
+  | "claude-account";
 export type SearchProvider = "tavily" | "brave" | "serper";
 
 export interface StoredSearchKey {
@@ -42,7 +49,9 @@ export interface AiKeysUpdate {
     | "chatgpt"
     | "chatgpt-subscription"
     | "claude-code"
-    | "claude-code-subscription";
+    | "claude-code-subscription"
+    | "claude-account"
+    | "claude-subscription-account";
   baseUrl?: string;
   model?: string;
   embeddingModel?: string;
@@ -76,11 +85,23 @@ export const AI_PROVIDER_DEFAULTS: Record<
     model: "gpt-5.5",
   },
   "claude-subscription": {
-    label: "Claude Code subscription",
+    label: "Claude Code subscription (this machine)",
     baseUrl: "https://api.anthropic.com",
-    model: "claude-opus-4-8",
+    model: "claude-sonnet-5",
+  },
+  "claude-account": {
+    label: "Claude subscription (your account)",
+    baseUrl: "https://api.anthropic.com",
+    model: "claude-sonnet-5",
   },
 };
+
+/** Paid for by a plan the user already has, so there is no key to store. */
+export function isSubscriptionProvider(provider: AiProvider): boolean {
+  return (
+    provider === "codex" || provider === "claude-subscription" || provider === "claude-account"
+  );
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -95,6 +116,11 @@ export function normalizeProvider(value: unknown): AiProvider {
   ) {
     return "codex";
   }
+  if (value === "claude-account" || value === "claude-subscription-account") {
+    return "claude-account";
+  }
+  // "claude-code" has meant the machine-local login since before the per-account
+  // flow existed, and settings payloads still carry it. Left pointing there.
   if (
     value === "claude-subscription" ||
     value === "claude-code" ||
@@ -235,7 +261,7 @@ export function buildStoredAiKeys(input: AiKeysUpdate, existingRaw?: unknown): S
   const provider = normalizeProvider(input.provider ?? existing?.provider);
   const defaults = AI_PROVIDER_DEFAULTS[provider];
   const sameProvider = !existing || existing.provider === provider;
-  const usesSubscription = provider === "codex" || provider === "claude-subscription";
+  const usesSubscription = isSubscriptionProvider(provider);
   const apiKey = input.apiKey?.trim();
 
   const encryptedApiKey = input.clearApiKey

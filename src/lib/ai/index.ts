@@ -15,11 +15,16 @@ export interface RunAiArgs {
   profile?: string;
   extra?: string; // extra instruction context (e.g. comparison set)
   aiKeys?: unknown;
+  /**
+   * Whose plan pays, when the owner has connected their own Claude
+   * subscription. Ignored by every other provider.
+   */
+  ownerId?: string;
 }
 
 export async function runAi(args: RunAiArgs): Promise<AiResult> {
-  const { action, context, profile, extra, aiKeys } = args;
-  const cfg = aiConfig(aiKeys);
+  const { action, context, profile, extra, aiKeys, ownerId } = args;
+  const cfg = aiConfig(aiKeys, ownerId);
 
   if (!hasLlm(aiKeys)) {
     return mockResult(action, context);
@@ -60,8 +65,9 @@ export async function aiExtract(
   context: string,
   profile?: string,
   aiKeys?: unknown,
+  ownerId?: string,
 ): Promise<AiExtractResult> {
-  const res = await runAi({ action: "extract", context, profile, aiKeys });
+  const res = await runAi({ action: "extract", context, profile, aiKeys, ownerId });
   return (res.data as AiExtractResult) || {};
 }
 

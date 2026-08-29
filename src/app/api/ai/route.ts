@@ -207,7 +207,7 @@ export async function POST(req: Request) {
       context = opportunityContext(opportunity);
     }
 
-    const result = await runAi({ action, context, profile, extra, aiKeys: user.aiKeys });
+    const result = await runAi({ action, context, profile, extra, aiKeys: user.aiKeys, ownerId: user.id });
 
     if (save && result.text && (deal || account || candidate)) {
       const kind = ASSET_KIND[action] ?? "SUMMARY";

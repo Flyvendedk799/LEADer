@@ -22,6 +22,7 @@ import {
   searchProviderPayload,
   type PublicAiKeys,
 } from "./ai-provider-fields";
+import { ClaudeSubscriptionTerminal } from "./claude-subscription-terminal";
 
 export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
   const router = useRouter();
@@ -73,11 +74,17 @@ export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
           AI provider & subscriptions
         </CardTitle>
         <CardDescription>
-          Choose API-key providers or local Codex/ChatGPT and Claude Code subscriptions. Discovery search keys are separate.
+          Choose an API-key provider, a Codex/Claude Code login on this machine, or your own Claude subscription. Discovery search keys are separate.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <AiProviderFields state={state} onChange={setState} aiKeys={aiKeys} disabled={saving} />
+        <AiProviderFields
+          state={state}
+          onChange={setState}
+          aiKeys={aiKeys}
+          disabled={saving}
+          connectSlot={<ClaudeSubscriptionTerminal />}
+        />
         <div className="border-t border-border pt-5">
           <SearchProviderFields
             state={searchState}

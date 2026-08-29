@@ -102,24 +102,54 @@ docker compose --profile full up --build   # app + Postgres
 
 ## Going live (real data + AI)
 
-1. **AI** — each user can add or change their provider in **Settings → AI**. Supported
-   chat providers are OpenAI-compatible chat completions, Claude via Anthropic's
-   Messages API, Codex/ChatGPT subscription auth from the local Codex CLI, and
-   Claude Code subscription auth from macOS Keychain. User-entered keys are encrypted before storage; set a stable
-   `AI_KEYS_ENCRYPTION_SECRET` in production so saved keys remain decryptable across
-   deploys.
+1. **AI** — each user can add or change their provider in **Settings → AI**. There are
+   five, and they differ in *who pays*:
+
+   | provider | credential | who pays |
+   |---|---|---|
+   | `openai` | an API key you paste | the deployment |
+   | `anthropic` | an API key you paste | the deployment |
+   | `codex` | the Codex CLI login on the server's machine | whoever is signed in there |
+   | `claude-subscription` | the Claude Code login on the server's machine | whoever is signed in there |
+   | `claude-account` | the user's own Claude plan, signed in from the browser | the user who asked |
+
+   Credential handling comes from [`@flyvendedk799/ai-auth`](https://github.com/Flyvendedk799/ai-auth)
+   rather than being hand-rolled here. User-entered keys are encrypted before storage; set a
+   stable `AI_KEYS_ENCRYPTION_SECRET` in production so saved credentials remain decryptable
+   across deploys — rotating it signs every connected subscription out.
 
    `.env` still works as a server-wide fallback:
    ```
    AI_KEYS_ENCRYPTION_SECRET="use-a-long-random-secret"
-   LLM_PROVIDER="openai"                    # openai | anthropic | codex | claude-subscription
+   LLM_PROVIDER="openai"                    # openai | anthropic | codex | claude-subscription | claude-account
    LLM_API_KEY="sk-..."                     # any OpenAI-compatible key
    LLM_BASE_URL="https://api.openai.com/v1" # or Azure / local / OpenRouter…
    LLM_MODEL="gpt-4o-mini"
    ```
-   For `LLM_PROVIDER=codex`, stay signed in to the Codex CLI (`~/.codex/auth.json`).
-   For `LLM_PROVIDER=claude-subscription`, stay signed in to Claude Code on macOS.
+   For `LLM_PROVIDER=codex`, stay signed in to the Codex CLI (`~/.codex/auth.json`). For
+   `LLM_PROVIDER=claude-subscription`, stay signed in to Claude Code on the machine LEADer
+   runs on — the macOS Keychain, or `~/.claude/.credentials.json` on Linux and headless
+   hosts. Neither login is ever refreshed from here: those files belong to the CLIs, and
+   rotating their refresh tokens would break the user's own session. An expired Codex token
+   is fixed by running `codex` once.
+
    The AI gateway (`src/lib/ai`) switches from mock to live automatically.
+
+   **Bring your own Claude subscription.** `claude-account` is the one that works on a hosted
+   deployment: the user signs in to their own plan from **Settings → AI**, in a terminal-shell
+   view of the same OAuth exchange `claude` runs in a shell — a URL to approve, a code pasted
+   back. No token reaches the browser. The credential is sealed (AES-256-GCM, keyed from
+   `AI_KEYS_ENCRYPTION_SECRET`) into the `AiCredential` table, refreshed on use, and keyed by
+   user id, so a call bills the person who asked for it rather than whoever set the server up.
+   The four routes live at `/api/claude-code` (`src/app/api/claude-code/`) and require a
+   signed-in LEADer user; any user may connect their own plan, not just the owner.
+
+   Two things to be clear-eyed about: the approval screen says **Claude Code**, because that
+   is the OAuth client this flow uses, and every subscription request has to open with the
+   Claude Code identity system block — without it Anthropic refuses Opus and Sonnet with a 429
+   naming a limit the plan is nowhere near, while Haiku answers fine. `src/lib/ai/provider.ts`
+   handles the second; tell your users about the first, and read Anthropic's subscription
+   terms before pointing a shared deployment at consumer plans.
 
 2. **Real sources** — in **Settings → Sources**, point sources at real **public** URLs/feeds.
    For structured sites, implement a site-specific parser in

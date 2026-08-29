@@ -34,7 +34,13 @@ export const zAiAction = z.enum([
   "draftPitch", "draftEmail", "checklist", "compare", "similar", "nextAction",
   "searchQueries", "qualifyLead", "draftOutreach", "draftProposal", "draftFollowUp", "summarizeAccount", "nextBestAction",
 ]);
-export const zAiProvider = z.enum(["openai", "anthropic", "codex", "claude-subscription"]);
+export const zAiProvider = z.enum([
+  "openai",
+  "anthropic",
+  "codex",
+  "claude-subscription",
+  "claude-account",
+]);
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export const registerSchema = z.object({
@@ -408,6 +414,7 @@ export const settingsSchema = z.object({
           z.literal("chatgpt-subscription"),
           z.literal("claude-code"),
           z.literal("claude-code-subscription"),
+          z.literal("claude-subscription-account"),
         ])
         .optional(),
       baseUrl: z.string().optional(),

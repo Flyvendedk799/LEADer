@@ -59,6 +59,62 @@ describe("AI provider settings fields", () => {
     );
   });
 
+  it("offers the account's own Claude subscription as a provider", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(AiProviderFields, { state: codexState, onChange: () => {} }),
+    );
+
+    expect(html).toContain("Your own subscription");
+    expect(html).toContain("Your Claude subscription");
+    expect(html).toContain("bill to your plan");
+  });
+
+  it("renders the connect slot only for the account's own subscription", () => {
+    const slot = React.createElement("div", null, "connect-here");
+    const onAccount = renderToStaticMarkup(
+      React.createElement(AiProviderFields, {
+        state: { ...codexState, provider: "claude-account" },
+        onChange: () => {},
+        connectSlot: slot,
+      }),
+    );
+    const onCodex = renderToStaticMarkup(
+      React.createElement(AiProviderFields, {
+        state: codexState,
+        onChange: () => {},
+        connectSlot: slot,
+      }),
+    );
+
+    expect(onAccount).toContain("connect-here");
+    expect(onCodex).not.toContain("connect-here");
+  });
+
+  it("summarizes the account subscription as billing to the user's own plan", () => {
+    expect(aiProviderModeSummary({ ...codexState, provider: "claude-account" })).toMatchObject({
+      kind: "subscription",
+      badge: "Your subscription",
+    });
+    expect(
+      aiProviderModeSummary({ ...codexState, provider: "claude-account" }).description,
+    ).toContain("bill to your own plan");
+  });
+
+  it("suggests the registry's models with the tier that decides a 429", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(AiProviderFields, {
+        state: { ...codexState, provider: "claude-account", model: "claude-sonnet-5" },
+        onChange: () => {},
+      }),
+    );
+
+    expect(html).toContain("Haiku 4.5");
+    expect(html).toContain("Sonnet 5");
+    expect(html).toContain("Opus 5");
+    expect(html).toContain("light");
+    expect(html).toContain("heavy");
+  });
+
   it("explains that AI subscriptions do not provide broad web search", () => {
     const html = renderToStaticMarkup(
       React.createElement(SearchProviderFields, { state: searchState, onChange: () => {} }),

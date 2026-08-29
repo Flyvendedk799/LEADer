@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { BrainCircuit, Eye, EyeOff, MessageSquareText, Search, Terminal, Trash2 } from "lucide-react";
+import { BrainCircuit, Eye, EyeOff, MessageSquareText, Search, Terminal, Trash2, UserRoundCheck } from "lucide-react";
+import { modelsFor, type ProviderId } from "@flyvendedk799/ai-auth/registry";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription";
+export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription" | "claude-account";
 export type SearchProvider = "tavily" | "brave" | "serper";
 
 export type PublicAiKeys = {
@@ -74,7 +75,7 @@ const PROVIDER_DEFAULTS: Record<
   },
   codex: {
     label: "Codex / ChatGPT subscription",
-    description: "Use this Mac's signed-in Codex CLI / ChatGPT session. No API key.",
+    description: "Use the signed-in Codex CLI / ChatGPT session on the machine LEADer runs on. No API key.",
     baseUrl: "https://chatgpt.com/backend-api",
     model: "gpt-5.5",
     embeddingModel: "text-embedding-3-small",
@@ -82,9 +83,17 @@ const PROVIDER_DEFAULTS: Record<
   },
   "claude-subscription": {
     label: "Claude Code subscription",
-    description: "Use this Mac's Claude Code login from macOS Keychain. No API key.",
+    description: "Use the Claude Code login on the machine LEADer runs on. No API key.",
     baseUrl: "https://api.anthropic.com",
-    model: "claude-opus-4-8",
+    model: "claude-sonnet-5",
+    embeddingModel: "text-embedding-3-small",
+    requiresApiKey: false,
+  },
+  "claude-account": {
+    label: "Your Claude subscription",
+    description: "Sign in with your own Claude plan below. Your calls bill to your plan.",
+    baseUrl: "https://api.anthropic.com",
+    model: "claude-sonnet-5",
     embeddingModel: "text-embedding-3-small",
     requiresApiKey: false,
   },
@@ -95,6 +104,7 @@ const PROVIDER_ICONS: Record<AiProvider, typeof BrainCircuit> = {
   anthropic: MessageSquareText,
   codex: Terminal,
   "claude-subscription": Terminal,
+  "claude-account": UserRoundCheck,
 };
 
 const PROVIDER_GROUPS: {
@@ -109,8 +119,13 @@ const PROVIDER_GROUPS: {
   },
   {
     title: "Local subscriptions",
-    description: "Use your signed-in Codex/ChatGPT or Claude Code session on this Mac.",
+    description: "Use the Codex/ChatGPT or Claude Code session signed in on this machine.",
     providers: ["codex", "claude-subscription"],
+  },
+  {
+    title: "Your own subscription",
+    description: "Sign in to your Claude plan here. Nothing has to be installed on the server.",
+    providers: ["claude-account"],
   },
 ];
 
@@ -119,6 +134,18 @@ const SEARCH_PROVIDER_LABELS: Record<SearchProvider, string> = {
   brave: "Brave Search",
   serper: "Serper",
 };
+
+/**
+ * How the ai-auth registry names this provider.
+ *
+ * It splits providers by *billing*, not by vendor, so both Claude subscription
+ * paths are one entry there: same wire, same models, paid for by a plan.
+ */
+export function registryProviderId(provider: AiProvider): ProviderId {
+  if (provider === "codex") return "codex";
+  if (provider === "claude-subscription" || provider === "claude-account") return "claude-code";
+  return provider;
+}
 
 export function initialAiProviderState(aiKeys: PublicAiKeys): AiProviderState {
   const provider = aiKeys?.provider ?? "openai";
@@ -164,6 +191,16 @@ export function searchProviderPayload(state: SearchProviderState) {
 
 export function aiProviderModeSummary(state: AiProviderState, aiKeys?: PublicAiKeys) {
   const defaults = PROVIDER_DEFAULTS[state.provider];
+  if (state.provider === "claude-account") {
+    return {
+      kind: "subscription" as const,
+      badge: "Your subscription",
+      title: `${defaults.label} selected`,
+      description:
+        "AI planning, summaries, and workflow reasoning will use the Claude subscription you connect below, so your calls bill to your own plan. No API key is sent or stored by LEADer.",
+    };
+  }
+
   if (!defaults.requiresApiKey) {
     const signInName = state.provider === "codex" ? "Codex / ChatGPT" : "Claude Code";
     return {
@@ -196,6 +233,13 @@ interface AiProviderFieldsProps {
   onChange: (state: AiProviderState) => void;
   aiKeys?: PublicAiKeys;
   disabled?: boolean;
+  /**
+   * Rendered under the provider notes when the account's own subscription is
+   * selected. The sign-in component talks to the browser and to `/api/claude-code`,
+   * so it is passed in rather than imported here — this file stays renderable
+   * on the server.
+   */
+  connectSlot?: React.ReactNode;
 }
 
 export function AiProviderFields({
@@ -203,6 +247,7 @@ export function AiProviderFields({
   onChange,
   aiKeys,
   disabled,
+  connectSlot,
 }: AiProviderFieldsProps) {
   const [showKey, setShowKey] = React.useState(false);
   const currentDefaults = PROVIDER_DEFAULTS[state.provider];
@@ -213,8 +258,10 @@ export function AiProviderFields({
     state.provider === "codex"
       ? "Uses your Codex CLI / ChatGPT login on this machine. Sign in to Codex first, then save this provider."
       : state.provider === "claude-subscription"
-        ? "Uses your Claude Code login from macOS Keychain on this machine. Sign in to Claude Code first, then save this provider."
-        : "";
+        ? "Uses the Claude Code login on the machine LEADer runs on — the macOS Keychain, or ~/.claude/.credentials.json elsewhere. Sign in to Claude Code there first, then save this provider."
+        : state.provider === "claude-account"
+          ? "Uses the Claude subscription connected to your LEADer account. Sign in below, then save this provider. The approval screen says Claude Code, because that is the OAuth client this flow uses."
+          : "";
 
   function chooseProvider(provider: AiProvider) {
     const defaults = PROVIDER_DEFAULTS[provider];
@@ -307,6 +354,7 @@ export function AiProviderFields({
             onChange={(e) => onChange({ ...state, model: e.target.value })}
             placeholder={currentDefaults.model}
           />
+          <ModelSuggestions state={state} onChange={onChange} disabled={disabled} />
         </div>
 
         <div className="grid gap-2">
@@ -394,13 +442,64 @@ export function AiProviderFields({
           )}
         </div>
       ) : (
-        <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted-foreground">
-          <p>{subscriptionHint}</p>
-          <p className="mt-1">
-            This covers AI reasoning only. Broad web search still uses a search provider key, official sources, or saved sources.
-          </p>
+        <div className="space-y-4">
+          <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted-foreground">
+            <p>{subscriptionHint}</p>
+            <p className="mt-1">
+              This covers AI reasoning only. Broad web search still uses a search provider key, official sources, or saved sources.
+            </p>
+          </div>
+          {state.provider === "claude-account" && connectSlot}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The models the registry knows for this provider, lightest first.
+ *
+ * A shortcut, not a gate — the field above stays free text, because providers
+ * ship models faster than a dependency updates. The tier is the part worth
+ * showing: a subscription meters each model on its own allowance, so when the
+ * heavy one is refused, "pick a lighter one" is the fix, and a list of bare
+ * names cannot help anyone do that.
+ */
+function ModelSuggestions({
+  state,
+  onChange,
+  disabled,
+}: {
+  state: AiProviderState;
+  onChange: (state: AiProviderState) => void;
+  disabled?: boolean;
+}) {
+  const models = modelsFor(registryProviderId(state.provider));
+  if (!models.length) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {models.map((model) => {
+        const selected = state.model === model.id;
+        return (
+          <button
+            key={model.id}
+            type="button"
+            disabled={disabled}
+            title={model.note}
+            onClick={() => onChange({ ...state, model: model.id })}
+            className={cn(
+              "rounded-full border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+              selected
+                ? "border-primary bg-primary/10 text-foreground"
+                : "border-border bg-surface text-muted-foreground hover:bg-surface-2",
+            )}
+          >
+            {model.label}
+            <span className="ml-1.5 uppercase tracking-normal opacity-70">{model.tier}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
