@@ -218,7 +218,8 @@ export function OnboardingFlow({ user }: { user: OnboardingUser }) {
             <div>
               <h2 className="text-sm font-semibold text-foreground">AI provider</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                API keys, Codex subscription, and Claude Code subscription can be changed later in Settings.
+                API keys and subscription providers can be changed later in Settings, where you can
+                also connect your own Claude plan so AI calls bill to you.
               </p>
             </div>
             <AiProviderFields

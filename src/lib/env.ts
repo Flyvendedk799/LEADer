@@ -14,6 +14,7 @@ const schema = z.object({
   LLM_MODEL: z.string().default("gpt-4o-mini"),
   LLM_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
   CODEX_AUTH_FILE: z.string().default(""),
+  CLAUDE_CREDENTIALS_FILE: z.string().default(""),
   AI_KEYS_ENCRYPTION_SECRET: z.string().default(""),
   // Crawler
   CRAWLER_USER_AGENT: z.string().default("LEADerBot/0.1 (+respects robots.txt)"),

@@ -15,11 +15,18 @@ export interface RunAiArgs {
   profile?: string;
   extra?: string; // extra instruction context (e.g. comparison set)
   aiKeys?: unknown;
+  /**
+   * Whose Claude subscription to spend, when one is connected. The user id.
+   * Omitted, a subscription call falls back to the login on this machine — right
+   * for a self-hosted box, wrong for a hosted one, where it would bill every
+   * user's calls to whoever set the server up.
+   */
+  accountId?: string;
 }
 
 export async function runAi(args: RunAiArgs): Promise<AiResult> {
-  const { action, context, profile, extra, aiKeys } = args;
-  const cfg = aiConfig(aiKeys);
+  const { action, context, profile, extra, aiKeys, accountId } = args;
+  const cfg = aiConfig(aiKeys, accountId);
 
   if (!hasLlm(aiKeys)) {
     return mockResult(action, context);
@@ -60,8 +67,9 @@ export async function aiExtract(
   context: string,
   profile?: string,
   aiKeys?: unknown,
+  accountId?: string,
 ): Promise<AiExtractResult> {
-  const res = await runAi({ action: "extract", context, profile, aiKeys });
+  const res = await runAi({ action: "extract", context, profile, aiKeys, accountId });
   return (res.data as AiExtractResult) || {};
 }
 

@@ -408,6 +408,7 @@ async function planDiscoverySearch(
     context,
     profile: user ? profileString(user) : undefined,
     aiKeys: user?.aiKeys,
+    accountId: ownerId,
   });
   const plan = parsePlanData(result.data);
   if (!plan) return undefined;

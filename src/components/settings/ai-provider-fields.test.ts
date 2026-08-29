@@ -13,8 +13,8 @@ import {
 
 const codexState: AiProviderState = {
   provider: "codex",
-  baseUrl: "https://chatgpt.com/backend-api",
-  model: "gpt-5.5",
+  baseUrl: "https://chatgpt.com/backend-api/codex",
+  model: "gpt-5",
   embeddingModel: "text-embedding-3-small",
   apiKey: "should-not-be-sent",
   clearApiKey: false,
@@ -33,11 +33,13 @@ describe("AI provider settings fields", () => {
     );
 
     expect(html).toContain("Current AI mode");
-    expect(html).toContain("Local subscriptions");
+    expect(html).toContain("Subscriptions");
     expect(html).toContain("Codex / ChatGPT subscription");
     expect(html).toContain("Claude Code subscription");
     expect(html).toContain("No API key sent");
     expect(html).toContain("Codex CLI / ChatGPT login");
+    // The catalogue drives the picker, and the tier note is the reason it exists.
+    expect(html).toContain("meters each model on its own allowance");
   });
 
   it("does not send API keys for local subscription providers", () => {
@@ -57,6 +59,20 @@ describe("AI provider settings fields", () => {
     expect(aiProviderModeSummary(codexState).description).toContain(
       "No API key is sent or stored by LEADer",
     );
+  });
+
+  it("says a connected Claude plan bills the user, not the server", () => {
+    const summary = aiProviderModeSummary({
+      ...codexState,
+      provider: "claude-subscription",
+      baseUrl: "https://api.anthropic.com",
+      model: "claude-sonnet-5",
+    });
+
+    expect(summary.kind).toBe("subscription");
+    expect(summary.badge).toBe("Subscription");
+    expect(summary.description).toContain("billed to your own plan");
+    expect(summary.description).toContain("No API key is sent or stored by LEADer");
   });
 
   it("explains that AI subscriptions do not provide broad web search", () => {

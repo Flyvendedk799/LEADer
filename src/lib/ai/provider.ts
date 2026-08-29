@@ -1,7 +1,31 @@
-// Provider-aware LLM client. User-saved config supports API-key providers and
-// local subscription providers harvested from Codex / Claude Code.
+// Provider-aware LLM client.
+//
+// Three ways to pay for a call, behind one `chat()`:
+//
+//   • an API key the user pasted (OpenAI or Anthropic), encrypted at rest;
+//   • a Claude subscription the user connected in Settings — their own plan,
+//     billed to them, so a hosted instance does not put every call on whoever
+//     set the server up;
+//   • a `claude` or `codex` login already on this machine, for a self-hosted
+//     instance where the operator's own plan is the point.
+//
+// The subscription halves are `@flyvendedk799/ai-auth`. What that buys, beyond
+// not maintaining an OAuth client: the Claude Code identity block that premium
+// models refuse a subscription token without (see `withClaudeCodeIdentity`), the
+// header set a real CLI sends, a Codex login that is read and never refreshed
+// out from under its own CLI, and error messages that distinguish "this model is
+// rate-limited" from "your plan is exhausted".
 
 import { randomUUID } from "node:crypto";
+import {
+  ClaudeCodeAuthError,
+  CodexAuthError,
+  anthropicSubscriptionOptions,
+  codexOptions,
+  describeProviderError,
+  providerErrorFacts,
+  withClaudeCodeIdentity,
+} from "@flyvendedk799/ai-auth";
 import {
   AI_PROVIDER_DEFAULTS,
   getStoredApiKey,
@@ -10,10 +34,11 @@ import {
   type AiProvider,
 } from "./keys";
 import {
-  readClaudeSubscriptionAuth,
-  readCodexSubscriptionAuth,
-  refreshCodexSubscriptionAuth,
-} from "./subscriptions";
+  claudeAccountStore,
+  localClaudeCredential,
+  localCodexCredential,
+} from "./credentials";
+import { registryProvider } from "./registry";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -33,9 +58,16 @@ export interface LlmConfig {
   model: string;
   embeddingModel?: string;
   source: "user" | "env";
+  /**
+   * Whose subscription to spend, for the providers that have one.
+   *
+   * The user id. A connected account is looked up under it first; without one —
+   * or when nothing is connected — the machine's own CLI login is used instead.
+   */
+  accountId?: string;
 }
 
-export function aiConfig(aiKeys?: unknown): LlmConfig {
+export function aiConfig(aiKeys?: unknown, accountId?: string): LlmConfig {
   const stored = normalizeStoredAiKeys(aiKeys);
   if (stored && (stored.encryptedApiKey || isSubscriptionProvider(stored.provider))) {
     const defaults = AI_PROVIDER_DEFAULTS[stored.provider];
@@ -46,6 +78,7 @@ export function aiConfig(aiKeys?: unknown): LlmConfig {
       model: stored.model || defaults.model,
       embeddingModel: stored.provider === "openai" ? stored.embeddingModel : undefined,
       source: "user",
+      accountId,
     };
   }
 
@@ -61,6 +94,7 @@ export function aiConfig(aiKeys?: unknown): LlmConfig {
         ? process.env.LLM_EMBEDDING_MODEL || defaults.embeddingModel
         : undefined,
     source: "env",
+    accountId,
   };
 }
 
@@ -69,9 +103,22 @@ export function hasLlm(aiKeys?: unknown): boolean {
   return isSubscriptionProvider(cfg.provider) || Boolean(cfg.apiKey);
 }
 
+/**
+ * "There is no subscription login to use" — the one provider failure that is not
+ * an error so much as a configuration state, and the one the AI gateway answers
+ * by falling back to deterministic mock output instead of surfacing a 500.
+ *
+ * The library says so in the type; the regex still covers messages raised before
+ * a call reaches it.
+ */
 export function isMissingSubscriptionLoginError(error: unknown) {
+  if (error instanceof ClaudeCodeAuthError || error instanceof CodexAuthError) {
+    return error.needsLogin;
+  }
   const message = error instanceof Error ? error.message : String(error ?? "");
-  return /No (?:Codex\/ChatGPT|Claude Code) subscription login found/i.test(message);
+  return /No (?:Codex\/ChatGPT|Claude Code) subscription login found|No (?:Claude Code|Codex) login found|no Claude subscription connected/i.test(
+    message,
+  );
 }
 
 /**
@@ -95,6 +142,36 @@ function isSubscriptionProvider(provider: AiProvider): boolean {
   return provider === "codex" || provider === "claude-subscription";
 }
 
+/**
+ * Turn a failed response into the most useful sentence available.
+ *
+ * The facts that separate "this model's allowance is spent" from "the whole plan
+ * is exhausted" arrive in *headers* — `retry-after`, the plan's own verdict, its
+ * utilisation — and a message built from the status code alone throws them away.
+ * A 429 carrying `anthropic-ratelimit-unified-status: allowed` is a per-model
+ * limit whose fix is a lighter model; announcing an exhausted plan there sends
+ * someone off to wait out a window that was never the problem.
+ */
+async function providerFailure(
+  res: Response,
+  cfg: LlmConfig,
+  fallbackLabel: string,
+): Promise<Error> {
+  const body = await res.text().catch(() => "");
+  const raw = `${fallbackLabel} failed (${res.status}): ${body.slice(0, 500)}`;
+  const shaped = { status: res.status, headers: res.headers, message: body || raw };
+  const described = describeProviderError(shaped, registryProvider(cfg.provider), cfg.model, {
+    configureAt: "Settings → AI provider",
+  });
+  const error = new Error(described ?? raw) as Error & {
+    status: number;
+    facts: ReturnType<typeof providerErrorFacts>;
+  };
+  error.status = res.status;
+  error.facts = providerErrorFacts(shaped);
+  return error;
+}
+
 async function openAiCompatibleChat(
   messages: ChatMessage[],
   opts: ChatOptions,
@@ -115,10 +192,7 @@ async function openAiCompatibleChat(
     }),
   });
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`LLM request failed (${res.status}): ${body.slice(0, 500)}`);
-  }
+  if (!res.ok) throw await providerFailure(res, cfg, "LLM request");
 
   const data = (await res.json()) as {
     choices?: { message?: { content?: string } }[];
@@ -126,21 +200,30 @@ async function openAiCompatibleChat(
   return data.choices?.[0]?.message?.content ?? "";
 }
 
-async function anthropicChat(
-  messages: ChatMessage[],
-  opts: ChatOptions,
-  cfg: LlmConfig,
-): Promise<string> {
+/** System text and non-system turns, in the shape the Messages API takes. */
+function splitForAnthropic(messages: ChatMessage[]) {
   const system = messages
     .filter((m) => m.role === "system")
     .map((m) => m.content)
     .join("\n\n");
-  const anthropicMessages = messages
+  const turns = messages
     .filter((m) => m.role !== "system")
     .map((m) => ({
       role: m.role === "assistant" ? "assistant" : "user",
       content: m.content,
     }));
+  return {
+    system,
+    messages: turns.length ? turns : [{ role: "user", content: "Continue." }],
+  };
+}
+
+async function anthropicChat(
+  messages: ChatMessage[],
+  opts: ChatOptions,
+  cfg: LlmConfig,
+): Promise<string> {
+  const split = splitForAnthropic(messages);
 
   const res = await fetch(`${cfg.baseUrl}/v1/messages`, {
     method: "POST",
@@ -151,24 +234,32 @@ async function anthropicChat(
     },
     body: JSON.stringify({
       model: cfg.model,
-      messages: anthropicMessages.length
-        ? anthropicMessages
-        : [{ role: "user", content: "Continue." }],
-      ...(system ? { system } : {}),
+      messages: split.messages,
+      ...(split.system ? { system: split.system } : {}),
       temperature: opts.temperature ?? 0.4,
       max_tokens: opts.maxTokens ?? 1200,
     }),
   });
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Claude request failed (${res.status}): ${body.slice(0, 500)}`);
-  }
+  if (!res.ok) throw await providerFailure(res, cfg, "Claude request");
+  return anthropicText(await res.json());
+}
 
-  const data = (await res.json()) as {
-    content?: { type?: string; text?: string }[];
-  };
-  return data.content?.map((part) => part.text ?? "").join("").trim() ?? "";
+/**
+ * A usable Claude subscription token, whoever's it is.
+ *
+ * The account the user connected here comes first — that is the whole point of
+ * the per-user login, and on a hosted instance it is the only credential that
+ * bills the person who asked. The machine's own `claude` login is the fallback,
+ * for a self-hosted box where the operator's plan is meant to pay.
+ */
+export async function claudeSubscriptionToken(accountId?: string): Promise<string> {
+  if (accountId) {
+    const store = claudeAccountStore();
+    const status = await store.status(accountId).catch(() => null);
+    if (status?.connected) return store.token(accountId);
+  }
+  return localClaudeCredential.token();
 }
 
 async function claudeSubscriptionChat(
@@ -176,55 +267,41 @@ async function claudeSubscriptionChat(
   opts: ChatOptions,
   cfg: LlmConfig,
 ): Promise<string> {
-  const auth = await readClaudeSubscriptionAuth();
-  if (!auth) {
-    throw new Error("No Claude Code subscription login found. Sign in with Claude Code, or choose an API-key provider.");
-  }
-
-  const system = messages
-    .filter((m) => m.role === "system")
-    .map((m) => m.content)
-    .join("\n\n");
-  const anthropicMessages = messages
-    .filter((m) => m.role !== "system")
-    .map((m) => ({
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: m.content,
-    }));
+  const token = await claudeSubscriptionToken(cfg.accountId);
+  const split = splitForAnthropic(messages);
+  const client = anthropicSubscriptionOptions(token);
 
   const baseUrl = cfg.baseUrl.replace(/\/$/, "");
   const res = await fetch(`${baseUrl}/v1/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${auth.accessToken}`,
+      // `Authorization: Bearer`, never `x-api-key`: Anthropic validates the
+      // latter whenever the header is present, so a stray key alongside a good
+      // bearer token is rejected rather than ignored.
+      Authorization: `Bearer ${client.authToken}`,
       "anthropic-version": "2023-06-01",
-      "anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
-      "user-agent": "claude-cli/2.1.75",
-      "x-app": "cli",
+      ...client.defaultHeaders,
     },
     body: JSON.stringify({
       model: cfg.model,
-      messages: anthropicMessages.length
-        ? anthropicMessages
-        : [{ role: "user", content: "Continue." }],
-      system: [
-        { type: "text", text: "You are Claude Code, Anthropic's official CLI for Claude." },
-        ...(system ? [{ type: "text", text: system }] : []),
-      ],
+      messages: split.messages,
+      // Not decoration. Without the Claude Code identity as the *first* system
+      // block, in its own block, verbatim, Anthropic refuses Opus and Sonnet on
+      // a subscription token with a 429 naming a limit the plan is nowhere near
+      // — while Haiku, the model you would naturally test with, answers fine.
+      system: withClaudeCodeIdentity(split.system || []),
       temperature: opts.temperature ?? 0.4,
       max_tokens: opts.maxTokens ?? 1200,
     }),
   });
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Claude subscription request failed (${res.status}): ${body.slice(0, 500)}`);
-  }
+  if (!res.ok) throw await providerFailure(res, cfg, "Claude subscription request");
+  return anthropicText(await res.json());
+}
 
-  const data = (await res.json()) as {
-    content?: { type?: string; text?: string }[];
-  };
+function anthropicText(payload: unknown): string {
+  const data = payload as { content?: { type?: string; text?: string }[] };
   return data.content?.map((part) => part.text ?? "").join("").trim() ?? "";
 }
 
@@ -233,13 +310,11 @@ async function codexSubscriptionChat(
   opts: ChatOptions,
   cfg: LlmConfig,
 ): Promise<string> {
-  let auth = await readCodexSubscriptionAuth();
-  if (auth?.expiresAt && auth.expiresAt < Date.now() + 2 * 60 * 1000 && auth.refreshToken) {
-    auth = (await refreshCodexSubscriptionAuth(auth.refreshToken)) ?? auth;
-  }
-  if (!auth) {
-    throw new Error("No Codex/ChatGPT subscription login found. Sign in with the Codex CLI, or choose an API-key provider.");
-  }
+  // Read, never refreshed: the `codex` CLI rotates its own refresh token, and a
+  // refresh performed here would leave the user's CLI holding a credential this
+  // process had already spent. An expired login is answered by running `codex`.
+  const identity = await localCodexCredential.identity();
+  const client = codexOptions(identity, cfg.baseUrl);
 
   const system = messages
     .filter((m) => m.role === "system")
@@ -259,17 +334,15 @@ async function codexSubscriptionChat(
     }));
 
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${auth.accessToken}`,
+    Authorization: `Bearer ${client.apiKey}`,
     "Content-Type": "application/json",
     Accept: "text/event-stream",
     "OpenAI-Beta": "responses=experimental",
-    originator: "codex_cli_rs",
     session_id: randomUUID(),
+    ...client.defaultHeaders,
   };
-  if (auth.accountId) headers["chatgpt-account-id"] = auth.accountId;
 
-  const endpoint = codexResponsesEndpoint(cfg.baseUrl);
-  const res = await fetch(endpoint, {
+  const res = await fetch(codexResponsesEndpoint(client.baseURL ?? cfg.baseUrl), {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -277,27 +350,34 @@ async function codexSubscriptionChat(
       store: false,
       stream: true,
       instructions: system,
-      input: input.length ? input : [{ type: "message", role: "user", content: [{ type: "input_text", text: "Continue." }] }],
+      input: input.length
+        ? input
+        : [{ type: "message", role: "user", content: [{ type: "input_text", text: "Continue." }] }],
       include: ["reasoning.encrypted_content"],
       reasoning: { effort: "low", summary: "auto" },
       ...(opts.maxTokens ? { max_output_tokens: opts.maxTokens } : {}),
     }),
   });
 
-  if (!res.ok || !res.body) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Codex subscription request failed (${res.status}): ${body.slice(0, 500)}`);
-  }
+  if (!res.ok || !res.body) throw await providerFailure(res, cfg, "Codex subscription request");
 
   const text = await readCodexTextStream(res.body);
   if (!text) throw new Error("Codex subscription returned no text content");
   return text;
 }
 
-function codexResponsesEndpoint(baseUrl: string): string {
-  let cleaned = baseUrl;
-  while (cleaned.endsWith("/")) cleaned = cleaned.slice(0, -1);
-  return cleaned.endsWith("/codex/responses") ? cleaned : `${cleaned}/codex/responses`;
+/**
+ * The Responses endpoint, from whichever base URL a config happens to hold.
+ *
+ * Two shapes are in circulation — `…/backend-api` from the settings LEADer used
+ * to write, and `…/backend-api/codex`, which is the library's constant and the
+ * current default — so both have to land on the same URL.
+ */
+export function codexResponsesEndpoint(baseUrl: string): string {
+  const cleaned = baseUrl.replace(/\/+$/, "");
+  if (cleaned.endsWith("/codex/responses")) return cleaned;
+  if (cleaned.endsWith("/codex")) return `${cleaned}/responses`;
+  return `${cleaned}/codex/responses`;
 }
 
 async function readCodexTextStream(body: ReadableStream<Uint8Array>): Promise<string> {

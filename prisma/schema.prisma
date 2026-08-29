@@ -950,3 +950,20 @@ model Setting {
   value     Json
   updatedAt DateTime @updatedAt
 }
+
+// Credentials held on behalf of a user by `@flyvendedk799/ai-auth` — today the
+// Claude subscription each user connects for themselves from Settings.
+//
+// `payload` is already sealed (AES-256-GCM) before it reaches here, so this table
+// never holds a token in the clear. `meta` carries only the non-secret facts a
+// status line needs — plan name, expiry — so rendering Settings costs no
+// decryption. The key is namespaced by the library (`leader:claude:<userId>`);
+// it is not a foreign key because the store interface is a map, and the row is
+// removed explicitly on disconnect.
+model AiCredential {
+  key       String   @id
+  payload   String   @db.Text
+  meta      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
