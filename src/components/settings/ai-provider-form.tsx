@@ -22,6 +22,7 @@ import {
   searchProviderPayload,
   type PublicAiKeys,
 } from "./ai-provider-fields";
+import { ClaudeSubscriptionPanel } from "./claude-subscription-panel";
 
 export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
   const router = useRouter();
@@ -73,11 +74,16 @@ export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
           AI provider & subscriptions
         </CardTitle>
         <CardDescription>
-          Choose API-key providers or local Codex/ChatGPT and Claude Code subscriptions. Discovery search keys are separate.
+          Choose an API-key provider, connect your own Claude plan, or use a Codex/Claude CLI signed in on the server. Discovery search keys are separate.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <AiProviderFields state={state} onChange={setState} aiKeys={aiKeys} disabled={saving} />
+        {state.provider === "claude-subscription" && (
+          <div className="border-t border-border pt-5">
+            <ClaudeSubscriptionPanel />
+          </div>
+        )}
         <div className="border-t border-border pt-5">
           <SearchProviderFields
             state={searchState}

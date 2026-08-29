@@ -102,14 +102,37 @@ docker compose --profile full up --build   # app + Postgres
 
 ## Going live (real data + AI)
 
-1. **AI** — each user can add or change their provider in **Settings → AI**. Supported
-   chat providers are OpenAI-compatible chat completions, Claude via Anthropic's
-   Messages API, Codex/ChatGPT subscription auth from the local Codex CLI, and
-   Claude Code subscription auth from macOS Keychain. User-entered keys are encrypted before storage; set a stable
-   `AI_KEYS_ENCRYPTION_SECRET` in production so saved keys remain decryptable across
-   deploys.
+1. **AI** — each user picks their own provider in **Settings → AI**. There are three
+   ways to pay for a call, all of them per-user:
 
-   `.env` still works as a server-wide fallback:
+   | | how it bills |
+   |---|---|
+   | **An API key** — OpenAI, or Claude on Anthropic's Messages API | the key's owner, metered |
+   | **Your own Claude subscription**, connected from Settings | the person who connected it |
+   | **A `claude` or `codex` login on the server** | whoever runs the server |
+
+   The credential half of this is [`@flyvendedk799/ai-auth`](https://github.com/Flyvendedk799/ai-auth):
+   the OAuth flow, the Claude Code identity block premium models refuse a
+   subscription token without, the encryption at rest, and the model catalogue
+   behind the picker. See [docs/AI_AUTH.md](docs/AI_AUTH.md) for what each piece
+   does and the traps it is defending against.
+
+   **Connecting a Claude subscription** (Settings → AI → *Claude Code subscription*):
+   LEADer prints an approval URL, you approve it at Anthropic and paste the code
+   back. The consent screen says *Claude Code*, because the flow uses that CLI's
+   client id — tell your users, and read Anthropic's subscription terms before
+   pointing a hosted deployment at consumer plans. Nothing but the code crosses
+   the browser; the credential is sealed (AES-256-GCM) into `AiCredential`.
+
+   Leave it unconnected and a `claude-subscription` call falls back to the login
+   on the machine LEADer runs on — the macOS Keychain or `~/.claude/.credentials.json`
+   — which is what a self-hosted single-user instance usually wants.
+
+   Set a stable `AI_KEYS_ENCRYPTION_SECRET` in production. Rotating it makes stored
+   keys and connections unreadable — they read as "not configured" and are
+   re-entered, rather than failing a boot.
+
+   `.env` still works as a server-wide fallback for users who have saved nothing:
    ```
    AI_KEYS_ENCRYPTION_SECRET="use-a-long-random-secret"
    LLM_PROVIDER="openai"                    # openai | anthropic | codex | claude-subscription
@@ -118,8 +141,9 @@ docker compose --profile full up --build   # app + Postgres
    LLM_MODEL="gpt-4o-mini"
    ```
    For `LLM_PROVIDER=codex`, stay signed in to the Codex CLI (`~/.codex/auth.json`).
-   For `LLM_PROVIDER=claude-subscription`, stay signed in to Claude Code on macOS.
-   The AI gateway (`src/lib/ai`) switches from mock to live automatically.
+   LEADer never refreshes that token: the CLI keeps its own current, and the answer
+   to an expired one is to run `codex` once. The AI gateway (`src/lib/ai`) switches
+   from mock to live automatically.
 
 2. **Real sources** — in **Settings → Sources**, point sources at real **public** URLs/feeds.
    For structured sites, implement a site-specific parser in

@@ -799,6 +799,7 @@ async function buildSearchPlan(
         nonLeadTerms: memory.nonLeadTerms,
       }),
       aiKeys: user.aiKeys,
+      accountId: user.id,
     });
     if (result.mocked) return fallback;
     const aiPlan = parseAiSearchPlan(result.data);
@@ -1955,6 +1956,7 @@ async function maybeAiSummary(
         priceText ? `Pris/budget fundet: ${priceText}` : "",
       ].filter(Boolean).join(" "),
       aiKeys: user.aiKeys,
+      accountId: user.id,
     });
     return res.mocked ? undefined : res.text;
   } catch {

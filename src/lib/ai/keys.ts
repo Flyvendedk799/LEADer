@@ -1,4 +1,6 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createDecipheriv, createHash } from "node:crypto";
+import { CODEX_BASE_URL, SecretBox, maskSecret } from "@flyvendedk799/ai-auth";
+import { hostSecret } from "./credentials";
 
 export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription";
 export type SearchProvider = "tavily" | "brave" | "serper";
@@ -68,17 +70,19 @@ export const AI_PROVIDER_DEFAULTS: Record<
   anthropic: {
     label: "Claude",
     baseUrl: "https://api.anthropic.com",
-    model: "claude-3-5-sonnet-latest",
+    model: "claude-sonnet-5",
   },
   codex: {
     label: "Codex/ChatGPT subscription",
-    baseUrl: "https://chatgpt.com/backend-api",
-    model: "gpt-5.5",
+    baseUrl: CODEX_BASE_URL,
+    model: "gpt-5",
   },
   "claude-subscription": {
     label: "Claude Code subscription",
     baseUrl: "https://api.anthropic.com",
-    model: "claude-opus-4-8",
+    // Sonnet rather than Opus by default: a subscription meters each model on its
+    // own allowance, and the heavy one is the one that gets refused first.
+    model: "claude-sonnet-5",
   },
 };
 
@@ -131,38 +135,54 @@ function normalizeSearchKeys(raw: unknown): Partial<Record<SearchProvider, Store
   return out;
 }
 
-function encryptionKey(): Buffer {
-  const secret =
-    process.env.AI_KEYS_ENCRYPTION_SECRET ||
-    process.env.AUTH_SECRET ||
-    process.env.DATABASE_URL ||
-    "leader-local-ai-key-secret";
-  return createHash("sha256").update(secret).digest();
+// ── Encryption at rest ───────────────────────────────────────────────────────
+//
+// AES-256-GCM through the library's SecretBox, so the key a user pastes and the
+// OAuth token a user connects get the same protection from the same tested code
+// rather than two hand-rolled variants of it.
+//
+// The label below is half the encryption key (`sha256(label + ':' + secret)`).
+// Changing it does not throw — stored keys simply stop decrypting and every user
+// silently reads as unconfigured — so it is a constant and stays one.
+
+const SECRET_LABEL = "leader-ai-keys";
+
+/** Built per call: the host secret can change between requests in tests. */
+function box(): SecretBox {
+  return new SecretBox(hostSecret(), SECRET_LABEL);
 }
 
 export function encryptApiKey(apiKey: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(apiKey, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return [
-    "v1",
-    iv.toString("base64url"),
-    tag.toString("base64url"),
-    encrypted.toString("base64url"),
-  ].join(":");
+  return box().seal(apiKey);
 }
 
+/**
+ * Decrypt a stored key, accepting the format LEADer wrote before it adopted
+ * `ai-auth`.
+ *
+ * The old scheme keyed on `sha256(secret)` with no label and wrote four
+ * colon-separated parts (`v1:iv:tag:body`, base64url); the new one writes three
+ * (hex). Both are readable here, and a key is re-sealed in the new format the
+ * next time its owner saves settings — so nobody has to re-enter a key and no
+ * migration has to run against a column full of ciphertext.
+ */
 export function decryptApiKey(encryptedApiKey: string): string {
-  const [version, ivRaw, tagRaw, bodyRaw] = encryptedApiKey.split(":");
+  const parts = encryptedApiKey.split(":");
+  if (parts.length === 3) {
+    const opened = box().open(encryptedApiKey);
+    if (opened === null) throw new Error("Stored AI key could not be decrypted");
+    return opened;
+  }
+  return decryptLegacyApiKey(parts);
+}
+
+function decryptLegacyApiKey(parts: string[]): string {
+  const [version, ivRaw, tagRaw, bodyRaw] = parts;
   if (version !== "v1" || !ivRaw || !tagRaw || !bodyRaw) {
     throw new Error("Unsupported AI key encryption format");
   }
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    encryptionKey(),
-    Buffer.from(ivRaw, "base64url"),
-  );
+  const key = createHash("sha256").update(hostSecret()).digest();
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivRaw, "base64url"));
   decipher.setAuthTag(Buffer.from(tagRaw, "base64url"));
   return Buffer.concat([
     decipher.update(Buffer.from(bodyRaw, "base64url")),
@@ -170,9 +190,15 @@ export function decryptApiKey(encryptedApiKey: string): string {
   ]).toString("utf8");
 }
 
+/**
+ * Enough of a key to recognise, never enough to use.
+ *
+ * Keeps the head as well as the tail, because the head is what says which *kind*
+ * of key it is — `sk-ant-`, `sk-proj-` — and a settings page showing four digits
+ * cannot tell someone they pasted an OpenAI key into the Anthropic field.
+ */
 export function apiKeyPreview(apiKey: string): string {
-  const clean = apiKey.trim();
-  return clean.length > 4 ? `****${clean.slice(-4)}` : "****";
+  return maskSecret(apiKey);
 }
 
 export function normalizeStoredAiKeys(raw: unknown): StoredAiKeys | null {
@@ -292,14 +318,31 @@ export function buildStoredAiKeys(input: AiKeysUpdate, existingRaw?: unknown): S
   return stored;
 }
 
+/**
+ * The key to make a call with, or an empty string.
+ *
+ * Empty rather than an exception when a stored value will not open — which in
+ * practice means the host secret was rotated. The caller's own "no key
+ * configured" path then runs, so the app degrades to mock output and the fix is
+ * for someone to paste the key again; throwing would turn a rotated secret into
+ * a 500 on every AI route and give nobody a hint as to why.
+ */
 export function getStoredApiKey(raw: unknown): string {
   const stored = normalizeStoredAiKeys(raw);
   if (!stored?.encryptedApiKey) return "";
-  return decryptApiKey(stored.encryptedApiKey);
+  return openOrEmpty(stored.encryptedApiKey);
 }
 
 export function getStoredSearchApiKey(raw: unknown, provider: SearchProvider): string {
   const stored = normalizeStoredAiKeys(raw);
   const encrypted = stored?.searchKeys?.[provider]?.encryptedApiKey;
-  return encrypted ? decryptApiKey(encrypted) : "";
+  return encrypted ? openOrEmpty(encrypted) : "";
+}
+
+function openOrEmpty(encrypted: string): string {
+  try {
+    return decryptApiKey(encrypted);
+  } catch {
+    return "";
+  }
 }

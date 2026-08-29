@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     const stash = (e: AiExtractResult | null) => ({ ...(e ?? {}), __workspace: data.workspace });
 
     if (data.autoExtract !== false) {
-      extracted = await aiExtract(data.content, undefined, user.aiKeys);
+      extracted = await aiExtract(data.content, undefined, user.aiKeys, user.id);
     }
     await db.communityImport.update({
       where: { id: row.id },

@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { TIER_LABELS, modelChoices } from "@/lib/ai/registry";
 
 export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription";
 export type SearchProvider = "tavily" | "brave" | "serper";
@@ -68,23 +69,23 @@ const PROVIDER_DEFAULTS: Record<
     label: "Claude API",
     description: "Claude models through Anthropic's Messages API.",
     baseUrl: "https://api.anthropic.com",
-    model: "claude-3-5-sonnet-latest",
+    model: "claude-sonnet-5",
     embeddingModel: "text-embedding-3-small",
     requiresApiKey: true,
   },
   codex: {
     label: "Codex / ChatGPT subscription",
-    description: "Use this Mac's signed-in Codex CLI / ChatGPT session. No API key.",
-    baseUrl: "https://chatgpt.com/backend-api",
-    model: "gpt-5.5",
+    description: "Use the Codex CLI session signed in on the machine running LEADer. No API key.",
+    baseUrl: "https://chatgpt.com/backend-api/codex",
+    model: "gpt-5",
     embeddingModel: "text-embedding-3-small",
     requiresApiKey: false,
   },
   "claude-subscription": {
     label: "Claude Code subscription",
-    description: "Use this Mac's Claude Code login from macOS Keychain. No API key.",
+    description: "Connect your own Claude plan below, or use the machine's claude login. No API key.",
     baseUrl: "https://api.anthropic.com",
-    model: "claude-opus-4-8",
+    model: "claude-sonnet-5",
     embeddingModel: "text-embedding-3-small",
     requiresApiKey: false,
   },
@@ -108,11 +109,15 @@ const PROVIDER_GROUPS: {
     providers: ["openai", "anthropic"],
   },
   {
-    title: "Local subscriptions",
-    description: "Use your signed-in Codex/ChatGPT or Claude Code session on this Mac.",
+    title: "Subscriptions",
+    description:
+      "Connect your own Claude plan, or use a Codex/Claude CLI already signed in on the server.",
     providers: ["codex", "claude-subscription"],
   },
 ];
+
+/** Sentinel for the picker's escape hatch. Never a real model id. */
+const CUSTOM_MODEL = "__custom__";
 
 const SEARCH_PROVIDER_LABELS: Record<SearchProvider, string> = {
   tavily: "Tavily",
@@ -165,12 +170,17 @@ export function searchProviderPayload(state: SearchProviderState) {
 export function aiProviderModeSummary(state: AiProviderState, aiKeys?: PublicAiKeys) {
   const defaults = PROVIDER_DEFAULTS[state.provider];
   if (!defaults.requiresApiKey) {
-    const signInName = state.provider === "codex" ? "Codex / ChatGPT" : "Claude Code";
+    // Codex can only ever be the CLI login on the server; Claude prefers the
+    // account this user connected, and falls back to the server's login. Saying
+    // "local" for both would misdescribe who is paying for half of them.
+    const isLocalOnly = state.provider === "codex";
     return {
       kind: "subscription" as const,
-      badge: "Local subscription",
+      badge: isLocalOnly ? "Local subscription" : "Subscription",
       title: `${defaults.label} selected`,
-      description: `AI planning, summaries, and workflow reasoning will use your local ${signInName} login. No API key is sent or stored by LEADer.`,
+      description: isLocalOnly
+        ? "AI planning, summaries, and workflow reasoning will use your local Codex / ChatGPT login. No API key is sent or stored by LEADer."
+        : "AI planning, summaries, and workflow reasoning will use the Claude subscription you connect below — billed to your own plan. Without one, the claude login on this server is used instead. No API key is sent or stored by LEADer.",
     };
   }
 
@@ -207,13 +217,18 @@ export function AiProviderFields({
   const [showKey, setShowKey] = React.useState(false);
   const currentDefaults = PROVIDER_DEFAULTS[state.provider];
   const requiresApiKey = currentDefaults.requiresApiKey;
+  const isSubscriptionProvider = !currentDefaults.requiresApiKey;
+  // The catalogue is a shortcut, not a gate: providers ship models faster than
+  // any dependency updates, so a typed-in id stays a first-class answer.
+  const catalogue = React.useMemo(() => modelChoices(state.provider), [state.provider]);
+  const knownModel = catalogue.find((spec) => spec.id === state.model) ?? null;
   const hasSavedKey = Boolean(aiKeys?.provider === state.provider && aiKeys?.hasApiKey && !state.clearApiKey);
   const modeSummary = aiProviderModeSummary(state, aiKeys);
   const subscriptionHint =
     state.provider === "codex"
-      ? "Uses your Codex CLI / ChatGPT login on this machine. Sign in to Codex first, then save this provider."
+      ? "Uses the Codex CLI / ChatGPT login on the machine running LEADer. Run `codex` and sign in there, then save this provider."
       : state.provider === "claude-subscription"
-        ? "Uses your Claude Code login from macOS Keychain on this machine. Sign in to Claude Code first, then save this provider."
+        ? "Save this provider, then connect your own Claude plan below. Left unconnected, LEADer falls back to the `claude` login on the machine it runs on."
         : "";
 
   function chooseProvider(provider: AiProvider) {
@@ -300,13 +315,43 @@ export function AiProviderFields({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label htmlFor="ai-model">Model</Label>
-          <Input
-            id="ai-model"
-            value={state.model}
+          <Select
+            value={knownModel ? state.model : CUSTOM_MODEL}
             disabled={disabled}
-            onChange={(e) => onChange({ ...state, model: e.target.value })}
-            placeholder={currentDefaults.model}
-          />
+            onValueChange={(value) =>
+              onChange({ ...state, model: value === CUSTOM_MODEL ? "" : value })
+            }
+          >
+            <SelectTrigger id="ai-model">
+              <SelectValue placeholder={currentDefaults.model} />
+            </SelectTrigger>
+            <SelectContent>
+              {catalogue.map((spec) => (
+                <SelectItem key={spec.id} value={spec.id}>
+                  {spec.label} · {TIER_LABELS[spec.tier]}
+                </SelectItem>
+              ))}
+              <SelectItem value={CUSTOM_MODEL}>Other (type an id)</SelectItem>
+            </SelectContent>
+          </Select>
+          {knownModel ? (
+            <p className="text-xs leading-5 text-muted-foreground">{knownModel.note}</p>
+          ) : (
+            <Input
+              value={state.model}
+              disabled={disabled}
+              onChange={(e) => onChange({ ...state, model: e.target.value })}
+              placeholder={currentDefaults.model}
+              aria-label="Model id"
+            />
+          )}
+          {isSubscriptionProvider && (
+            <p className="text-xs leading-5 text-muted-foreground">
+              A subscription meters each model on its own allowance, so a heavy model can be
+              refused for hours while a lighter one still answers. If calls start failing, try a
+              lighter one before assuming the plan is spent.
+            </p>
+          )}
         </div>
 
         <div className="grid gap-2">
