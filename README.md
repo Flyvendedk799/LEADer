@@ -9,6 +9,7 @@ reviews opportunities every day: clean intelligence-dashboard UI, transparent ma
 scoring, compliant ingestion, AI assistance, and one-click exports.
 
 > 📐 Full architecture & rationale: [`docs/PLAN.md`](docs/PLAN.md) ·
+> [`docs/OUTCOME_LEARNING.md`](docs/OUTCOME_LEARNING.md) ·
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 > [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md) ·
 > [`docs/ROADMAP.md`](docs/ROADMAP.md)
@@ -24,6 +25,7 @@ scoring, compliant ingestion, AI assistance, and one-click exports.
 | **Discovery engine** | Compliant fetch of **public** pages/RSS → parse → extract budget/deadline/contact → dedupe → score → store. Site-specific parser stubs for EHSYS / Beyond Beta / Erhvervshuse. |
 | **Community import** | Compliant, **manual-only** Facebook/community import (paste text+URL → AI extract → confirm). Never scrapes closed groups. |
 | **Lead scoring** | Explainable **0–100** match score with a per-criterion breakdown, fully **customisable weights** in Settings. |
+| **Outcome learning** | The ranking **learns from your own wins**. Every lead you win, apply to or archive retunes which criteria and which concrete sources/categories/words actually predict your conversions — shrunk toward the defaults by how much evidence exists, and fully inspectable in **Settings → Learning**. See [`docs/OUTCOME_LEARNING.md`](docs/OUTCOME_LEARNING.md). |
 | **Watchlists & lists** | Watchlist, custom lists, tags, saved searches, status pipeline, priorities, reminders. |
 | **Pipeline board** | Kanban view of your pipeline — drag opportunities between status columns to update them (optimistic, owner-scoped). DK/Global workspace toggle. |
 | **Bulk actions** | Multi-select opportunities, then set status/priority, add to watchlist, add to a list, export, or delete — all in one batch (owner-scoped server-side). |

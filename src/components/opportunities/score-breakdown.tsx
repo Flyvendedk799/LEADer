@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Gauge } from "lucide-react";
+import { Brain, Gauge } from "lucide-react";
 import type { ScoreBreakdown } from "@/lib/types";
 
 export function ScoreBreakdown({ breakdown }: { breakdown: unknown }) {
@@ -58,6 +58,44 @@ export function ScoreBreakdown({ breakdown }: { breakdown: unknown }) {
             </div>
           );
         })}
+
+        {data.calibration?.applied ? (
+          <div className="rounded-md border border-border bg-muted/40 p-3">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="flex items-center gap-2 font-medium">
+                <Brain className="h-4 w-4 text-primary" />
+                Learned from your outcomes
+              </span>
+              <span
+                className={
+                  data.calibration.adjustment >= 0
+                    ? "tnum font-medium text-success"
+                    : "tnum font-medium text-destructive"
+                }
+              >
+                {data.calibration.adjustment >= 0 ? "+" : ""}
+                {data.calibration.adjustment.toFixed(1)}
+              </span>
+            </div>
+            <ul className="mt-2 space-y-1">
+              {data.calibration.matchedFeatures.map((f) => (
+                <li
+                  key={f.label}
+                  className="flex items-center justify-between gap-3 text-xs text-muted-foreground"
+                >
+                  <span className="truncate">{f.label}</span>
+                  <span className="tnum shrink-0">
+                    {f.lift >= 0 ? "+" : ""}
+                    {f.lift.toFixed(2)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Based on {data.calibration.sampleCount} of your own decisions.
+            </p>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

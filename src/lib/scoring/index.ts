@@ -3,8 +3,11 @@ import type {
   ScoreComponent,
   ScoreCriterion,
   ScoreWeights,
+  ScoringCalibrationModel,
 } from "@/lib/types";
 import { CRITERION_LABELS, DEFAULT_WEIGHTS, LEXICON } from "./config";
+import { calibratedWeights, featureAdjustment } from "./calibration";
+import { opportunityFeatures } from "./features";
 
 /**
  * Minimal shape the scorer needs from an opportunity. Works with Prisma rows
@@ -21,11 +24,20 @@ export interface ScorableOpportunity {
   category?: string | null;
   applicationRoute?: string | null;
   contacts?: { email?: string | null; name?: string | null }[];
+  // Not scored directly — carried so outcome-learned features can be matched.
+  workspace?: string | null;
+  source?: { name?: string | null } | null;
+  sourceName?: string | null;
 }
 
 export interface ScoringProfile {
   budgetMaxDkk?: number;
   weights?: Partial<ScoreWeights>;
+  /**
+   * Learned from the owner's own won/lost/archived decisions. When absent (or
+   * too thin to trust) scoring is exactly the uncalibrated heuristic.
+   */
+  calibration?: ScoringCalibrationModel | null;
 }
 
 function text(o: ScorableOpportunity): string {
@@ -59,6 +71,22 @@ function normaliseWeights(w: ScoreWeights): ScoreWeights {
   (Object.keys(w) as ScoreCriterion[]).forEach((k) => {
     out[k] = (w[k] || 0) / sum;
   });
+  return out;
+}
+
+/**
+ * Compute the raw 0..1 signal for each criterion.
+ *
+ * Exported so outcome learning can recover the signals of an already-decided
+ * opportunity that predates score persistence.
+ */
+export function rawSignals(
+  o: ScorableOpportunity,
+  profile: ScoringProfile = {},
+): Record<ScoreCriterion, number> {
+  const sig = signals(o, profile);
+  const out = {} as Record<ScoreCriterion, number>;
+  for (const key of Object.keys(sig) as ScoreCriterion[]) out[key] = sig[key].raw;
   return out;
 }
 
@@ -152,7 +180,10 @@ export function scoreOpportunity(
   o: ScorableOpportunity,
   profile: ScoringProfile = {},
 ): ScoreBreakdown {
-  const weights = normaliseWeights({ ...DEFAULT_WEIGHTS, ...(profile.weights || {}) });
+  // Outcome learning rescales the owner's weights; with no usable model this
+  // returns `profile.weights` untouched and the score is the plain heuristic.
+  const effectiveWeights = calibratedWeights(profile.weights, profile.calibration);
+  const weights = normaliseWeights({ ...DEFAULT_WEIGHTS, ...(effectiveWeights || {}) });
   const sig = signals(o, profile);
 
   const components: ScoreComponent[] = (Object.keys(weights) as ScoreCriterion[]).map(
@@ -171,15 +202,18 @@ export function scoreOpportunity(
     },
   );
 
-  const total = Math.max(
-    0,
-    Math.min(100, components.reduce((sum, c) => sum + c.weight * c.raw, 0) * 100),
-  );
+  const weighted = components.reduce((sum, c) => sum + c.weight * c.raw, 0) * 100;
+
+  // Learned feature lift ("SMV:Digital converts for you, recruitment never
+  // does") nudges the weighted total within a hard, smooth cap.
+  const trace = featureAdjustment(opportunityFeatures(o), profile.calibration);
+  const total = Math.max(0, Math.min(100, weighted + (trace?.adjustment ?? 0)));
 
   return {
     total: Math.round(total),
     components: components.sort((a, b) => b.contribution - a.contribution),
     computedAt: new Date().toISOString(),
+    ...(trace ? { calibration: trace } : {}),
   };
 }
 

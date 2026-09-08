@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { scoreOpportunity } from "@/lib/scoring";
+import { loadCalibration } from "@/lib/scoring/outcomes";
 import type { ScoreWeights } from "@/lib/types";
 import { apiError } from "@/lib/api";
 
@@ -17,10 +18,11 @@ export async function POST(req: Request) {
 
     const opportunities = await db.opportunity.findMany({
       where: { ownerId: user.id, ...(ids?.length ? { id: { in: ids } } : {}) },
-      include: { contacts: true },
+      include: { contacts: true, source: { select: { name: true } } },
     });
 
     const weights = (user.scoringWeights as Partial<ScoreWeights>) || undefined;
+    const calibration = await loadCalibration(user.id);
     let updated = 0;
 
     for (const o of opportunities) {
@@ -36,8 +38,10 @@ export async function POST(req: Request) {
           category: o.category,
           applicationRoute: o.applicationRoute,
           contacts: o.contacts,
+          workspace: o.workspace,
+          source: o.source,
         },
-        { budgetMaxDkk: user.budgetMaxDkk, weights },
+        { budgetMaxDkk: user.budgetMaxDkk, weights, calibration },
       );
       breakdown.computedAt = new Date().toISOString();
 

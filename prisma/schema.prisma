@@ -229,6 +229,7 @@ model User {
   touchpoints         Touchpoint[]
   tasks               Task[]
   conversionAssets    ConversionAsset[]
+  scoringCalibration  ScoringCalibration?
 }
 
 // Server-side sessions (opaque token hashed at rest). The auth cookie holds the
@@ -927,6 +928,21 @@ model DiscoveryFeedback {
   @@unique([ownerId, candidateId])
   @@index([ownerId, feedback])
   @@index([ownerId, url])
+}
+
+// Cached outcome-learning model: what this owner's own won/lost/archived
+// decisions imply about how leads should be ranked. Derived data only — it is
+// recomputed from Opportunity rows on demand, so dropping it costs nothing but
+// a rebuild, and a missing table degrades to the uncalibrated heuristic.
+model ScoringCalibration {
+  ownerId     String   @id
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  version     Int      @default(1)
+  payload     Json // ScoringCalibrationModel
+  sampleCount Float    @default(0)
+  confidence  Float    @default(0)
+  computedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Alert {

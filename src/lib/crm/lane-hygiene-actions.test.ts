@@ -23,7 +23,9 @@ describe("lane hygiene actions", () => {
 
   it("marks older active tender duplicates without hiding the newest review item", async () => {
     const lane = DEFAULT_DISCOVERY_LANES.find((item) => item.slug === "tenders-procurement")!;
-    const deadline = new Date("2026-06-29T06:00:00.000Z");
+    // Relative to now: the tender gate rejects expired deadlines, so a
+    // hard-coded date silently turns this test red once it passes.
+    const deadline = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     mocks.db.discoveryCandidate.findMany.mockResolvedValue([
       {
         id: "newer-candidate",

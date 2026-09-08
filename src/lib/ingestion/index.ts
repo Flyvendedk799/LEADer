@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { scoreOpportunity } from "@/lib/scoring";
+import { loadCalibration, recomputeCalibration } from "@/lib/scoring/outcomes";
 import { embed, opportunityEmbedText } from "@/lib/ai/embeddings";
 import type { ScoreWeights, SourceType } from "@/lib/types";
 import { assertAutomatable } from "./compliance";
@@ -92,6 +93,8 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
   const owner = await db.user.findUnique({ where: { id: source.ownerId } });
   const weights = (owner?.scoringWeights as Partial<ScoreWeights>) || undefined;
   const budgetMaxDkk = owner?.budgetMaxDkk ?? 100000;
+  // Rank newly ingested leads through what this owner has actually won.
+  const calibration = await loadCalibration(source.ownerId);
 
   let created = 0;
   let updated = 0;
@@ -104,7 +107,7 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
       const hash = dedupeHash(c);
       const breakdown = scoreOpportunity(
         { ...c, contacts: c.contacts },
-        { budgetMaxDkk, weights },
+        { budgetMaxDkk, weights, calibration },
       );
       breakdown.computedAt = new Date().toISOString();
       const isActive = !c.deadline || new Date(c.deadline).getTime() >= Date.now();
@@ -233,6 +236,18 @@ export function isSourceDue(
 /** Run discovery for all enabled, automatable, due sources of a given owner. */
 export async function runDueDiscovery(ownerId: string): Promise<RunResult[]> {
   const sources = await db.source.findMany({ where: { ownerId, enabled: true } });
+
+  // Relearn first so tonight's leads are ranked by everything decided today.
+  // Never let a calibration failure block ingestion — ranking degrades to the
+  // last good model, or to the plain heuristic.
+  if (sources.length) {
+    try {
+      await recomputeCalibration(ownerId);
+    } catch {
+      // non-fatal by design
+    }
+  }
+
   const results: RunResult[] = [];
   for (const s of sources) {
     if (!AUTOMATABLE.includes(s.type)) continue; // skip community/manual up front
