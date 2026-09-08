@@ -5,6 +5,7 @@ import { listOpportunities, OPPORTUNITY_INCLUDE } from "@/lib/opportunities";
 import { opportunityCreateSchema, parseFilters } from "@/lib/validators";
 import { dedupeHash } from "@/lib/ingestion/dedupe";
 import { scoreOpportunity } from "@/lib/scoring";
+import { loadCalibration } from "@/lib/scoring/outcomes";
 import type { ScoreWeights } from "@/lib/types";
 import { apiError } from "@/lib/api";
 import { ensureEmbedding } from "@/lib/opportunities/similar";
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
     }
     const body = parsed.data;
 
+    const calibration = await loadCalibration(user.id);
     const breakdown = scoreOpportunity(
       {
         title: body.title,
@@ -53,6 +55,7 @@ export async function POST(req: Request) {
       {
         budgetMaxDkk: user.budgetMaxDkk,
         weights: (user.scoringWeights as Partial<ScoreWeights>) || undefined,
+        calibration,
       },
     );
     breakdown.computedAt = new Date().toISOString();

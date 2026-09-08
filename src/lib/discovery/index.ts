@@ -10,10 +10,12 @@ import {
 } from "@/lib/ai/keys";
 import { ensureEmbedding } from "@/lib/opportunities/similar";
 import { scoreOpportunity } from "@/lib/scoring";
+import { loadCalibration } from "@/lib/scoring/outcomes";
 import type {
   ApplicationRoute,
   ScoreBreakdown,
   ScoreWeights,
+  ScoringCalibrationModel,
   SourceType,
   Workspace,
 } from "@/lib/types";
@@ -182,6 +184,8 @@ interface UserProfile {
   budgetMaxDkk: number;
   scoringWeights: Prisma.JsonValue;
   aiKeys: Prisma.JsonValue;
+  /** Learned from this owner's own outcomes; absent = plain heuristic. */
+  calibration?: ScoringCalibrationModel | null;
 }
 
 const MAX_PAGE_FETCHES = 10;
@@ -1977,10 +1981,11 @@ async function toDiscoveryDto(
   feedbackModel?: FeedbackSignalModel,
 ): Promise<DiscoveryCandidateDto> {
   const breakdown = scoreOpportunity(
-    { ...c, contacts: c.contacts ?? [] },
+    { ...c, contacts: c.contacts ?? [], sourceName: meta.sourceName },
     {
       budgetMaxDkk: user.budgetMaxDkk,
       weights: (user.scoringWeights as Partial<ScoreWeights>) || undefined,
+      calibration: user.calibration,
     },
   );
   const fit = discoveryFitAdjustment(c);
@@ -2181,6 +2186,8 @@ export async function runDiscoverySearch(
     },
   });
   if (!user) throw new Error("User not found");
+  // Rank discovery results through what this owner has actually won.
+  const calibratedUser: UserProfile = { ...user, calibration: await loadCalibration(ownerId) };
 
   const workspace = input.workspace ?? "DK";
   const maxResults = Math.min(Math.max(input.maxResults ?? 12, 4), 30);
@@ -2197,7 +2204,7 @@ export async function runDiscoverySearch(
         input.query,
         workspace,
         input.resultKind ?? "all",
-        user,
+        calibratedUser,
         memory,
       );
   const queries = withHardSearchModifiers(
@@ -2238,7 +2245,7 @@ export async function runDiscoverySearch(
       const officialCandidates = await udbudDkCandidates(
         input.query,
         queries,
-        user,
+        calibratedUser,
         collectionLimit,
         feedbackModel,
       );
@@ -2287,7 +2294,7 @@ export async function runDiscoverySearch(
       const enrichStartedAt = Date.now();
       const webCandidates = await searchResultsToCandidates(
         filteredWebResults.results,
-        user,
+        calibratedUser,
         workspace,
         collectionLimit,
         feedbackModel,
@@ -2327,7 +2334,7 @@ export async function runDiscoverySearch(
     const sourceStartedAt = Date.now();
     const sourceQuery = [input.query, ...searchPlan.focusTerms.slice(0, 8), ...(input.requiredTerms ?? [])].join(" ");
     await progress("Scanning saved sources for matching opportunities.");
-    const scanned = await scanSources(ownerId, sourceQuery, user, workspace, collectionLimit, feedbackModel);
+    const scanned = await scanSources(ownerId, sourceQuery, calibratedUser, workspace, collectionLimit, feedbackModel);
     sourceScanCount = scanned.scanned;
     candidates.push(...scanned.candidates);
     warnings.push(...scanned.warnings.slice(0, 4));
@@ -2592,10 +2599,11 @@ export async function saveDiscoveryCandidate(
     select: { budgetMaxDkk: true, scoringWeights: true },
   });
   const breakdown = scoreOpportunity(
-    { ...base, contacts: base.contacts ?? [] },
+    { ...base, contacts: base.contacts ?? [], workspace },
     {
       budgetMaxDkk: user?.budgetMaxDkk ?? 100000,
       weights: (user?.scoringWeights as Partial<ScoreWeights>) || undefined,
+      calibration: await loadCalibration(ownerId),
     },
   );
   breakdown.computedAt = new Date().toISOString();

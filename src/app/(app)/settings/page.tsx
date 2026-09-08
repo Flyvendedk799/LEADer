@@ -13,12 +13,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { ScoringWeightsForm } from "@/components/settings/scoring-weights-form";
+import { CalibrationPanel } from "@/components/settings/calibration-panel";
 import { PreferencesForm } from "@/components/settings/preferences-form";
 import { AiProviderForm } from "@/components/settings/ai-provider-form";
 import { SecurityForm } from "@/components/settings/security-form";
 import type { PublicAiKeys } from "@/components/settings/ai-provider-fields";
 
-const SETTINGS_TABS = ["profile", "scoring", "preferences", "ai", "security"] as const;
+const SETTINGS_TABS = [
+  "profile",
+  "scoring",
+  "learning",
+  "preferences",
+  "ai",
+  "security",
+] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 export default async function SettingsPage({
@@ -60,6 +68,7 @@ export default async function SettingsPage({
         <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="scoring">Scoring</TabsTrigger>
+          <TabsTrigger value="learning">Learning</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
@@ -112,6 +121,10 @@ export default async function SettingsPage({
 
         <TabsContent value="scoring">
           <ScoringWeightsForm weights={weights} />
+        </TabsContent>
+
+        <TabsContent value="learning">
+          <CalibrationPanel />
         </TabsContent>
 
         <TabsContent value="preferences">

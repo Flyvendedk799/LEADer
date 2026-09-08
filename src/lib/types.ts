@@ -139,6 +139,8 @@ export interface ScoreBreakdown {
   total: number; // 0..100
   components: ScoreComponent[];
   computedAt: string;
+  /** Present when a learned calibration adjusted this score. */
+  calibration?: ScoreCalibrationTrace;
 }
 
 // ── Filters / search ─────────────────────────────────────────────────────────
@@ -282,4 +284,80 @@ export interface Paginated<T> {
   total: number;
   page: number;
   pageSize: number;
+}
+
+// ── Outcome learning (calibration) ───────────────────────────────────────────
+
+/**
+ * Outcome-bearing statuses become labelled training rows. `target` is the
+ * conversion value we regress against (1 = won, 0 = actively discarded) and
+ * `weight` is how much that decision is trusted as evidence.
+ */
+export interface OutcomeLabel {
+  target: number; // 0..1
+  weight: number; // 0..1 evidence strength
+}
+
+/** One labelled opportunity, ready for the learner. */
+export interface OutcomeSample {
+  id: string;
+  status: OpportunityStatus;
+  label: OutcomeLabel;
+  /** Raw 0..1 criterion signals as they were at scoring time. */
+  raws: Partial<Record<ScoreCriterion, number>>;
+  /** Discrete features ("source:x", "category:y", "token:z"). */
+  features: string[];
+  decidedAt?: string;
+}
+
+/** What the learner concluded about a single criterion. */
+export interface CriterionCalibration {
+  criterion: ScoreCriterion;
+  label: string;
+  /** Weighted correlation between this signal and conversion, -1..1. */
+  correlation: number;
+  /** Shrunk weight multiplier applied to the base weight. */
+  multiplier: number;
+  baseWeight: number; // normalised weight before learning
+  learnedWeight: number; // normalised weight after learning
+  samples: number; // rows that carried this signal
+  direction: "up" | "down" | "flat";
+}
+
+/** A discrete feature the learner found predictive. */
+export interface FeatureCalibration {
+  feature: string; // raw key, e.g. "category:voucher"
+  label: string; // human-readable
+  /** Shrunk difference from the global mean conversion, roughly -0.5..0.5. */
+  lift: number;
+  samples: number;
+  direction: "up" | "down";
+}
+
+/** The learned model: how this owner's real outcomes reshape ranking. */
+export interface ScoringCalibrationModel {
+  version: number;
+  computedAt: string;
+  /** Effective (weight-adjusted) sample size behind the model. */
+  sampleCount: number;
+  rawSampleCount: number;
+  outcomeCounts: Partial<Record<OpportunityStatus, number>>;
+  /** 0..1 — how much the learned signal is trusted vs. the defaults. */
+  confidence: number;
+  /** Mean conversion value across all labelled rows. */
+  baseRate: number;
+  criteria: CriterionCalibration[];
+  features: FeatureCalibration[];
+  /** True when there was too little evidence to change anything. */
+  insufficientData: boolean;
+}
+
+/** Recorded on a score when calibration changed the outcome. */
+export interface ScoreCalibrationTrace {
+  applied: boolean;
+  /** Points added/removed by learned feature lift. */
+  adjustment: number;
+  matchedFeatures: { label: string; lift: number }[];
+  sampleCount: number;
+  confidence: number;
 }

@@ -5,6 +5,7 @@ import { communityImportSchema } from "@/lib/validators";
 import { dedupeHash } from "@/lib/ingestion/dedupe";
 import { aiExtract } from "@/lib/ai";
 import { scoreOpportunity } from "@/lib/scoring";
+import { loadCalibration } from "@/lib/scoring/outcomes";
 import type { AiExtractResult, ScoreWeights, Workspace } from "@/lib/types";
 import { apiError } from "@/lib/api";
 import { z } from "zod";
@@ -142,7 +143,7 @@ export async function PATCH(req: Request) {
         applicationRoute: fields.applicationRoute ?? "UNKNOWN",
         contacts: fields.contact ? [fields.contact] : [],
       },
-      { budgetMaxDkk, weights },
+      { budgetMaxDkk, weights, calibration: await loadCalibration(ownerId) },
     );
     breakdown.computedAt = new Date().toISOString();
 
