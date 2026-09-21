@@ -23,6 +23,7 @@ import {
   type PublicAiKeys,
 } from "./ai-provider-fields";
 import { ClaudeSubscriptionPanel } from "./claude-subscription-panel";
+import { AntigravityAccountCard } from "./antigravity-account-card";
 
 export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
   const router = useRouter();
@@ -74,7 +75,7 @@ export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
           AI provider & subscriptions
         </CardTitle>
         <CardDescription>
-          Choose an API-key provider, connect your own Claude plan, or use a Codex/Claude CLI signed in on the server. Discovery search keys are separate.
+          Choose an API-key provider, connect your own Claude/Antigravity plan, or use a Codex/Claude CLI signed in on the server. Discovery search keys are separate.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -82,6 +83,11 @@ export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
         {state.provider === "claude-subscription" && (
           <div className="border-t border-border pt-5">
             <ClaudeSubscriptionPanel />
+          </div>
+        )}
+        {state.provider === "gemini-subscription" && (
+          <div className="border-t border-border pt-5">
+            <AntigravityAccountCard />
           </div>
         )}
         <div className="border-t border-border pt-5">

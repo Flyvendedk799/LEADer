@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { TIER_LABELS, modelChoices } from "@/lib/ai/registry";
 
-export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription";
+export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription" | "gemini" | "gemini-subscription";
 export type SearchProvider = "tavily" | "brave" | "serper";
 
 export type PublicAiKeys = {
@@ -73,6 +73,14 @@ const PROVIDER_DEFAULTS: Record<
     embeddingModel: "text-embedding-3-small",
     requiresApiKey: true,
   },
+  gemini: {
+    label: "Gemini API",
+    description: "Gemini models through Google's Generative Language API.",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    model: "gemini-1.5-flash",
+    embeddingModel: "text-embedding-3-small",
+    requiresApiKey: true,
+  },
   codex: {
     label: "Codex / ChatGPT subscription",
     description: "Use the Codex CLI session signed in on the machine running LEADer. No API key.",
@@ -89,13 +97,23 @@ const PROVIDER_DEFAULTS: Record<
     embeddingModel: "text-embedding-3-small",
     requiresApiKey: false,
   },
+  "gemini-subscription": {
+    label: "Antigravity subscription",
+    description: "Connect your Antigravity (Gemini Advanced) plan below.",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    model: "gemini-1.5-pro",
+    embeddingModel: "text-embedding-3-small",
+    requiresApiKey: false,
+  },
 };
 
 const PROVIDER_ICONS: Record<AiProvider, typeof BrainCircuit> = {
   openai: BrainCircuit,
   anthropic: MessageSquareText,
+  gemini: BrainCircuit,
   codex: Terminal,
   "claude-subscription": Terminal,
+  "gemini-subscription": Terminal,
 };
 
 const PROVIDER_GROUPS: {
@@ -106,13 +124,13 @@ const PROVIDER_GROUPS: {
   {
     title: "API key providers",
     description: "Use provider billing with encrypted API keys saved in LEADer.",
-    providers: ["openai", "anthropic"],
+    providers: ["openai", "anthropic", "gemini"],
   },
   {
     title: "Subscriptions",
     description:
-      "Connect your own Claude plan, or use a Codex/Claude CLI already signed in on the server.",
-    providers: ["codex", "claude-subscription"],
+      "Connect your own Claude or Antigravity plan, or use a CLI already signed in on the server.",
+    providers: ["codex", "claude-subscription", "gemini-subscription"],
   },
 ];
 

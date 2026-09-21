@@ -19,7 +19,7 @@ export type { ModelSpec, ModelTier, ProviderId };
 export { modelSpec, pricingFor, isPricingKnown };
 
 /** LEADer's provider ids, as stored in the user's `aiKeys` blob. */
-export type LeaderProvider = "openai" | "anthropic" | "codex" | "claude-subscription";
+export type LeaderProvider = "openai" | "anthropic" | "codex" | "claude-subscription" | "gemini" | "gemini-subscription";
 
 /**
  * LEADer calls the Claude subscription provider `claude-subscription`; the
@@ -27,7 +27,9 @@ export type LeaderProvider = "openai" | "anthropic" | "codex" | "claude-subscrip
  * One line rather than a rename, because the stored value is in every user's row.
  */
 export function registryProvider(provider: LeaderProvider): ProviderId {
-  return provider === "claude-subscription" ? "claude-code" : provider;
+  if (provider === "claude-subscription") return "claude-code";
+  if (provider === "gemini-subscription") return "gemini";
+  return provider;
 }
 
 /** The models worth offering for a provider, lightest first. */

@@ -14,7 +14,7 @@
  * The store is a three-method interface, and what lands in it is already sealed
  * by the library — so this adapter never holds a token in the clear.
  */
-import { ClaudeAccountStore, ClaudeCodeCredential, CodexCredential } from "@flyvendedk799/ai-auth";
+import { ClaudeAccountStore, ClaudeCodeCredential, CodexCredential, AntigravityAccountStore } from "@flyvendedk799/ai-auth";
 import type { CredentialStore, StoredRecord } from "@flyvendedk799/ai-auth";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -65,6 +65,7 @@ export class PrismaCredentialStore implements CredentialStore {
 }
 
 let cachedAccountStore: ClaudeAccountStore | null = null;
+let cachedAntigravityStore: AntigravityAccountStore | null = null;
 
 /**
  * The per-user Claude subscription store.
@@ -83,6 +84,17 @@ export function claudeAccountStore(): ClaudeAccountStore {
     });
   }
   return cachedAccountStore;
+}
+
+export function antigravityAccountStore(): AntigravityAccountStore {
+  if (!cachedAntigravityStore) {
+    cachedAntigravityStore = new AntigravityAccountStore({
+      store: new PrismaCredentialStore(),
+      secret: hostSecret(),
+      namespace: NAMESPACE,
+    });
+  }
+  return cachedAntigravityStore;
 }
 
 /**
