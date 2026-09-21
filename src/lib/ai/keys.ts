@@ -2,7 +2,7 @@ import { createDecipheriv, createHash } from "node:crypto";
 import { CODEX_BASE_URL, SecretBox, maskSecret } from "@flyvendedk799/ai-auth";
 import { hostSecret } from "./credentials";
 
-export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription";
+export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription" | "gemini" | "gemini-subscription";
 export type SearchProvider = "tavily" | "brave" | "serper";
 
 export interface StoredSearchKey {
@@ -44,7 +44,8 @@ export interface AiKeysUpdate {
     | "chatgpt"
     | "chatgpt-subscription"
     | "claude-code"
-    | "claude-code-subscription";
+    | "claude-code-subscription"
+    | "antigravity";
   baseUrl?: string;
   model?: string;
   embeddingModel?: string;
@@ -72,6 +73,11 @@ export const AI_PROVIDER_DEFAULTS: Record<
     baseUrl: "https://api.anthropic.com",
     model: "claude-sonnet-5",
   },
+  gemini: {
+    label: "Gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    model: "gemini-1.5-flash",
+  },
   codex: {
     label: "Codex/ChatGPT subscription",
     baseUrl: CODEX_BASE_URL,
@@ -83,6 +89,11 @@ export const AI_PROVIDER_DEFAULTS: Record<
     // Sonnet rather than Opus by default: a subscription meters each model on its
     // own allowance, and the heavy one is the one that gets refused first.
     model: "claude-sonnet-5",
+  },
+  "gemini-subscription": {
+    label: "Antigravity subscription",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    model: "gemini-1.5-pro",
   },
 };
 
@@ -106,6 +117,10 @@ export function normalizeProvider(value: unknown): AiProvider {
   ) {
     return "claude-subscription";
   }
+  if (value === "gemini-subscription" || value === "antigravity") {
+    return "gemini-subscription";
+  }
+  if (value === "gemini") return "gemini";
   if (value === "anthropic" || value === "claude") return "anthropic";
   return "openai";
 }

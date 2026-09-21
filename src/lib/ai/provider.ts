@@ -20,11 +20,15 @@ import { randomUUID } from "node:crypto";
 import {
   ClaudeCodeAuthError,
   CodexAuthError,
+  AntigravityAuthError,
   anthropicSubscriptionOptions,
   codexOptions,
   describeProviderError,
   providerErrorFacts,
   withClaudeCodeIdentity,
+  toCodeAssistRequest,
+  antigravityCliOptions,
+  antigravityKeyOptions,
 } from "@flyvendedk799/ai-auth";
 import {
   AI_PROVIDER_DEFAULTS,
@@ -37,6 +41,7 @@ import {
   claudeAccountStore,
   localClaudeCredential,
   localCodexCredential,
+  antigravityAccountStore,
 } from "./credentials";
 import { registryProvider } from "./registry";
 
@@ -112,11 +117,11 @@ export function hasLlm(aiKeys?: unknown): boolean {
  * a call reaches it.
  */
 export function isMissingSubscriptionLoginError(error: unknown) {
-  if (error instanceof ClaudeCodeAuthError || error instanceof CodexAuthError) {
+  if (error instanceof ClaudeCodeAuthError || error instanceof CodexAuthError || error instanceof AntigravityAuthError) {
     return error.needsLogin;
   }
   const message = error instanceof Error ? error.message : String(error ?? "");
-  return /No (?:Codex\/ChatGPT|Claude Code) subscription login found|No (?:Claude Code|Codex) login found|no Claude subscription connected/i.test(
+  return /No (?:Codex\/ChatGPT|Claude Code|Antigravity) subscription login found|No (?:Claude Code|Codex) login found|no Claude subscription connected/i.test(
     message,
   );
 }
@@ -133,13 +138,15 @@ export async function chat(
 ): Promise<string> {
   if (cfg.provider === "codex") return codexSubscriptionChat(messages, opts, cfg);
   if (cfg.provider === "claude-subscription") return claudeSubscriptionChat(messages, opts, cfg);
+  if (cfg.provider === "gemini-subscription") return geminiSubscriptionChat(messages, opts, cfg);
   if (!cfg.apiKey) throw new Error("No AI API key configured");
   if (cfg.provider === "anthropic") return anthropicChat(messages, opts, cfg);
+  if (cfg.provider === "gemini") return geminiChat(messages, opts, cfg);
   return openAiCompatibleChat(messages, opts, cfg);
 }
 
 function isSubscriptionProvider(provider: AiProvider): boolean {
-  return provider === "codex" || provider === "claude-subscription";
+  return provider === "codex" || provider === "claude-subscription" || provider === "gemini-subscription";
 }
 
 /**
@@ -423,4 +430,79 @@ async function readCodexTextStream(body: ReadableStream<Uint8Array>): Promise<st
   }
 
   return (deltas || doneText).trim();
+}
+
+
+async function geminiChat(
+  messages: ChatMessage[],
+  opts: ChatOptions,
+  cfg: LlmConfig,
+): Promise<string> {
+  const clientOptions = antigravityKeyOptions(cfg.apiKey, cfg.baseUrl);
+  
+  const system = messages.filter(m => m.role === "system").map(m => m.content).join("\n\n");
+  const turns = messages.filter(m => m.role !== "system").map(m => ({
+    role: (m.role === "assistant" ? "model" : "user") as "user" | "model",
+    parts: [{ text: m.content }],
+  }));
+
+  const request = toCodeAssistRequest(cfg.model || "", turns, { systemInstruction: system });
+  const baseURL = clientOptions.baseURL || "https://generativelanguage.googleapis.com/v1beta";
+
+  const url = new URL(`${baseURL}/models/${request.model}:generateContent`);
+  url.searchParams.set("key", clientOptions.apiKey || "");
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request.request),
+  });
+
+  if (!res.ok) throw await providerFailure(res, cfg, "Gemini request");
+
+  const body = (await res.json()) as any;
+  return body.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+}
+
+async function geminiSubscriptionChat(
+  messages: ChatMessage[],
+  opts: ChatOptions,
+  cfg: LlmConfig,
+): Promise<string> {
+  if (!cfg.accountId) throw new Error("No account ID provided for Antigravity subscription");
+  const store = antigravityAccountStore();
+  const status = await store.status(cfg.accountId).catch(() => null);
+  if (!status?.connected) throw new AntigravityAuthError("No Antigravity subscription connected", true);
+
+  const accessToken = await store.token(cfg.accountId);
+
+  const identity = {
+    accessToken,
+    refreshToken: "",
+    expiresAt: 0,
+    email: null,
+    projectId: status.projectId || null,
+    isDogfood: false,
+  } as any;
+
+  const clientOptions = antigravityCliOptions(identity, cfg.baseUrl || "");
+
+  const system = messages.filter(m => m.role === "system").map(m => m.content).join("\n\n");
+  const turns = messages.filter(m => m.role !== "system").map(m => ({
+    role: (m.role === "assistant" ? "model" : "user") as "user" | "model",
+    parts: [{ text: m.content }],
+  }));
+
+  const request = toCodeAssistRequest(cfg.model || "", turns, { systemInstruction: system });
+
+  const res = await fetch(`${clientOptions.baseURL}/generateContent`, {
+    method: "POST",
+    headers: clientOptions.defaultHeaders,
+    body: JSON.stringify(request),
+  });
+
+  if (!res.ok) throw await providerFailure(res, cfg, "Antigravity subscription request");
+
+  const body = (await res.json()) as any;
+  return body.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
