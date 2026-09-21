@@ -81,7 +81,7 @@ export function AntigravityAccountCard() {
       </div>
       
       <p className="text-xs leading-5 text-muted-foreground">
-        Sign in to run LEADer's AI on your Antigravity (Gemini Advanced / Code Assist) plan.
+        Sign in to run LEADer&apos;s AI on your Antigravity (Gemini Advanced / Code Assist) plan.
       </p>
 
       {loading ? (
