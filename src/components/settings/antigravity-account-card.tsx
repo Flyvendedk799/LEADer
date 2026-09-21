@@ -99,17 +99,17 @@ export function AntigravityAccountCard() {
               Connect Antigravity
             </Button>
             <span className="text-xs text-muted-foreground">
-              (Opens in a new tab. Approve and copy the final redirect URL)
+              (Opens in a new tab. Approve and copy the token)
             </span>
           </div>
           <div className="grid gap-2 sm:max-w-md">
-            <Label htmlFor="paste-url">Paste redirect URL</Label>
+            <Label htmlFor="paste-url">Paste token</Label>
             <div className="flex gap-2">
               <Input
                 id="paste-url"
                 value={pastedUrl}
                 onChange={(e) => setPastedUrl(e.target.value)}
-                placeholder="http://127.0.0.1:...?code=..."
+                placeholder="Paste the copied token..."
                 disabled={connecting}
               />
               <Button onClick={handleComplete} disabled={!pastedUrl || connecting}>

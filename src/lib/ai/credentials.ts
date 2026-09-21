@@ -91,7 +91,7 @@ export function antigravityAccountStore(): AntigravityAccountStore {
     cachedAntigravityStore = new AntigravityAccountStore({
       store: new PrismaCredentialStore(),
       secret: hostSecret(),
-      namespace: NAMESPACE,
+      namespace: "leader-antigravity",
     });
   }
   return cachedAntigravityStore;

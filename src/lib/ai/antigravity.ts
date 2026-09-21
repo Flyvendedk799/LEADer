@@ -29,17 +29,25 @@ export async function beginAntigravityLogin(accountId: string) {
 }
 
 export function parsePastedAntigravityCode(pasted: string) {
-  try {
-    const url = new URL(pasted);
+  pasted = pasted.trim();
+  if (pasted.includes("code=")) {
+    let url: URL;
+    try {
+      url = new URL(pasted);
+    } catch {
+      try {
+        url = new URL(`http://dummy${pasted.startsWith('?') ? '' : '?'}${pasted}`);
+      } catch {
+        throw new Error("Invalid pasted token format.");
+      }
+    }
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
-    if (!code || !state) {
-      throw new Error("Missing code or state in pasted URL.");
-    }
+    if (!code) throw new Error("Could not find code in pasted URL.");
     return { code, state };
-  } catch {
-    throw new Error("Invalid pasted URL.");
   }
+  // Assume the user pasted the raw token directly
+  return { code: pasted, state: null };
 }
 
 export async function completeAntigravityLogin(accountId: string, pasted: string) {
@@ -50,7 +58,7 @@ export async function completeAntigravityLogin(accountId: string, pasted: string
     throw new Error("No pending login found. Please try again.");
   }
   
-  if (pending.state !== state) {
+  if (state && pending.state !== state) {
     throw new Error("State mismatch. Possible CSRF attack.");
   }
   
