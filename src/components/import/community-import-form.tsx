@@ -46,6 +46,7 @@ export interface CommunityImportRow {
   author: string | null;
   status: string;
   opportunityId: string | null;
+  dealId?: string | null;
   createdAt: string | Date;
 }
 
@@ -138,11 +139,11 @@ export function CommunityImportForm({
         body: JSON.stringify({ id: importId }),
       });
       const data = await res.json();
-      if (!res.ok || !data?.opportunityId) {
+      if (!res.ok || !data?.dealId) {
         const message =
-          typeof data?.error === "string" ? data.error : "Could not create opportunity.";
+          typeof data?.error === "string" ? data.error : "Could not create deal.";
         setError(message);
-        toast.error("Could not create opportunity", message);
+        toast.error("Could not create deal", message);
         return;
       }
       // Clear the paste fields and preview state so the same post can't be
@@ -155,8 +156,8 @@ export function CommunityImportForm({
       setNotes("");
       setExtracted(null);
       setImportId(null);
-      toast.success("Imported", "Opportunity created");
-      router.push(`/opportunities/${data.opportunityId}`);
+      toast.success("Imported", "Deal created");
+      router.push(`/deals/${data.dealId}`);
     } catch {
       setError("Network error — could not reach the server.");
       toast.error("Network error", "Could not reach the server.");
@@ -433,9 +434,9 @@ export function CommunityImportForm({
                     >
                       {row.status.toLowerCase()}
                     </Badge>
-                    {row.opportunityId && (
+                    {(row.dealId || row.opportunityId) && (
                       <Button asChild variant="ghost" size="sm">
-                        <Link href={`/opportunities/${row.opportunityId}`}>
+                        <Link href={row.dealId ? `/deals/${row.dealId}` : `/opportunities/${row.opportunityId}`}>
                           Open <ArrowRight className="h-3.5 w-3.5" />
                         </Link>
                       </Button>

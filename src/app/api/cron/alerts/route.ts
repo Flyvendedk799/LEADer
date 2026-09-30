@@ -31,7 +31,10 @@ export async function POST(req: Request) {
     if (!validCronSecret(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const byOwner = await dispatchForAllOwners(opts);
+    const byOwner = await dispatchForAllOwners({
+      digest: opts.digest ?? true,
+      workspace: opts.workspace,
+    });
     return NextResponse.json({ scope: "all", byOwner });
   } catch (err) {
     return apiError(err);

@@ -39,7 +39,7 @@ export function renderDigest(metrics: DashboardMetrics, workspace: string): Rend
       ? `<ul style="padding-left:18px;margin:8px 0;">${items
           .map(
             (i) =>
-              `<li style="margin:4px 0;"><a href="${appUrl()}/opportunities/${i.id}" style="color:#e6edf3;">${esc(i.title)}</a>${suffix ? ` <span style="color:#8b949e;">${suffix(i)}</span>` : ""}</li>`,
+              `<li style="margin:4px 0;"><a href="${appUrl()}/deals/${i.id}" style="color:#e6edf3;">${esc(i.title)}</a>${suffix ? ` <span style="color:#8b949e;">${suffix(i)}</span>` : ""}</li>`,
           )
           .join("")}</ul>`
       : `<p style="color:#8b949e;margin:8px 0;">None.</p>`;
@@ -76,7 +76,7 @@ export function renderDeadlineReminder(
   const rows = items
     .map(
       (i) =>
-        `<li style="margin:6px 0;"><a href="${appUrl()}/opportunities/${i.id}" style="color:#e6edf3;font-weight:600;">${esc(i.title)}</a><br>
+        `<li style="margin:6px 0;"><a href="${appUrl()}/deals/${i.id}" style="color:#e6edf3;font-weight:600;">${esc(i.title)}</a><br>
          <span style="color:#8b949e;font-size:13px;">${i.daysLeft <= 0 ? "due today" : `${i.daysLeft} day(s) left`} · ${i.deadline.toLocaleDateString("da-DK")} · score ${i.matchScore ?? "—"}</span></li>`,
     )
     .join("");
@@ -84,7 +84,7 @@ export function renderDeadlineReminder(
   const html = layout(
     `${items.length} deadline${items.length === 1 ? "" : "s"} approaching`,
     `<ul style="padding-left:18px;margin:8px 0;list-style:none;">${rows}</ul>
-     <p style="margin:24px 0 0;">${button("Review opportunities", `${appUrl()}/opportunities?activeOnly=true&sort=deadline&order=asc`)}</p>`,
+     <p style="margin:24px 0 0;">${button("Review deals", `${appUrl()}/deals`)}</p>`,
   );
 
   const text = [
@@ -92,7 +92,7 @@ export function renderDeadlineReminder(
     "",
     ...items.map((i) => `- ${i.title} — ${i.daysLeft <= 0 ? "due today" : `${i.daysLeft} day(s) left`} (${i.deadline.toLocaleDateString("da-DK")})`),
     "",
-    `Review: ${appUrl()}/opportunities?activeOnly=true&sort=deadline&order=asc`,
+    `Review: ${appUrl()}/deals`,
   ].join("\n");
 
   return { subject: `⏰ ${items.length} LEADer deadline${items.length === 1 ? "" : "s"} approaching`, html, text };

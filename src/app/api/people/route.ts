@@ -27,7 +27,8 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const parsed = personCreateSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-    const data = { ...parsed.data, email: parsed.data.email || undefined };
+    const { dealId, ...fields } = parsed.data;
+    const data = { ...fields, email: fields.email || undefined };
     const person = data.email
       ? await db.person.upsert({
           where: { ownerId_email: { ownerId, email: data.email } },
@@ -35,6 +36,16 @@ export async function POST(req: Request) {
           create: { ownerId, ...data },
         })
       : await db.person.create({ data: { ownerId, ...data } });
+    if (dealId) {
+      const deal = await db.deal.findFirst({ where: { id: dealId, ownerId }, select: { id: true } });
+      if (deal) {
+        await db.dealPerson.upsert({
+          where: { dealId_personId: { dealId: deal.id, personId: person.id } },
+          update: {},
+          create: { dealId: deal.id, personId: person.id, role: data.role },
+        });
+      }
+    }
     return NextResponse.json(person, { status: 201 });
   } catch (err) {
     return apiError(err);

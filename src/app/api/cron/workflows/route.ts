@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 
 import { apiError, validCronSecret } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
+import { drainQueuedWorkflowRuns, drainQueuedWorkflowRunsAllOwners } from "@/lib/workflows/queue";
 import { queueDueWorkflowPresets, queueDueWorkflowPresetsAllOwners } from "@/lib/workflows/preset-runs";
 
 export async function POST(req: Request) {
@@ -16,7 +17,13 @@ export async function POST(req: Request) {
 
     if (user) {
       const results = await queueDueWorkflowPresets(user.id, now);
-      return NextResponse.json({ scope: "owner", queued: results.filter((item) => item.status === "QUEUED").length, results });
+      const drained = await drainQueuedWorkflowRuns(user.id, 3);
+      return NextResponse.json({
+        scope: "owner",
+        queued: results.filter((item) => item.status === "QUEUED").length,
+        drained,
+        results,
+      });
     }
 
     if (!validCronSecret(req)) {
@@ -24,11 +31,12 @@ export async function POST(req: Request) {
     }
 
     const byOwner = await queueDueWorkflowPresetsAllOwners(now);
+    const drained = await drainQueuedWorkflowRunsAllOwners(2);
     const queued = Object.values(byOwner).reduce(
       (total, results) => total + results.filter((item) => item.status === "QUEUED").length,
       0,
     );
-    return NextResponse.json({ scope: "all", queued, byOwner });
+    return NextResponse.json({ scope: "all", queued, drained, byOwner });
   } catch (err) {
     return apiError(err);
   }

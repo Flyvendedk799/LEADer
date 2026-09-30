@@ -21,13 +21,14 @@
   multi-tenant cron endpoints (`/api/cron/discover`, `/api/cron/alerts`).
 - ✅ **CI** — GitHub Actions: lint · typecheck · unit tests · build · Playwright E2E
   (Postgres service + seed).
+- ✅ **Outcome feedback loop** — scoring weights tune from decided opportunities and from
+  Deal wins and losses that are not already covered by a linked opportunity.
 
 ## Next (highest leverage)
 1. **OAuth / SSO** (Google, GitHub) layered onto the existing auth seam.
 2. **Real LLM wiring** in CI/staging — validate prompt outputs against fixtures.
 3. **More site parsers** — tune CSS configs against live EHSYS / Beyond Beta / Erhvervshuse
    markup as sources are onboarded (structured-data path already covers many).
-4. **Outcome feedback loop** — auto-tune scoring weights from Won/Lost history.
 
 ## Later
 - OCR for uploaded screenshots; forward-to-import email address.

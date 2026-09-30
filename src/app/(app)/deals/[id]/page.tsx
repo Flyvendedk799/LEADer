@@ -8,6 +8,7 @@ import { DEAL_INCLUDE } from "@/lib/crm";
 import { formatBudget, formatDate, relativeDeadline } from "@/lib/utils";
 import { DealStatusBadge } from "@/components/crm/deal-status-badge";
 import { DealAiPanel } from "@/components/crm/deal-ai-panel";
+import { DealActions } from "@/components/crm/deal-actions";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -123,6 +124,32 @@ export default async function DealDetailPage({ params }: { params: { id: string 
           </Card>
 
           <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-sm">People</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {deal.people.map((link) => (
+                <div key={link.personId} className="rounded-md border border-border bg-surface/40 p-2 text-sm">
+                  <p className="font-medium">{link.person.name || link.person.email || "Unnamed person"}</p>
+                  <p className="text-xs text-muted-foreground">{[link.role || link.person.role, link.person.email].filter(Boolean).join(" · ") || "No details"}</p>
+                </div>
+              ))}
+              {deal.people.length === 0 && <p className="text-sm text-muted-foreground">No people yet.</p>}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-sm">Touchpoints</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {deal.touchpoints.map((touchpoint) => (
+                <div key={touchpoint.id} className="rounded-md border border-border bg-surface/40 p-2 text-sm">
+                  <p className="font-medium">{touchpoint.summary}</p>
+                  <p className="text-xs text-muted-foreground">{touchpoint.kind} · {formatDate(touchpoint.occurredAt)}</p>
+                </div>
+              ))}
+              {deal.touchpoints.length === 0 && <p className="text-sm text-muted-foreground">No touchpoints yet.</p>}
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <ListChecks className="h-4 w-4 text-primary" />
@@ -140,6 +167,7 @@ export default async function DealDetailPage({ params }: { params: { id: string 
             </CardContent>
           </Card>
 
+          <DealActions dealId={deal.id} accountId={deal.accountId} status={deal.status} />
           <DealAiPanel dealId={deal.id} />
         </aside>
       </div>

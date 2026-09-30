@@ -34,7 +34,7 @@ export function Topbar({ user }: TopbarProps) {
   function submitSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const q = new FormData(e.currentTarget).get("q")?.toString() ?? "";
-    const base = onGlobal ? "/global" : "/opportunities";
+    const base = onGlobal ? "/global" : "/deals";
     router.push(`${base}?q=${encodeURIComponent(q)}`);
   }
 
@@ -59,7 +59,7 @@ export function Topbar({ user }: TopbarProps) {
         <Input
           name="q"
           defaultValue={params.get("q") ?? ""}
-          placeholder="Search opportunities, organizations, summaries…"
+          placeholder="Search deals, accounts, summaries…"
           className="pl-9 pr-14"
         />
         <button

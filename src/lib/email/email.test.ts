@@ -31,7 +31,7 @@ describe("email templates", () => {
     expect(t.html).toContain("MVP build");
     expect(t.html).toContain("AI prototype");
     expect(t.text).toContain("MVP build");
-    expect(t.html).toContain("/opportunities/o1");
+    expect(t.html).toContain("/deals/o1");
   });
 
   it("renders a deadline reminder", () => {

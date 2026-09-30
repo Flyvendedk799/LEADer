@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Mail, PenLine, Sparkles, Target, ClipboardCheck } from "lucide-react";
 import type { AiAction } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ const ACTIONS: { action: AiAction; label: string; icon: React.ElementType }[] = 
 ];
 
 export function DealAiPanel({ dealId }: { dealId: string }) {
+  const router = useRouter();
   const [pending, setPending] = React.useState<AiAction | null>(null);
   const [result, setResult] = React.useState<string | null>(null);
 
@@ -32,6 +34,7 @@ export function DealAiPanel({ dealId }: { dealId: string }) {
       if (!res.ok) throw new Error(data?.error || "AI request failed");
       setResult(data.text || JSON.stringify(data.data, null, 2));
       toast.success("Asset saved", action);
+      router.refresh();
     } catch (err) {
       toast.error("AI failed", err instanceof Error ? err.message : "AI request failed");
     } finally {

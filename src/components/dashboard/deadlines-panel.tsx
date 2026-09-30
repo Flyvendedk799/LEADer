@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeadlinePill } from "@/components/shared/deadline-pill";
 import { ScoreBadge } from "@/components/shared/score-badge";
 
-/** Upcoming deadlines list — each row links to the opportunity detail. */
+/** Upcoming deadlines list — each row links to the deal. */
 export function DeadlinesPanel({
   items,
 }: {
@@ -22,7 +22,7 @@ export function DeadlinesPanel({
             {items.map((item) => (
               <li key={item.id} className="first:pt-0 last:pb-0 py-2.5">
                 <Link
-                  href={`/opportunities/${item.id}`}
+                  href={`/deals/${item.id}`}
                   className="group flex items-center justify-between gap-3"
                 >
                   <div className="flex min-w-0 items-center gap-3">

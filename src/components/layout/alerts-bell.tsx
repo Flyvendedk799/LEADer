@@ -19,7 +19,7 @@ interface AlertRow {
   title: string;
   body: string | null;
   channel: "LOCAL" | "EMAIL";
-  payload: { opportunityId?: string } | null;
+  payload: { opportunityId?: string; dealId?: string } | null;
   createdAt: string;
 }
 
@@ -50,14 +50,14 @@ export function AlertsBell() {
     return () => clearInterval(t);
   }, [load]);
 
-  async function markRead(id: string, opportunityId?: string) {
+  async function markRead(id: string, href?: string) {
     setAlerts((a) => a.filter((x) => x.id !== id));
     await fetch("/api/alerts", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    if (opportunityId) router.push(`/opportunities/${opportunityId}`);
+    if (href) router.push(href);
   }
 
   async function generate(type: "DIGEST" | "REMINDERS") {
@@ -117,7 +117,16 @@ export function AlertsBell() {
               return (
                 <button
                   key={a.id}
-                  onClick={() => markRead(a.id, a.payload?.opportunityId)}
+                  onClick={() =>
+                    markRead(
+                      a.id,
+                      a.payload?.dealId
+                        ? `/deals/${a.payload.dealId}`
+                        : a.payload?.opportunityId
+                          ? `/opportunities/${a.payload.opportunityId}`
+                          : undefined,
+                    )
+                  }
                   className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface-2"
                 >
                   <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { DEAL_INCLUDE } from "@/lib/crm";
+import { syncLinkedOpportunityStatus } from "@/lib/crm/promote";
 import { pursuitScore } from "@/lib/crm/scoring";
 import { db } from "@/lib/db";
 import { dealUpdateSchema } from "@/lib/validators";
@@ -41,6 +42,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       },
       include: DEAL_INCLUDE,
     });
+    if (d.status) await syncLinkedOpportunityStatus(ownerId, deal.id, d.status);
     return NextResponse.json(deal);
   } catch (err) {
     return apiError(err);

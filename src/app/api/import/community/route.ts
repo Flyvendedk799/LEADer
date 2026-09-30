@@ -7,6 +7,7 @@ import { aiExtract } from "@/lib/ai";
 import { scoreOpportunity } from "@/lib/scoring";
 import { loadCalibration } from "@/lib/scoring/outcomes";
 import type { AiExtractResult, ScoreWeights, Workspace } from "@/lib/types";
+import { ensureDealForOpportunity } from "@/lib/crm/promote";
 import { apiError } from "@/lib/api";
 import { z } from "zod";
 
@@ -101,7 +102,11 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Import not found" }, { status: 404 });
     }
     if (imp.opportunityId) {
-      return NextResponse.json({ opportunityId: imp.opportunityId });
+      const deal = await db.deal.findFirst({
+        where: { ownerId, legacyOpportunityId: imp.opportunityId },
+        select: { id: true },
+      });
+      return NextResponse.json({ opportunityId: imp.opportunityId, dealId: deal?.id ?? null });
     }
 
     const stashed = (imp.extracted as (AiExtractResult & { __workspace?: Workspace }) | null) ?? {};
@@ -201,12 +206,14 @@ export async function PATCH(req: Request) {
       },
     });
 
+    const deal = await ensureDealForOpportunity(ownerId, opp.id);
+
     await db.communityImport.update({
       where: { id: imp.id },
       data: { opportunityId: opp.id, status: "CONFIRMED" },
     });
 
-    return NextResponse.json({ opportunityId: opp.id });
+    return NextResponse.json({ opportunityId: opp.id, dealId: deal.id });
   } catch (err) {
     return apiError(err);
   }

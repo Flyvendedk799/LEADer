@@ -710,9 +710,9 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
             Generate digest
           </Button>
           <Button asChild variant="outline">
-            <Link href={`/opportunities?new=1&workspace=${workspace}`}>
+            <Link href={`/deals?new=1&workspace=${workspace}`}>
               <Plus className="h-4 w-4" />
-              New opportunity
+              New deal
             </Link>
           </Button>
         </div>

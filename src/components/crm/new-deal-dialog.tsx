@@ -27,97 +27,110 @@ import { toast } from "@/hooks/use-toast";
 import type { ApplicationRoute, Workspace } from "@/lib/types";
 import { workspaceFromRoute } from "@/lib/workspace-context";
 
-export function NewOpportunityDialog() {
+export function NewDealDialog() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [open, setOpen] = React.useState(false);
   const routeWorkspace = workspaceFromRoute(pathname, searchParams);
+  const queryWorkspace = searchParams.get("workspace") === "GLOBAL" ? "GLOBAL" : searchParams.get("workspace") === "DK" ? "DK" : routeWorkspace;
 
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const [title, setTitle] = React.useState("");
-  const [description, setDescription] = React.useState("");
+  const [summary, setSummary] = React.useState("");
   const [url, setUrl] = React.useState("");
   const [organization, setOrganization] = React.useState("");
-  const [budgetMin, setBudgetMin] = React.useState("");
-  const [budgetMax, setBudgetMax] = React.useState("");
+  const [valueMin, setValueMin] = React.useState("");
+  const [valueMax, setValueMax] = React.useState("");
   const [deadline, setDeadline] = React.useState("");
   const [category, setCategory] = React.useState("");
   const [applicationRoute, setApplicationRoute] = React.useState<ApplicationRoute>("UNKNOWN");
-  const [workspace, setWorkspace] = React.useState<Workspace>(routeWorkspace);
+  const [workspace, setWorkspace] = React.useState<Workspace>(queryWorkspace);
 
-  // Open automatically when arriving with ?new=1 (e.g. from the command palette),
-  // then strip the param so a refresh doesn't reopen the dialog.
   React.useEffect(() => {
     if (searchParams.get("new") === "1") {
-      setWorkspace(routeWorkspace);
+      setWorkspace(queryWorkspace);
       setOpen(true);
       const next = new URLSearchParams(searchParams.toString());
       next.delete("new");
       const qs = next.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     }
-  }, [routeWorkspace, searchParams, pathname, router]);
+  }, [queryWorkspace, searchParams, pathname, router]);
 
   React.useEffect(() => {
-    if (!open) setWorkspace(routeWorkspace);
-  }, [open, routeWorkspace]);
+    if (!open) setWorkspace(queryWorkspace);
+  }, [open, queryWorkspace]);
 
   function reset() {
     setTitle("");
-    setDescription("");
+    setSummary("");
     setUrl("");
     setOrganization("");
-    setBudgetMin("");
-    setBudgetMax("");
+    setValueMin("");
+    setValueMax("");
     setDeadline("");
     setCategory("");
     setApplicationRoute("UNKNOWN");
-    setWorkspace(routeWorkspace);
+    setWorkspace(queryWorkspace);
     setError(null);
   }
 
   async function submit() {
-    if (budgetMin !== "" && budgetMax !== "" && Number(budgetMin) > Number(budgetMax)) {
-      toast.error("Budget min must be ≤ max");
+    if (title.trim().length < 3) {
+      toast.error("Title needs at least 3 characters");
+      return;
+    }
+    if (valueMin !== "" && valueMax !== "" && Number(valueMin) > Number(valueMax)) {
+      toast.error("Value min must be ≤ max");
       return;
     }
     setSaving(true);
     setError(null);
-    const payload: Record<string, unknown> = {
-      title,
-      workspace,
-      applicationRoute,
-    };
-    if (description.trim()) payload.description = description.trim();
-    if (url.trim()) payload.url = url.trim();
-    if (organization.trim()) payload.organization = organization.trim();
-    if (category.trim()) payload.category = category.trim();
-    if (budgetMin !== "") payload.budgetMin = Number(budgetMin);
-    if (budgetMax !== "") payload.budgetMax = Number(budgetMax);
-    // Send end-of-day local so the date doesn't shift earlier when parsed as UTC.
-    if (deadline !== "") payload.deadline = `${deadline}T23:59:59`;
-
     try {
-      const res = await fetch("/api/opportunities", {
+      let accountId: string | undefined;
+      if (organization.trim()) {
+        const accountRes = await fetch("/api/accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: organization.trim(),
+            website: url.trim(),
+            workspace,
+          }),
+        });
+        const account = await accountRes.json().catch(() => ({}));
+        if (!accountRes.ok) throw new Error(account?.error || "Failed to save account");
+        accountId = account.id;
+      }
+
+      const payload: Record<string, unknown> = { title: title.trim(), workspace, applicationRoute };
+      if (accountId) payload.accountId = accountId;
+      if (summary.trim()) payload.summary = summary.trim();
+      if (url.trim()) payload.url = url.trim();
+      if (category.trim()) payload.category = category.trim();
+      if (valueMin !== "") payload.valueMin = Number(valueMin);
+      if (valueMax !== "") payload.valueMax = Number(valueMax);
+      if (deadline !== "") payload.deadline = `${deadline}T23:59:59`;
+
+      const res = await fetch("/api/deals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const msg = await res.json().catch(() => ({}));
-        throw new Error((msg as { error?: string }).error || "Failed to create opportunity");
-      }
-      toast.success("Opportunity created");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof body?.error === "string" ? body.error : "Failed to create deal");
+      toast.success("Deal created");
       setOpen(false);
       reset();
-      router.refresh();
+      if (body?.id) router.push(`/deals/${body.id}`);
+      else router.refresh();
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to create opportunity";
+      const message = e instanceof Error ? e.message : "Failed to create deal";
       setError(message);
-      toast.error("Failed to create opportunity", message);
+      toast.error("Failed to create deal", message);
     } finally {
       setSaving(false);
     }
@@ -134,110 +147,59 @@ export function NewOpportunityDialog() {
       <DialogTrigger asChild>
         <Button>
           <Plus className="h-4 w-4" />
-          New opportunity
+          New deal
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New opportunity</DialogTitle>
-          <DialogDescription>Manually add a lead to your pipeline.</DialogDescription>
+          <DialogTitle>New deal</DialogTitle>
+          <DialogDescription>Add a lead straight into the pipeline.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="no-title">Title</Label>
-            <Input
-              id="no-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Opportunity title"
-            />
+            <Label htmlFor="nd-title">Title</Label>
+            <Input id="nd-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Deal title" />
           </div>
-
           <div className="space-y-1.5">
-            <Label htmlFor="no-description">Description</Label>
-            <Textarea
-              id="no-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this about?"
-            />
+            <Label htmlFor="nd-summary">Summary</Label>
+            <Textarea id="nd-summary" value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="What is this about?" />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="no-org">Organization</Label>
-              <Input
-                id="no-org"
-                value={organization}
-                onChange={(e) => setOrganization(e.target.value)}
-              />
+              <Label htmlFor="nd-org">Account</Label>
+              <Input id="nd-org" value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Company or buyer" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="no-url">URL</Label>
-              <Input
-                id="no-url"
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://…"
-              />
+              <Label htmlFor="nd-url">URL</Label>
+              <Input id="nd-url" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="no-budget-min">Budget min (DKK)</Label>
-              <Input
-                id="no-budget-min"
-                type="number"
-                min={0}
-                value={budgetMin}
-                onChange={(e) => setBudgetMin(e.target.value)}
-              />
+              <Label htmlFor="nd-min">Value min</Label>
+              <Input id="nd-min" type="number" min={0} value={valueMin} onChange={(e) => setValueMin(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="no-budget-max">Budget max (DKK)</Label>
-              <Input
-                id="no-budget-max"
-                type="number"
-                min={0}
-                value={budgetMax}
-                onChange={(e) => setBudgetMax(e.target.value)}
-              />
+              <Label htmlFor="nd-max">Value max</Label>
+              <Input id="nd-max" type="number" min={0} value={valueMax} onChange={(e) => setValueMax(e.target.value)} />
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="no-deadline">Deadline</Label>
-              <Input
-                id="no-deadline"
-                type="date"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-              />
+              <Label htmlFor="nd-deadline">Deadline</Label>
+              <Input id="nd-deadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="no-category">Category</Label>
-              <Input
-                id="no-category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-              />
+              <Label htmlFor="nd-category">Category</Label>
+              <Input id="nd-category" value={category} onChange={(e) => setCategory(e.target.value)} />
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Application route</Label>
-              <Select
-                value={applicationRoute}
-                onValueChange={(v) => setApplicationRoute(v as ApplicationRoute)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+              <Select value={applicationRoute} onValueChange={(v) => setApplicationRoute(v as ApplicationRoute)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="DIRECT">Direct</SelectItem>
                   <SelectItem value="APPLICATION">Application</SelectItem>
@@ -248,9 +210,7 @@ export function NewOpportunityDialog() {
             <div className="space-y-1.5">
               <Label>Workspace</Label>
               <Select value={workspace} onValueChange={(v) => setWorkspace(v as Workspace)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="DK">Denmark</SelectItem>
                   <SelectItem value="GLOBAL">International</SelectItem>
@@ -258,7 +218,6 @@ export function NewOpportunityDialog() {
               </Select>
             </div>
           </div>
-
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
 

@@ -4,6 +4,14 @@
     {
       "path": "/api/cron/discover",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/alerts",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/workflows",
+      "schedule": "0 8 * * *"
     }
   ]
 }

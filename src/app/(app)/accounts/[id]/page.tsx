@@ -98,6 +98,19 @@ export default async function AccountDetailPage({ params }: { params: { id: stri
           </Card>
 
           <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-sm">Touchpoints</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {account.touchpoints.map((touchpoint) => (
+                <div key={touchpoint.id} className="rounded-md border border-border bg-surface/40 p-2 text-sm">
+                  <p className="font-medium">{touchpoint.summary}</p>
+                  <p className="text-xs text-muted-foreground">{touchpoint.kind} · {formatDate(touchpoint.occurredAt)}</p>
+                </div>
+              ))}
+              {account.touchpoints.length === 0 && <p className="text-sm text-muted-foreground">No touchpoints yet.</p>}
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader className="pb-3"><CardTitle className="text-sm">Tasks</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {account.tasks.map((task) => (

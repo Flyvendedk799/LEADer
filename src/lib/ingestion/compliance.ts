@@ -117,6 +117,6 @@ export function crawlerSettings() {
     userAgent: userAgent(),
     timeoutMs: Number(process.env.CRAWLER_TIMEOUT_MS || 15000),
     maxPagesPerRun: Number(process.env.CRAWLER_MAX_PAGES_PER_RUN || 25),
-    playwrightEnabled: process.env.CRAWLER_ENABLE_PLAYWRIGHT === "true",
+    playwrightEnabled: process.env.CRAWLER_ENABLE_PLAYWRIGHT === "true" || process.env.CRAWLER_ENABLE_PLAYWRIGHT === "1",
   };
 }

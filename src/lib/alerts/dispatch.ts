@@ -8,6 +8,7 @@ import type { Workspace } from "@/lib/types";
 // Alert rows (the in-app inbox), and deliver by email when a provider is set.
 
 const DAY = 24 * 60 * 60 * 1000;
+const OPEN_DEAL_STATUSES = ["DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION"] as const;
 
 export interface DispatchResult {
   created: number;
@@ -15,39 +16,47 @@ export interface DispatchResult {
   provider: string;
 }
 
-/** Owners receive a reminder for active opportunities whose deadline is near. */
+function remindedIds(rows: { payload: unknown }[]) {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    const payload = row.payload as { dealId?: string; opportunityId?: string } | null;
+    if (payload?.dealId) ids.add(payload.dealId);
+    if (payload?.opportunityId) ids.add(payload.opportunityId);
+  }
+  return ids;
+}
+
+/** Owners receive a reminder for open deals whose deadline is near. */
 export async function generateDeadlineReminders(ownerId: string): Promise<DispatchResult> {
   const windowDays = Number(process.env.REMINDER_WINDOW_DAYS || 7);
   const now = new Date();
   const horizon = new Date(now.getTime() + windowDays * DAY);
 
-  const opps = await db.opportunity.findMany({
+  const deals = await db.deal.findMany({
     where: {
       ownerId,
       deadline: { gte: now, lte: horizon },
-      status: { notIn: ["ARCHIVED", "LOST", "WON"] },
+      status: { in: [...OPEN_DEAL_STATUSES] },
     },
-    select: { id: true, title: true, deadline: true, matchScore: true },
+    select: { id: true, title: true, deadline: true, matchScore: true, pursuitScore: true, legacyOpportunityId: true },
     orderBy: { deadline: "asc" },
   });
 
-  // De-dupe: skip opportunities reminded in the last 24h (payload.opportunityId).
   const recent = await db.alert.findMany({
     where: { ownerId, type: "DEADLINE", createdAt: { gte: new Date(now.getTime() - DAY) } },
     select: { payload: true },
   });
-  const remindedIds = new Set(
-    recent.map((a) => (a.payload as { opportunityId?: string } | null)?.opportunityId).filter(Boolean),
-  );
+  const reminded = remindedIds(recent);
 
-  const due = opps
-    .filter((o) => o.deadline && !remindedIds.has(o.id))
-    .map((o) => ({
-      id: o.id,
-      title: o.title,
-      deadline: o.deadline as Date,
-      matchScore: o.matchScore,
-      daysLeft: Math.ceil(((o.deadline as Date).getTime() - now.getTime()) / DAY),
+  const due = deals
+    .filter((deal) => deal.deadline && !reminded.has(deal.id) && !(deal.legacyOpportunityId && reminded.has(deal.legacyOpportunityId)))
+    .map((deal) => ({
+      id: deal.id,
+      title: deal.title,
+      deadline: deal.deadline as Date,
+      matchScore: deal.pursuitScore ?? deal.matchScore,
+      legacyOpportunityId: deal.legacyOpportunityId,
+      daysLeft: Math.ceil(((deal.deadline as Date).getTime() - now.getTime()) / DAY),
     }));
 
   if (due.length === 0) return { created: 0, emailed: 0, provider: "none" };
@@ -76,7 +85,12 @@ export async function generateDeadlineReminders(ownerId: string): Promise<Dispat
         channel,
         title: `Deadline ${o.daysLeft <= 0 ? "today" : `in ${o.daysLeft} day(s)`}: ${o.title}`,
         body: `${o.title} closes ${o.deadline.toLocaleDateString("da-DK")}.`,
-        payload: { opportunityId: o.id, daysLeft: o.daysLeft, deadline: o.deadline.toISOString() },
+        payload: {
+          dealId: o.id,
+          opportunityId: o.legacyOpportunityId ?? undefined,
+          daysLeft: o.daysLeft,
+          deadline: o.deadline.toISOString(),
+        },
       },
     });
   }
@@ -84,10 +98,92 @@ export async function generateDeadlineReminders(ownerId: string): Promise<Dispat
   return { created: due.length, emailed, provider };
 }
 
-/** Build + persist a pipeline digest, emailing it when a provider is set. */
+/** Inbox rows for deals that state a next action, have no open task, and are past due or stale. */
+export async function generateNeedsAction(ownerId: string): Promise<DispatchResult> {
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - 7 * DAY);
+  const deals = await db.deal.findMany({
+    where: {
+      ownerId,
+      status: { in: [...OPEN_DEAL_STATUSES] },
+      nextAction: { not: null },
+      tasks: { none: { status: "OPEN" } },
+      OR: [{ deadline: { lt: now } }, { updatedAt: { lt: staleBefore } }],
+    },
+    select: { id: true, title: true, nextAction: true },
+    take: 20,
+  });
+  const recent = await db.alert.findMany({
+    where: { ownerId, type: "NEEDS_ACTION", createdAt: { gte: new Date(now.getTime() - 7 * DAY) } },
+    select: { payload: true },
+  });
+  const reminded = remindedIds(recent);
+  const due = deals.filter((deal) => deal.nextAction?.trim() && !reminded.has(deal.id));
+  for (const deal of due) {
+    await db.alert.create({
+      data: {
+        ownerId,
+        type: "NEEDS_ACTION",
+        channel: "LOCAL",
+        title: `Needs action: ${deal.title}`,
+        body: deal.nextAction,
+        payload: { dealId: deal.id },
+      },
+    });
+  }
+  return { created: due.length, emailed: 0, provider: "none" };
+}
+
+/** Build + persist a pipeline digest, emailing high-match deals when a provider is set. */
 export async function generateDigest(ownerId: string, workspace: Workspace = "DK"): Promise<DispatchResult> {
   const metrics = await getDashboardMetrics(ownerId, workspace);
-  const tpl = renderDigest(metrics, workspace);
+  const now = new Date();
+  const horizon = new Date(now.getTime() + 7 * DAY);
+  const [deadlines, matches] = await Promise.all([
+    db.deal.findMany({
+      where: {
+        ownerId,
+        workspace,
+        status: { in: [...OPEN_DEAL_STATUSES] },
+        deadline: { gte: now, lte: horizon },
+      },
+      orderBy: { deadline: "asc" },
+      take: 5,
+      select: { id: true, title: true, deadline: true, matchScore: true, pursuitScore: true },
+    }),
+    db.deal.findMany({
+      where: {
+        ownerId,
+        workspace,
+        status: { in: [...OPEN_DEAL_STATUSES] },
+        OR: [{ matchScore: { gte: 80 } }, { pursuitScore: { gte: 80 } }],
+      },
+      orderBy: { pursuitScore: "desc" },
+      take: 5,
+      select: { id: true, title: true, matchScore: true, pursuitScore: true },
+    }),
+  ]);
+  const tpl = renderDigest(
+    {
+      ...metrics,
+      upcomingDeadlines: deadlines.flatMap((deal) =>
+        deal.deadline
+          ? [{
+              id: deal.id,
+              title: deal.title,
+              deadline: deal.deadline.toISOString(),
+              matchScore: deal.pursuitScore ?? deal.matchScore,
+            }]
+          : [],
+      ),
+      bestMatches: matches.map((deal) => ({
+        id: deal.id,
+        title: deal.title,
+        matchScore: deal.pursuitScore ?? deal.matchScore,
+      })),
+    },
+    workspace,
+  );
 
   let emailed = 0;
   let provider = "none";
@@ -127,10 +223,11 @@ export async function generateDigest(ownerId: string, workspace: Workspace = "DK
 export async function dispatchForOwner(
   ownerId: string,
   opts: { digest?: boolean; workspace?: Workspace } = {},
-): Promise<{ reminders: DispatchResult; digest?: DispatchResult }> {
+): Promise<{ reminders: DispatchResult; needsAction: DispatchResult; digest?: DispatchResult }> {
   const reminders = await generateDeadlineReminders(ownerId);
+  const needsAction = await generateNeedsAction(ownerId);
   const digest = opts.digest ? await generateDigest(ownerId, opts.workspace ?? "DK") : undefined;
-  return { reminders, digest };
+  return { reminders, needsAction, digest };
 }
 
 /** Multi-tenant scheduler entrypoint: reminders for everyone (+ optional digest). */

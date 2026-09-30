@@ -3,7 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   experimental: {
     // Keep heavy server-only deps out of the client/edge bundle (Next 14 key).
-    serverComponentsExternalPackages: ["exceljs", "pdf-lib", "rss-parser", "cheerio"],
+    serverComponentsExternalPackages: ["exceljs", "pdf-lib", "rss-parser", "cheerio", "playwright", "playwright-core", "@vercel/functions"],
   },
 };
 

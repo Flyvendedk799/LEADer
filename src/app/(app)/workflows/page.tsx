@@ -134,6 +134,7 @@ function alertPayload(raw: unknown) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const payload = raw as Record<string, unknown>;
   return {
+    dealId: typeof payload.dealId === "string" ? payload.dealId : undefined,
     opportunityId: typeof payload.opportunityId === "string" ? payload.opportunityId : undefined,
     workspace: typeof payload.workspace === "string" ? payload.workspace : undefined,
   };
@@ -141,6 +142,7 @@ function alertPayload(raw: unknown) {
 
 function alertHref(raw: unknown) {
   const payload = alertPayload(raw);
+  if (payload?.dealId) return `/deals/${payload.dealId}`;
   return payload?.opportunityId ? `/opportunities/${payload.opportunityId}` : "/workflows";
 }
 

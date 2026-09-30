@@ -2,11 +2,10 @@
  * The outcome loop's data layer: read decided opportunities, learn from them,
  * cache the result.
  *
- * The training set is derived from `Opportunity` rows rather than kept in a
- * separate ledger. That is deliberate — it means learning works retroactively
- * on every lead the owner has ever touched, needs no hook on the status write
- * path (so it can never drift out of sync or half-record a transition), and a
- * wiped cache costs only a recompute.
+ * The training set is derived from decided Opportunity rows plus Deal wins and
+ * losses that are not already represented by those opportunities. That is
+ * deliberate — learning works retroactively, needs no hook on the status write
+ * path, and a wiped cache costs only a recompute.
  */
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -138,7 +137,73 @@ export async function collectOutcomeSamples(ownerId: string): Promise<OutcomeSam
     const sample = toOutcomeSample(row, budgetMaxDkk);
     if (sample) samples.push(sample);
   }
+
+  const sampledOpportunityIds = new Set(rows.map((row) => row.id));
+  const deals = await db.deal.findMany({
+    where: { ownerId, status: { in: ["WON", "LOST"] } },
+    include: {
+      account: { select: { name: true } },
+      source: { select: { name: true } },
+      legacyOpportunity: { include: { contacts: true, source: { select: { name: true } } } },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: MAX_TRAINING_ROWS,
+  });
+  for (const deal of deals) {
+    if (deal.legacyOpportunityId && sampledOpportunityIds.has(deal.legacyOpportunityId)) continue;
+    const sample = dealToOutcomeSample(deal, budgetMaxDkk);
+    if (sample) samples.push(sample);
+  }
   return samples;
+}
+
+/** A won or lost deal, shaped like an opportunity sample. Skips every other status. */
+export function dealToOutcomeSample(
+  deal: {
+    id: string;
+    status: string;
+    title: string;
+    summary?: string | null;
+    rawContent?: string | null;
+    valueMin?: number | null;
+    valueMax?: number | null;
+    deadline?: Date | null;
+    category?: string | null;
+    applicationRoute?: string | null;
+    workspace?: string | null;
+    updatedAt?: Date | null;
+    account?: { name: string } | null;
+    source?: { name: string } | null;
+    legacyOpportunity?: {
+      scoreBreakdown?: unknown;
+      contacts?: OpportunityRow["contacts"];
+      source?: { name: string } | null;
+    } | null;
+  },
+  budgetMaxDkk: number,
+): OutcomeSample | null {
+  if (deal.status !== "WON" && deal.status !== "LOST") return null;
+  return toOutcomeSample(
+    {
+      id: deal.id,
+      status: deal.status,
+      title: deal.title,
+      description: deal.summary ?? null,
+      rawContent: deal.rawContent ?? null,
+      budgetMin: deal.valueMin ?? null,
+      budgetMax: deal.valueMax ?? null,
+      deadline: deal.deadline ?? null,
+      organization: deal.account?.name ?? null,
+      category: deal.category ?? null,
+      applicationRoute: deal.applicationRoute ?? "UNKNOWN",
+      workspace: deal.workspace ?? "DK",
+      contacts: deal.legacyOpportunity?.contacts ?? [],
+      source: deal.source ?? deal.legacyOpportunity?.source ?? null,
+      scoreBreakdown: deal.legacyOpportunity?.scoreBreakdown ?? null,
+      updatedAt: deal.updatedAt ?? null,
+    } as OpportunityRow,
+    budgetMaxDkk,
+  );
 }
 
 /** Learn a fresh model from the owner's outcomes and cache it. */

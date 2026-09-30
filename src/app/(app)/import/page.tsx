@@ -23,9 +23,18 @@ export default async function ImportPage() {
       createdAt: true,
     },
   });
+  const opportunityIds = rows.map((row) => row.opportunityId).filter((id): id is string => Boolean(id));
+  const deals = opportunityIds.length
+    ? await db.deal.findMany({
+        where: { ownerId, legacyOpportunityId: { in: opportunityIds } },
+        select: { id: true, legacyOpportunityId: true },
+      })
+    : [];
+  const dealByOpportunity = new Map(deals.map((deal) => [deal.legacyOpportunityId, deal.id]));
 
   const recentImports: CommunityImportRow[] = rows.map((r) => ({
     ...r,
+    dealId: r.opportunityId ? dealByOpportunity.get(r.opportunityId) ?? null : null,
     createdAt: r.createdAt.toISOString(),
   }));
 

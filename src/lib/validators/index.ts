@@ -315,6 +315,7 @@ export const accountUpdateSchema = accountCreateSchema.partial();
 
 export const personCreateSchema = z.object({
   accountId: z.string().optional(),
+  dealId: z.string().optional(),
   name: z.string().optional(),
   role: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),

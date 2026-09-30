@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // the pure row → training-sample conversion, so a bare stub is enough.
 vi.mock("@/lib/db", () => ({ db: {} }));
 
-import { recoverRawSignals, toOutcomeSample } from "./outcomes";
+import { dealToOutcomeSample, recoverRawSignals, toOutcomeSample } from "./outcomes";
 import { OUTCOME_LABELS } from "./calibration";
 import type { OpportunityStatus } from "@/lib/types";
 
@@ -133,5 +133,28 @@ describe("recoverRawSignals", () => {
     );
     expect(raws.budgetFit).toBeUndefined();
     expect(raws.ambition).toBe(0.3);
+  });
+});
+
+describe("deal outcomes", () => {
+  it("learns from a won deal and ignores deals that are still open", () => {
+    const won = dealToOutcomeSample(
+      {
+        id: "deal-1",
+        status: "WON",
+        title: "AI automation MVP for a Danish SME",
+        summary: "Build a prototype platform.",
+        valueMax: 90000,
+        applicationRoute: "DIRECT",
+        workspace: "DK",
+        account: { name: "Erhvervshus Midtjylland" },
+        source: { name: "Manual" },
+        updatedAt: new Date("2026-02-01T00:00:00.000Z"),
+      },
+      100000,
+    );
+    expect(won?.label.target).toBe(1);
+    expect(won?.status).toBe("WON");
+    expect(dealToOutcomeSample({ id: "deal-2", status: "QUALIFYING", title: "Still open" }, 100000)).toBeNull();
   });
 });

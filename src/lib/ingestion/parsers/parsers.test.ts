@@ -100,6 +100,27 @@ describe("config-driven card extractor", () => {
     expect(out[0].url).toBe("https://site.dk/o/1");
     expect(out.map((c) => c.title)).toContain("AI prototype");
   });
+
+  it("reads the deadline selector declared on site card configs", () => {
+    const html = `<article>
+      <h3><a href="/o/9">Voucher til software</a></h3>
+      <p class="excerpt">En konkret opgave med budget og en tydelig ansøgningsfrist.</p>
+      <time class="deadline">2026-06-19</time>
+    </article>`;
+    const $ = cheerio.load(html);
+    const out = extractCards($, "https://ehsys.dk", {
+      item: "article",
+      title: "h3 a",
+      link: "h3 a",
+      description: ".excerpt",
+      deadline: ".deadline, time",
+      minDescription: 20,
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].deadline?.getUTCFullYear()).toBe(2026);
+    expect(out[0].deadline?.getUTCMonth()).toBe(5);
+    expect(out[0].deadline?.getUTCDate()).toBe(19);
+  });
 });
 
 describe("parser registry", () => {

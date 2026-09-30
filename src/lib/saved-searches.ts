@@ -65,6 +65,29 @@ function valuesFor(raw: Record<string, unknown>, key: FilterKey): string[] {
     .filter(Boolean);
 }
 
+const OPPORTUNITY_STATUS_TO_DEAL: Record<string, string> = {
+  NEW: "DISCOVERED",
+  WATCH: "INTERESTING",
+  INTERESTING: "INTERESTING",
+  CONTACTED: "CONTACTED",
+  APPLIED: "PROPOSAL",
+  WON: "WON",
+  LOST: "LOST",
+  ARCHIVED: "ARCHIVED",
+};
+
+function dealStatusValues(values: string[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const mapped = OPPORTUNITY_STATUS_TO_DEAL[value] ?? value;
+    if (seen.has(mapped)) continue;
+    seen.add(mapped);
+    out.push(mapped);
+  }
+  return out;
+}
+
 function setParam(params: URLSearchParams, key: FilterKey, values: string[]) {
   if (values.length === 0) return;
   params.set(key, values.join(","));
@@ -74,10 +97,11 @@ export function savedSearchFiltersToHref(raw: unknown): string {
   const filters = isRecord(raw) ? raw : {};
   const params = new URLSearchParams();
   for (const key of FILTER_KEYS) {
-    setParam(params, key, valuesFor(filters, key));
+    const values = key === "status" ? dealStatusValues(valuesFor(filters, key)) : valuesFor(filters, key);
+    setParam(params, key, values);
   }
   const qs = params.toString();
-  return qs ? `/opportunities?${qs}` : "/opportunities";
+  return qs ? `/deals?${qs}` : "/deals";
 }
 
 export function describeSavedSearchFilters(raw: unknown): string {
@@ -98,7 +122,7 @@ export function describeSavedSearchFilters(raw: unknown): string {
   if (scoreMin) parts.push(`score >= ${scoreMin}`);
   if (hasBudget === "true") parts.push("has budget");
   if (activeOnly === "true") parts.push("active only");
-  return parts.length ? parts.join(" - ") : "All opportunities";
+  return parts.length ? parts.join(" - ") : "All deals";
 }
 
 function cleanTerm(value: string) {

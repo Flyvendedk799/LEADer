@@ -6,56 +6,64 @@ import { useRouter } from "next/navigation";
 import { Building2, GripVertical, Wallet } from "lucide-react";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { DeadlinePill } from "@/components/shared/deadline-pill";
-import { OPPORTUNITY_STATUSES } from "@/lib/types";
-import type { OpportunityStatus } from "@/lib/types";
-import { STATUS_META } from "@/lib/display";
+import { DEAL_STATUSES } from "@/lib/types";
+import type { DealStatus } from "@/lib/types";
+import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { cn, formatBudget } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import type { OpportunityListItem } from "@/lib/opportunities";
 
-// Columns follow the natural pipeline order from lib/types.
-const COLUMNS: OpportunityStatus[] = OPPORTUNITY_STATUSES;
+export type BoardDeal = {
+  id: string;
+  title: string;
+  status: DealStatus;
+  valueMin: number | null;
+  valueMax: number | null;
+  currency: string | null;
+  deadline: Date | string | null;
+  pursuitScore: number | null;
+  account: { name: string } | null;
+};
 
-export function PipelineBoard({ initial }: { initial: OpportunityListItem[] }) {
+const COLUMNS: DealStatus[] = DEAL_STATUSES;
+
+export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
   const router = useRouter();
   const [items, setItems] = React.useState(initial);
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
-  const [overStatus, setOverStatus] = React.useState<OpportunityStatus | null>(null);
+  const [overStatus, setOverStatus] = React.useState<DealStatus | null>(null);
 
-  // Re-sync when the server sends a fresh list (e.g. after navigating back).
   React.useEffect(() => {
     setItems(initial);
   }, [initial]);
 
   const byStatus = React.useMemo(() => {
-    const map = new Map<OpportunityStatus, OpportunityListItem[]>();
-    for (const s of COLUMNS) map.set(s, []);
-    for (const o of items) map.get(o.status as OpportunityStatus)?.push(o);
+    const map = new Map<DealStatus, BoardDeal[]>();
+    for (const status of COLUMNS) map.set(status, []);
+    for (const deal of items) map.get(deal.status)?.push(deal);
     return map;
   }, [items]);
 
-  async function moveTo(status: OpportunityStatus) {
+  async function moveTo(status: DealStatus) {
     const id = draggingId;
     setDraggingId(null);
     setOverStatus(null);
     if (!id) return;
-    const card = items.find((o) => o.id === id);
+    const card = items.find((deal) => deal.id === id);
     if (!card || card.status === status) return;
 
     const previous = card.status;
-    // Optimistic move.
-    setItems((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+    setItems((prev) => prev.map((deal) => (deal.id === id ? { ...deal, status } : deal)));
     try {
-      const res = await fetch(`/api/opportunities/${id}`, {
+      const res = await fetch(`/api/deals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error("Failed to update status");
-      toast.success("Status updated", `${card.title.slice(0, 40)} → ${STATUS_META[status].label}`);
+      toast.success("Status updated", `${card.title.slice(0, 40)} → ${DEAL_STATUS_META[status].label}`);
       router.refresh();
     } catch {
-      setItems((prev) => prev.map((o) => (o.id === id ? { ...o, status: previous } : o)));
+      setItems((prev) => prev.map((deal) => (deal.id === id ? { ...deal, status: previous } : deal)));
       toast.error("Couldn't move card", "Status change failed — reverted.");
     }
   }
@@ -64,7 +72,7 @@ export function PipelineBoard({ initial }: { initial: OpportunityListItem[] }) {
     <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
       {COLUMNS.map((status) => {
         const cards = byStatus.get(status) ?? [];
-        const meta = STATUS_META[status];
+        const meta = DEAL_STATUS_META[status];
         const isOver = overStatus === status;
         return (
           <div
@@ -74,9 +82,8 @@ export function PipelineBoard({ initial }: { initial: OpportunityListItem[] }) {
               if (overStatus !== status) setOverStatus(status);
             }}
             onDragLeave={(e) => {
-              // Only clear when leaving the column entirely (not entering a child).
               if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                setOverStatus((s) => (s === status ? null : s));
+                setOverStatus((current) => (current === status ? null : current));
               }
             }}
             onDrop={() => moveTo(status)}
@@ -103,17 +110,17 @@ export function PipelineBoard({ initial }: { initial: OpportunityListItem[] }) {
                     isOver ? "border-primary/50 text-primary" : "border-border/60 text-muted-foreground",
                   )}
                 >
-                  {isOver ? "Drop here" : "No leads"}
+                  {isOver ? "Drop here" : "No deals"}
                 </div>
               ) : (
-                cards.map((o) => (
+                cards.map((deal) => (
                   <article
-                    key={o.id}
+                    key={deal.id}
                     draggable
                     onDragStart={(e) => {
-                      setDraggingId(o.id);
+                      setDraggingId(deal.id);
                       e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData("text/plain", o.id);
+                      e.dataTransfer.setData("text/plain", deal.id);
                     }}
                     onDragEnd={() => {
                       setDraggingId(null);
@@ -121,34 +128,34 @@ export function PipelineBoard({ initial }: { initial: OpportunityListItem[] }) {
                     }}
                     className={cn(
                       "group cursor-grab rounded-lg border border-border bg-card p-3 shadow-sm transition-all active:cursor-grabbing hover:border-primary/40",
-                      draggingId === o.id && "opacity-40",
+                      draggingId === deal.id && "opacity-40",
                     )}
                   >
                     <div className="flex items-start gap-2">
                       <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50 group-hover:text-muted-foreground" />
                       <div className="min-w-0 flex-1">
                         <Link
-                          href={`/opportunities/${o.id}`}
+                          href={`/deals/${deal.id}`}
                           draggable={false}
                           className="line-clamp-2 text-sm font-medium leading-snug hover:text-primary hover:underline"
                         >
-                          {o.title}
+                          {deal.title}
                         </Link>
-                        {o.organization && (
+                        {deal.account && (
                           <div className="mt-1 flex items-center gap-1 truncate text-xs text-muted-foreground">
                             <Building2 className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{o.organization}</span>
+                            <span className="truncate">{deal.account.name}</span>
                           </div>
                         )}
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <span className="tnum flex items-center gap-1 text-xs text-muted-foreground">
                             <Wallet className="h-3 w-3" />
-                            {formatBudget(o.budgetMin, o.budgetMax, o.currency ?? "DKK")}
+                            {formatBudget(deal.valueMin, deal.valueMax, deal.currency ?? "DKK")}
                           </span>
-                          <ScoreBadge score={o.matchScore} size="sm" />
+                          <ScoreBadge score={deal.pursuitScore} size="sm" />
                         </div>
                         <div className="mt-2">
-                          <DeadlinePill deadline={o.deadline} />
+                          <DeadlinePill deadline={deal.deadline} />
                         </div>
                       </div>
                     </div>

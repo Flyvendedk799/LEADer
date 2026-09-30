@@ -2,9 +2,11 @@ import { db } from "@/lib/db";
 import { scoreOpportunity } from "@/lib/scoring";
 import { loadCalibration, recomputeCalibration } from "@/lib/scoring/outcomes";
 import { embed, opportunityEmbedText } from "@/lib/ai/embeddings";
+import { ensureDealForOpportunity } from "@/lib/crm/promote";
 import type { ScoreWeights, SourceType } from "@/lib/types";
-import { assertAutomatable } from "./compliance";
+import { assertAutomatable, isAllowedByRobots } from "./compliance";
 import { type OpportunityCandidate, dedupeHash } from "./dedupe";
+import { enrichOpportunityText } from "./enrich";
 import { fetchRssCandidates } from "./rss";
 import { fetchWebCandidates } from "./web";
 import { detectApplicationRoute, extractBudget, extractDeadline } from "./extract";
@@ -64,11 +66,12 @@ async function fetchCandidates(source: SourceRow): Promise<OpportunityCandidate[
     case "PUBLIC_WEB":
     case "PROCUREMENT":
     case "ACCELERATOR":
-    case "API":
       return fetchWebCandidates(source.url, {
         keywords: source.keywords,
         parserKey: source.parserKey,
       });
+    case "API":
+      throw new Error("No API adapter is configured for this source.");
     default:
       return [];
   }
@@ -101,6 +104,14 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
   let candidates: OpportunityCandidate[] = [];
 
   try {
+    if (source.url) {
+      const allowed = await isAllowedByRobots(source.url).catch(() => null);
+      if (allowed != null) {
+        await db.source.update({ where: { id: source.id }, data: { robotsAllowed: allowed } });
+      }
+      if (allowed === false) throw new Error(`Blocked by robots.txt: ${source.url}`);
+    }
+
     candidates = (await fetchCandidates(source)).map(enrich);
 
     for (const c of candidates) {
@@ -126,6 +137,7 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
             budgetMax: c.budgetMax ?? existing.budgetMax,
           },
         });
+        await ensureDealForOpportunity(source.ownerId, existing.id);
         updated++;
       } else {
         const opp = await db.opportunity.create({
@@ -164,6 +176,7 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
           },
         });
         created++;
+        const deal = await ensureDealForOpportunity(source.ownerId, opp.id);
         // Embed for semantic similarity (best-effort; never fail the run).
         try {
           const { vector, model } = await embed(opportunityEmbedText(opp));
@@ -174,6 +187,31 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
         } catch {
           /* embedding is non-critical; backfill later */
         }
+        try {
+          const enriched = await enrichOpportunityText({
+            title: opp.title,
+            description: opp.description,
+            rawContent: opp.rawContent,
+            aiKeys: owner?.aiKeys,
+            accountId: source.ownerId,
+          });
+          if (enriched) {
+            await db.opportunity.update({
+              where: { id: opp.id },
+              data: {
+                aiSummary: enriched.aiSummary,
+                whyRelevant: enriched.whyRelevant,
+                nextAction: enriched.nextAction,
+              },
+            });
+            await db.deal.update({
+              where: { id: deal.id },
+              data: { summary: enriched.aiSummary, nextAction: enriched.nextAction },
+            });
+          }
+        } catch {
+          /* enrichment is optional; the scored deal still lands */
+        }
         // High-match alert.
         if (breakdown.total >= 80) {
           await db.alert.create({
@@ -182,7 +220,7 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
               type: "NEW_HIGH_MATCH",
               title: `New high-match lead: ${opp.title}`,
               body: `Score ${breakdown.total}. ${c.url ?? ""}`,
-              payload: { opportunityId: opp.id, score: breakdown.total },
+              payload: { opportunityId: opp.id, dealId: deal.id, score: breakdown.total },
             },
           });
         }

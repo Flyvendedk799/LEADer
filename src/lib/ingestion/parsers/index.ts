@@ -88,12 +88,16 @@ export function extractCards(
     if (seen.has(key)) return;
     seen.add(key);
 
+    const deadlineText = cfg.deadline ? clean($el.find(cfg.deadline).first().text()) : "";
+    const deadline = extractDeadline(deadlineText) ?? extractDeadline(description);
+
     out.push({
       title: title.slice(0, 250),
       description,
       rawContent: clean($el.text()).slice(0, 4000),
       url: abs(href, pageUrl) || pageUrl,
       organization: cfg.organization ? clean($el.find(cfg.organization).first().text()) || undefined : undefined,
+      deadline,
       applicationRoute: "UNKNOWN",
     });
   });

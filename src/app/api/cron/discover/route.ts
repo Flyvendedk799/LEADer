@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { drainQueuedDiscoveryMissions, drainQueuedDiscoveryMissionsAllOwners } from "@/lib/crm/discovery-queue";
 import { runDiscoveryForSource, runDueDiscovery, runDueDiscoveryAllOwners } from "@/lib/ingestion";
 import { apiError, validCronSecret } from "@/lib/api";
 
@@ -38,7 +39,8 @@ export async function POST(req: Request) {
     // Authenticated user → run their due sources.
     if (user) {
       const results = await runDueDiscovery(user.id);
-      return NextResponse.json({ ran: "due", scope: "owner", results });
+      const missions = await drainQueuedDiscoveryMissions(user.id, 2);
+      return NextResponse.json({ ran: "due", scope: "owner", results, missions });
     }
 
     // Otherwise this must be the scheduler with a valid shared secret.
@@ -46,7 +48,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const byOwner = await runDueDiscoveryAllOwners();
-    return NextResponse.json({ ran: "due", scope: "all", byOwner });
+    const missions = await drainQueuedDiscoveryMissionsAllOwners(2);
+    return NextResponse.json({ ran: "due", scope: "all", byOwner, missions });
   } catch (err) {
     return apiError(err);
   }

@@ -4,6 +4,7 @@ import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { DEAL_INCLUDE, listDeals } from "@/lib/crm";
+import { linkOpportunityForDeal } from "@/lib/crm/promote";
 import { pursuitScore } from "@/lib/crm/scoring";
 import { dealCreateSchema } from "@/lib/validators";
 
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
     const parsed = dealCreateSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     const d = parsed.data;
-    const deal = await db.deal.create({
+    const created = await db.deal.create({
       data: {
         ownerId,
         ...d,
@@ -36,8 +37,9 @@ export async function POST(req: Request) {
           priority: d.priority,
         }),
       },
-      include: DEAL_INCLUDE,
     });
+    await linkOpportunityForDeal(ownerId, created.id);
+    const deal = await db.deal.findFirst({ where: { id: created.id, ownerId }, include: DEAL_INCLUDE });
     return NextResponse.json(deal, { status: 201 });
   } catch (err) {
     return apiError(err);

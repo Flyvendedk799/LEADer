@@ -1,5 +1,6 @@
-import { executeWorkflowRun } from "./playbooks";
+import { keepAlive } from "@/lib/background";
 import { db } from "@/lib/db";
+import { executeWorkflowRun } from "./playbooks";
 import { workflowLogEntry } from "./logging";
 import { workflowRunInputSchema, type WorkflowRunInput } from "./types";
 
@@ -23,7 +24,7 @@ function drainQueue() {
   const next = queue.shift();
   if (!next) return;
   active = next;
-  void executeWorkflowRun(next.ownerId, next.runId, next.input)
+  const work = executeWorkflowRun(next.ownerId, next.runId, next.input)
     .catch(() => {
       // executeWorkflowRun records ERROR on the run; callers poll the DB.
     })
@@ -31,6 +32,7 @@ function drainQueue() {
       active = null;
       drainQueue();
     });
+  keepAlive(work);
 }
 
 export function enqueueWorkflowRun(ownerId: string, runId: string, input: WorkflowRunInput) {
@@ -183,4 +185,42 @@ export async function recoverWorkflowQueue(ownerId: string) {
   }
 
   return visibleWorkflowQueueSnapshotForOwner(ownerId);
+}
+
+/** Await queued playbooks from the database. Used by cron so work finishes in the request. */
+export async function drainQueuedWorkflowRuns(ownerId: string, limit = 3) {
+  const runs = await db.workflowRun.findMany({
+    where: { ownerId, status: "QUEUED", finishedAt: null },
+    orderBy: [{ queuePriority: "desc" }, { createdAt: "asc" }],
+    take: limit,
+    select: { id: true, input: true },
+  });
+
+  const drained: string[] = [];
+  for (const run of runs) {
+    const parsed = workflowRunInputSchema.safeParse(run.input ?? {});
+    if (!parsed.success) {
+      await db.workflowRun.update({
+        where: { id: run.id },
+        data: {
+          status: "ERROR",
+          finishedAt: new Date(),
+          log: { push: workflowLogEntry("Queued playbook input was missing or invalid.") },
+        },
+      });
+      continue;
+    }
+    await executeWorkflowRun(ownerId, run.id, parsed.data);
+    drained.push(run.id);
+  }
+  return drained;
+}
+
+export async function drainQueuedWorkflowRunsAllOwners(limitPerOwner = 2) {
+  const owners = await db.user.findMany({ select: { id: true } });
+  const out: Record<string, string[]> = {};
+  for (const owner of owners) {
+    out[owner.id] = await drainQueuedWorkflowRuns(owner.id, limitPerOwner);
+  }
+  return out;
 }

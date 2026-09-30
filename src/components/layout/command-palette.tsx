@@ -250,11 +250,11 @@ export function CommandPalette() {
       {
         id: "act-new-opportunity",
         group: "Actions",
-        label: "New opportunity",
+        label: "New deal",
         hint: activeWorkspaceLabel,
         icon: <Plus className="h-4 w-4 text-muted-foreground" />,
         perform: () => {
-          router.push(`/opportunities?new=1&workspace=${activeWorkspace}`);
+          router.push(`/deals?new=1&workspace=${activeWorkspace}`);
           close();
         },
       },

@@ -1,3 +1,4 @@
+import { keepAlive } from "@/lib/background";
 import { executeDiscoveryMission, type DiscoveryMissionInput } from "@/lib/crm";
 import { discoveryLogEntry } from "@/lib/crm/discovery-logging";
 import { db } from "@/lib/db";
@@ -23,7 +24,7 @@ function drainQueue() {
   const next = queue.shift();
   if (!next) return;
   active = next;
-  void executeDiscoveryMission(next.ownerId, next.missionId, next.input)
+  const work = executeDiscoveryMission(next.ownerId, next.missionId, next.input)
     .catch(() => {
       // executeDiscoveryMission records ERROR on the mission; callers poll the DB.
     })
@@ -31,6 +32,7 @@ function drainQueue() {
       active = null;
       drainQueue();
     });
+  keepAlive(work);
 }
 
 export function enqueueDiscoveryMission(ownerId: string, missionId: string, input: DiscoveryMissionInput) {
@@ -184,4 +186,43 @@ export async function recoverDiscoveryQueue(ownerId: string) {
   }
 
   return visibleDiscoveryQueueSnapshotForOwner(ownerId);
+}
+
+/** Await queued missions from the database. Used by cron so work finishes in the request. */
+export async function drainQueuedDiscoveryMissions(ownerId: string, limit = 2) {
+  const missions = await db.discoveryMission.findMany({
+    where: { ownerId, status: "QUEUED", finishedAt: null },
+    orderBy: [{ queuePriority: "desc" }, { startedAt: "asc" }],
+    take: limit,
+    select: { id: true, input: true },
+  });
+
+  const drained: string[] = [];
+  for (const mission of missions) {
+    const parsed = discoveryRunCreateSchema.safeParse(mission.input ?? {});
+    if (!parsed.success) {
+      await db.discoveryMission.update({
+        where: { id: mission.id },
+        data: {
+          status: "ERROR",
+          finishedAt: new Date(),
+          warnings: ["Mission could not run because its queued input is missing or invalid."],
+          log: { push: discoveryLogEntry("Queued input was missing or invalid.") },
+        },
+      });
+      continue;
+    }
+    await executeDiscoveryMission(ownerId, mission.id, parsed.data);
+    drained.push(mission.id);
+  }
+  return drained;
+}
+
+export async function drainQueuedDiscoveryMissionsAllOwners(limitPerOwner = 2) {
+  const owners = await db.user.findMany({ select: { id: true } });
+  const out: Record<string, string[]> = {};
+  for (const owner of owners) {
+    out[owner.id] = await drainQueuedDiscoveryMissions(owner.id, limitPerOwner);
+  }
+  return out;
 }

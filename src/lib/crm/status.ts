@@ -34,3 +34,25 @@ export function dealStatusFromOpportunity(status: OpportunityStatus): DealStatus
       return "ARCHIVED";
   }
 }
+
+/** Inverse of `dealStatusFromOpportunity`. Qualifying stays interesting; negotiation stays applied. */
+export function opportunityStatusFromDeal(status: DealStatus): OpportunityStatus {
+  switch (status) {
+    case "DISCOVERED":
+      return "NEW";
+    case "QUALIFYING":
+    case "INTERESTING":
+      return "INTERESTING";
+    case "CONTACTED":
+      return "CONTACTED";
+    case "PROPOSAL":
+    case "NEGOTIATION":
+      return "APPLIED";
+    case "WON":
+      return "WON";
+    case "LOST":
+      return "LOST";
+    case "ARCHIVED":
+      return "ARCHIVED";
+  }
+}

@@ -127,8 +127,23 @@ export default async function SettingsPage({
           <CalibrationPanel />
         </TabsContent>
 
-        <TabsContent value="preferences">
+        <TabsContent value="preferences" className="space-y-6">
           <PreferencesForm user={{ exportPrefs }} />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Crawler</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <p>
+                Public source fetches use a simple HTTP download. Same-host pages are capped by
+                CRAWLER_MAX_PAGES_PER_RUN, and robots.txt is cached on the source.
+              </p>
+              <p>
+                Set CRAWLER_ENABLE_PLAYWRIGHT=1 only on a local or self-hosted machine. That renders
+                one JavaScript page with Playwright. Scheduled runs on Vercel stay on the HTTP fetch.
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="ai">

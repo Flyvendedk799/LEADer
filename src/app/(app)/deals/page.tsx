@@ -1,5 +1,8 @@
+import { Suspense } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { DealTable } from "@/components/crm/deal-table";
+import { DealSavedSearch } from "@/components/crm/deal-saved-search";
+import { NewDealDialog } from "@/components/crm/new-deal-dialog";
 import { Button } from "@/components/ui/button";
 import { requireOwnerId } from "@/lib/auth";
 import { listDeals } from "@/lib/crm";
@@ -28,6 +31,10 @@ export default async function DealsPage({
         title="Deals"
         description={`${total} active and historical pursuits across accounts, lanes, and sources.`}
       >
+        <Suspense>
+          <DealSavedSearch />
+          <NewDealDialog />
+        </Suspense>
         <Button asChild>
           <Link href="/discover">
             <Search className="h-4 w-4" />
