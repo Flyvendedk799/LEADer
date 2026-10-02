@@ -123,6 +123,8 @@ export const zAiProvider = z.enum([
   "anthropic",
   "codex",
   "claude-subscription",
+  "gemini",
+  "gemini-subscription",
 ]);
 
 // ── Auth ─────────────────────────────────────────────────────────────────────

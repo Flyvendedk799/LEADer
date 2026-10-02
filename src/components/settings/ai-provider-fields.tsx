@@ -198,7 +198,9 @@ export function aiProviderModeSummary(state: AiProviderState, aiKeys?: PublicAiK
       title: `${defaults.label} selected`,
       description: isLocalOnly
         ? "AI planning, summaries, and workflow reasoning will use your local Codex / ChatGPT login. No API key is sent or stored by LEADer."
-        : "AI planning, summaries, and workflow reasoning will use the Claude subscription you connect below — billed to your own plan. Without one, the claude login on this server is used instead. No API key is sent or stored by LEADer.",
+        : state.provider === "gemini-subscription"
+          ? "AI planning, summaries, and workflow reasoning will use the Antigravity subscription you connect below. Save this provider to activate it. No API key is sent or stored by LEADer."
+          : "AI planning, summaries, and workflow reasoning will use the Claude subscription you connect below — billed to your own plan. Without one, the claude login on this server is used instead. No API key is sent or stored by LEADer.",
     };
   }
 
@@ -247,7 +249,7 @@ export function AiProviderFields({
       ? "Uses the Codex CLI / ChatGPT login on the machine running LEADer. Run `codex` and sign in there, then save this provider."
       : state.provider === "claude-subscription"
         ? "Save this provider, then connect your own Claude plan below. Left unconnected, LEADer falls back to the `claude` login on the machine it runs on."
-        : "";
+        : "Save this provider, then connect your Antigravity plan below. The connection does not select the provider automatically.";
 
   function chooseProvider(provider: AiProvider) {
     const defaults = PROVIDER_DEFAULTS[provider];

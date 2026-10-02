@@ -276,7 +276,10 @@ export function buildStoredAiKeys(input: AiKeysUpdate, existingRaw?: unknown): S
   const provider = normalizeProvider(input.provider ?? existing?.provider);
   const defaults = AI_PROVIDER_DEFAULTS[provider];
   const sameProvider = !existing || existing.provider === provider;
-  const usesSubscription = provider === "codex" || provider === "claude-subscription";
+  const usesSubscription =
+    provider === "codex" ||
+    provider === "claude-subscription" ||
+    provider === "gemini-subscription";
   const apiKey = input.apiKey?.trim();
 
   const encryptedApiKey = input.clearApiKey

@@ -105,6 +105,21 @@ describe("AI key storage", () => {
     expect(switched.encryptedApiKey).toBeUndefined();
     expect(switched.keyPreview).toBeUndefined();
   });
+
+  it("never stores an API key for Antigravity subscription", () => {
+    const stored = buildStoredAiKeys({
+      provider: "gemini-subscription",
+      apiKey: "should-not-be-stored",
+    });
+
+    expect(stored.encryptedApiKey).toBeUndefined();
+    expect(publicAiKeys(stored)?.provider).toBe("gemini-subscription");
+    expect(aiConfig(stored, "owner-id")).toMatchObject({
+      provider: "gemini-subscription",
+      accountId: "owner-id",
+      apiKey: "",
+    });
+  });
 });
 
 describe("adopting ai-auth over keys LEADer already wrote", () => {

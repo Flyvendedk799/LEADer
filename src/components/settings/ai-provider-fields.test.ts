@@ -10,6 +10,7 @@ import {
   type AiProviderState,
   type SearchProviderState,
 } from "./ai-provider-fields";
+import { settingsSchema } from "@/lib/validators";
 
 const codexState: AiProviderState = {
   provider: "codex",
@@ -73,6 +74,21 @@ describe("AI provider settings fields", () => {
     expect(summary.badge).toBe("Subscription");
     expect(summary.description).toContain("billed to your own plan");
     expect(summary.description).toContain("No API key is sent or stored by LEADer");
+  });
+
+  it("accepts the Antigravity settings payload and describes its own subscription", () => {
+    const state: AiProviderState = {
+      ...codexState,
+      provider: "gemini-subscription",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      model: "gemini-1.5-pro",
+    };
+    const payload = aiProviderPayload(state);
+
+    expect(settingsSchema.safeParse({ aiKeys: { ...payload, search: searchState } }).success).toBe(true);
+    expect(payload.apiKey).toBeUndefined();
+    expect(aiProviderModeSummary(state).description).toContain("Antigravity subscription");
+    expect(aiProviderModeSummary(state).description).not.toContain("Claude subscription");
   });
 
   it("explains that AI subscriptions do not provide broad web search", () => {
