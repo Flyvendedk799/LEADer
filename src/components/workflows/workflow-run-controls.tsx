@@ -208,7 +208,7 @@ export function WorkflowRunControls({
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <StatusIcon status={item.status} />

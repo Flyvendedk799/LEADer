@@ -539,7 +539,7 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
                       })}
                     </div>
                   ) : null}
-                  <div className="grid gap-2 sm:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
                     <PreviewStat
                       label="Sources"
                       value={preset.preview.dailySweep.dueSources}
@@ -644,7 +644,7 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
           </DialogHeader>
 
           <div className="grid gap-3">
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem_8rem]">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_11rem_8rem]">
               <Field label="Name">
                 <Input value={form.name} onChange={(e) => update("name", e.target.value)} />
               </Field>
@@ -674,7 +674,7 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
               <Textarea value={form.description} rows={2} onChange={(e) => update("description", e.target.value)} />
             </Field>
 
-            <div className="grid gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
               <SwitchControl id="preset-pinned" label="Pinned" checked={form.pinned} onCheckedChange={(value) => update("pinned", value)} />
               <SwitchControl id="preset-schedule" label="Schedule" checked={form.scheduleEnabled} onCheckedChange={(value) => update("scheduleEnabled", value)} />
               {form.playbook === "operating-day" ? (
@@ -687,7 +687,7 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
             </div>
 
             {form.scheduleEnabled ? (
-              <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
                 <NumberField label="Every hours" value={form.scheduleIntervalHours} min={1} max={720} onChange={(value) => update("scheduleIntervalHours", value)} />
                 <Field label="Next run">
                   <div className="relative">
@@ -703,7 +703,7 @@ export function WorkflowPresetPanel({ presets }: { presets: WorkflowPresetPanelI
               </div>
             ) : null}
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {showDaily ? (
                 <>
                   <SwitchControl id="preset-sources" label="Sources" checked={form.includeSources} onCheckedChange={(value) => update("includeSources", value)} disabled={form.playbook === "operating-day" && !form.daySweep} />

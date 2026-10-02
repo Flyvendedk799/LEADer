@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 
+import { nineAmCopenhagen } from "@/lib/dates";
 import type { DealStatus, TaskPriority } from "@/lib/types";
 
 const OPEN_DEAL_STATUSES: DealStatus[] = [
@@ -35,24 +36,14 @@ export type DealWorkflowTaskPlan = {
   nextAction: string;
 };
 
-function atNine(date: Date) {
-  const copy = new Date(date);
-  copy.setHours(9, 0, 0, 0);
-  return copy;
-}
-
 function tomorrowFrom(now: Date) {
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return atNine(tomorrow);
+  return nineAmCopenhagen(now, 1);
 }
 
 function prepDueFrom(deadline: Date | null, now: Date) {
   const tomorrow = tomorrowFrom(now);
   if (!deadline) return tomorrow;
-  const beforeDeadline = new Date(deadline);
-  beforeDeadline.setDate(beforeDeadline.getDate() - 1);
-  const dueAt = atNine(beforeDeadline);
+  const dueAt = nineAmCopenhagen(deadline, -1);
   return dueAt.getTime() > now.getTime() ? dueAt : tomorrow;
 }
 

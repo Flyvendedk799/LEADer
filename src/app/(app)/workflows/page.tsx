@@ -793,7 +793,7 @@ export default async function WorkflowsPage() {
         </Button>
       </PageHeader>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
         <ControlMetric label="Running" value={runningMissions.length + runningWorkflowRuns.length} icon={<Radar />} tone="primary" />
         <ControlMetric label="Hot candidates" value={hotCandidates.length} icon={<Target />} tone="warning" />
         <ControlMetric label="Contact gaps" value={contactResearchTargets.length} icon={<Search />} tone="warning" />
@@ -814,7 +814,7 @@ export default async function WorkflowsPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
         <div className="space-y-4">
           <Card>
             <CardHeader className="pb-3">
@@ -940,7 +940,7 @@ export default async function WorkflowsPage() {
         </aside>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">

@@ -6,6 +6,11 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** "1 deal" / "2 deals" — keeps counts grammatical in UI copy. */
+export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 // ── Money ──────────────────────────────────────────────────────────────────
 
 /** Format a budget range compactly, e.g. "50,000–100,000 DKK" or "≤ 75,000 DKK". */

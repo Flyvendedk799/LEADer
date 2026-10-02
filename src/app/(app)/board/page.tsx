@@ -46,7 +46,7 @@ export default async function BoardPage({
   );
 
   return (
-    <div className="px-6 py-6">
+    <div>
       <PageHeader
         title="Pipeline board"
         description="Drag deals between stages to update their status."

@@ -126,7 +126,7 @@ export function OnboardingFlow({ user }: { user: OnboardingUser }) {
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="onboarding-name">Name</Label>
                 <Input
@@ -161,7 +161,7 @@ export function OnboardingFlow({ user }: { user: OnboardingUser }) {
               />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="onboarding-project-types">Preferred project types</Label>
                 <Input
@@ -184,7 +184,7 @@ export function OnboardingFlow({ user }: { user: OnboardingUser }) {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="onboarding-budget">Preferred max budget</Label>
                 <Input

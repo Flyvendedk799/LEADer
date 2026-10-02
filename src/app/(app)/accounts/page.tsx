@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { pluralize } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export default async function AccountsPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Accounts" description="Companies, buyers, communities, and warm relationships behind your deals." />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {accounts.map((account) => (
           <Link key={account.id} href={`/accounts/${account.id}`}>
             <Card className="h-full transition-colors hover:border-primary/50">
@@ -32,7 +33,7 @@ export default async function AccountsPage() {
                     <h2 className="truncate text-sm font-semibold">{account.name}</h2>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {account.type} · {account._count.deals} deals · {account._count.people} people
+                    {account.type} · {pluralize(account._count.deals, "deal")} · {pluralize(account._count.people, "person", "people")}
                   </p>
                   {account.description && <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{account.description}</p>}
                 </div>

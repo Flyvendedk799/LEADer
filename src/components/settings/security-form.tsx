@@ -64,7 +64,7 @@ export function SecurityForm({ hasPassword }: { hasPassword: boolean }) {
               <Input id="currentPassword" name="currentPassword" type="password" autoComplete="current-password" required />
             </div>
           )}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="newPassword">New password</Label>
               <Input id="newPassword" name="newPassword" type="password" autoComplete="new-password" minLength={8} required />

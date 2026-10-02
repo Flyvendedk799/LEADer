@@ -242,7 +242,7 @@ export function ResearchBriefLauncher({
         </Button>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-2">
         {RESEARCH_BRIEF_STARTERS.map((starter) => {
           const Icon = starter.icon;
           const active =
@@ -270,7 +270,7 @@ export function ResearchBriefLauncher({
         })}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className="space-y-1.5 md:col-span-2">
           <Label htmlFor="research-subject">Subject</Label>
           <Input

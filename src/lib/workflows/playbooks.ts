@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { dispatchForOwner, type DispatchResult } from "@/lib/alerts/dispatch";
 import { saveCandidateAsDeal } from "@/lib/crm";
 import { filterVisibleLaneCandidates } from "@/lib/crm/lanes";
+import { nineAmCopenhagen } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { runDueDiscovery, type RunResult } from "@/lib/ingestion";
 import type { Workspace } from "@/lib/types";
@@ -160,23 +161,14 @@ async function throwIfWorkflowCanceled(context?: WorkflowExecutionContext) {
   }
 }
 
-function atNine(date: Date) {
-  date.setHours(9, 0, 0, 0);
-  return date;
-}
-
 function tomorrow() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  return atNine(date);
+  return nineAmCopenhagen(new Date(), 1);
 }
 
 function prepDueDate(deadline: Date | null) {
   const fallback = tomorrow();
   if (!deadline) return fallback;
-  const beforeDeadline = new Date(deadline);
-  beforeDeadline.setDate(beforeDeadline.getDate() - 1);
-  atNine(beforeDeadline);
+  const beforeDeadline = nineAmCopenhagen(deadline, -1);
   return beforeDeadline.getTime() > Date.now() ? beforeDeadline : fallback;
 }
 
@@ -642,10 +634,7 @@ export async function runCandidateHarvest(
 }
 
 function researchTaskDueDate(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  date.setHours(9, 0, 0, 0);
-  return date;
+  return nineAmCopenhagen(new Date(), days);
 }
 
 function researchTaskWhere(

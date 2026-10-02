@@ -49,7 +49,7 @@ import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
 import { discoveryMissionCanRerun, discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
 import { nextHistoryLimit } from "@/lib/history-window";
 import type { Workspace } from "@/lib/types";
-import { cn, formatBudget, formatDate, truncate } from "@/lib/utils";
+import { cn, formatBudget, formatDate, pluralize, truncate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 
 type Provider = "auto" | "tavily" | "brave" | "serper" | "none";
@@ -852,11 +852,11 @@ export function LaneMissionControl({
   }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div className="space-y-4">
         <form onSubmit={runMission} className="rounded-lg border border-border bg-card p-4 shadow-sm">
           <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_19rem]">
-            <div className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
               <div className="space-y-2">
                 <Label>Discovery lane</Label>
                 <Select value={laneId} onValueChange={setLaneId}>
@@ -1218,7 +1218,7 @@ export function LaneMissionControl({
                   ? missionHistorySearchSummary(filteredMissions.length)
                   : historyScope === "current-lane" && selectedLane
                     ? `${scopedMissions.length} ${selectedLane.name} missions loaded`
-                    : `${scopedMissions.length} missions loaded`}
+                    : `${pluralize(scopedMissions.length, "mission")} loaded`}
               </p>
             </div>
 

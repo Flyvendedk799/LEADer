@@ -38,7 +38,7 @@ export default async function SettingsPage({
 
   if (!user) {
     return (
-      <div className="mx-auto max-w-3xl">
+      <div className="max-w-3xl">
         <PageHeader title="Settings" description="Profile, scoring, and export preferences." />
         <EmptyState
           icon={SettingsIcon}
@@ -58,7 +58,7 @@ export default async function SettingsPage({
     : "profile";
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="max-w-3xl">
       <PageHeader
         title="Settings"
         description="Tune your profile, scoring weights, and export defaults."

@@ -67,7 +67,7 @@ export function WorkflowActivityFeed({ items }: { items: WorkflowActivityItem[] 
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_13rem_12rem_auto]">
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_13rem_12rem_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input

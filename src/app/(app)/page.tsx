@@ -46,7 +46,7 @@ export default async function CockpitPage() {
         <StatCard label="Pipeline value" value={formatBudget(null, cockpit.pipelineValue, "DKK")} accent="success" icon={<TimerReset />} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <section className="space-y-4">
           <Card>
             <CardHeader className="pb-3">
@@ -62,7 +62,7 @@ export default async function CockpitPage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{task.title}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {task.deal?.account?.name ?? "No account"} · {task.dueAt ? relativeDeadline(task.dueAt) : "No due date"}
+                      {[task.deal?.title, task.deal?.account?.name].filter(Boolean).join(" · ") || "No deal"} · {task.dueAt ? relativeDeadline(task.dueAt) : "No due date"}
                     </p>
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">{formatDate(task.dueAt)}</span>

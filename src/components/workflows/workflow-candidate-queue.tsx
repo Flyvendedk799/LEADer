@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/hooks/use-toast";
 import { discoveryCandidateHref } from "@/lib/discovery-links";
-import { truncate } from "@/lib/utils";
+import { pluralize, truncate } from "@/lib/utils";
 import { researchBriefRunPayload } from "@/lib/workflows/usecase-actions";
 
 type Workspace = "DK" | "GLOBAL";
@@ -156,7 +156,7 @@ export function WorkflowCandidateQueue({ candidates }: { candidates: WorkflowCan
         const existing = Number(data?.existing ?? 0);
         toast.success("Candidates saved", `${created} new deals${existing ? ` - ${existing} existing` : ""}`);
       } else {
-        toast.success("Candidates reviewed", `${data?.count ?? ids.length} candidates cleared`);
+        toast.success("Candidates reviewed", `${pluralize(data?.count ?? ids.length, "candidate")} cleared`);
       }
       router.refresh();
     } catch (err) {
