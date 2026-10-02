@@ -417,6 +417,7 @@ export function LaneMissionControl({
   const [result, setResult] = React.useState<MissionResult | null>(null);
   const [showHiddenCandidates, setShowHiddenCandidates] = React.useState(false);
   const [busyMissionAction, setBusyMissionAction] = React.useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
   const selectedLane = lanes.find((lane) => lane.id === laneId);
   const officialTenderMode =
     selectedLane?.slug === "tenders-procurement" &&
@@ -884,10 +885,23 @@ export function LaneMissionControl({
             </div>
 
             <div className="space-y-3 rounded-md border border-border bg-surface/40 p-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-                Scan controls
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex w-full items-center justify-between text-sm font-medium hover:text-primary"
+              >
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+                  Scan controls
+                </div>
+                {showAdvanced ? (
+                  <ArrowUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ArrowDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
+              {showAdvanced && (
+                <div className="space-y-3 pt-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Provider</Label>
@@ -987,6 +1001,8 @@ export function LaneMissionControl({
                   onCheckedChange={setIncludeSources}
                 />
               </div>
+              </div>
+              )}
               <Button type="submit" disabled={loading || !laneId || (!includeWeb && !effectiveIncludeSources)} className="w-full">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                 Queue lane
@@ -1620,7 +1636,7 @@ function CandidateCard({
             </Button>
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "dismiss")}>
+              <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "dismiss")} className="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30">
                 <XCircle className="h-4 w-4" />
                 Dismiss
               </Button>
@@ -1628,7 +1644,7 @@ function CandidateCard({
                 <CopyX className="h-4 w-4" />
                 Duplicate
               </Button>
-              <Button size="sm" onClick={() => onAction(candidate.id, "save")}>
+              <Button size="sm" onClick={() => onAction(candidate.id, "save")} className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-colors shadow-sm">
                 <CheckCircle2 className="h-4 w-4" />
                 Save as deal
               </Button>

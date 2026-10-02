@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 
 import { ScoreBadge } from "@/components/shared/score-badge";
@@ -12,6 +15,8 @@ import { BriefcaseBusiness } from "lucide-react";
 type DealRow = Prisma.DealGetPayload<{ include: { account: true; lane: true } }>;
 
 export function DealTable({ deals }: { deals: DealRow[] }) {
+  const router = useRouter();
+
   if (deals.length === 0) {
     return (
       <EmptyState
@@ -38,7 +43,10 @@ export function DealTable({ deals }: { deals: DealRow[] }) {
         </TableHeader>
         <TableBody>
           {deals.map((deal) => (
-            <TableRow key={deal.id}>
+            <TableRow key={deal.id} className="group cursor-pointer hover:bg-muted/50 transition-colors" onClick={(e) => {
+              if (e.target instanceof HTMLElement && e.target.closest('a')) return;
+              router.push(`/deals/${deal.id}`);
+            }}>
               <TableCell className="max-w-md">
                 <Link href={`/deals/${deal.id}`} className="font-medium hover:text-primary hover:underline">
                   {deal.title}
