@@ -80,8 +80,8 @@ describe("AI provider settings fields", () => {
     const state: AiProviderState = {
       ...codexState,
       provider: "gemini-subscription",
-      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-      model: "gemini-1.5-pro",
+      baseUrl: "https://daily-cloudcode-pa.googleapis.com/v1internal",
+      model: "gemini-3.1-pro",
     };
     const payload = aiProviderPayload(state);
 

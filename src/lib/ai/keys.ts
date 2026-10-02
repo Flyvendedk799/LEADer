@@ -1,5 +1,5 @@
 import { createDecipheriv, createHash } from "node:crypto";
-import { CODEX_BASE_URL, SecretBox, maskSecret } from "@flyvendedk799/ai-auth";
+import { CLOUD_CODE_DAILY_BASE_URL, CODEX_BASE_URL, SecretBox, maskSecret } from "@flyvendedk799/ai-auth";
 import { hostSecret } from "./credentials";
 
 export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription" | "gemini" | "gemini-subscription";
@@ -76,7 +76,7 @@ export const AI_PROVIDER_DEFAULTS: Record<
   gemini: {
     label: "Gemini",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    model: "gemini-1.5-flash",
+    model: "gemini-2.5-flash",
   },
   codex: {
     label: "Codex/ChatGPT subscription",
@@ -92,10 +92,28 @@ export const AI_PROVIDER_DEFAULTS: Record<
   },
   "gemini-subscription": {
     label: "Antigravity subscription",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    model: "gemini-1.5-pro",
+    baseUrl: CLOUD_CODE_DAILY_BASE_URL,
+    model: "gemini-3-flash",
   },
 };
+
+const LEGACY_ANTIGRAVITY_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+
+function providerBaseUrl(provider: AiProvider, value: unknown): string {
+  const configured = cleanOptionalString(value);
+  if (provider === "gemini-subscription" && configured?.replace(/\/$/, "") === LEGACY_ANTIGRAVITY_BASE_URL) {
+    return CLOUD_CODE_DAILY_BASE_URL;
+  }
+  return configured ?? AI_PROVIDER_DEFAULTS[provider].baseUrl;
+}
+
+function providerModel(provider: AiProvider, value: unknown): string {
+  const configured = cleanOptionalString(value);
+  if (provider === "gemini-subscription" && configured === "gemini-1.5-pro") {
+    return AI_PROVIDER_DEFAULTS[provider].model;
+  }
+  return configured ?? AI_PROVIDER_DEFAULTS[provider].model;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -222,8 +240,8 @@ export function normalizeStoredAiKeys(raw: unknown): StoredAiKeys | null {
   const defaults = AI_PROVIDER_DEFAULTS[provider];
   return {
     provider,
-    baseUrl: cleanOptionalString(raw.baseUrl) ?? defaults.baseUrl,
-    model: cleanOptionalString(raw.model) ?? defaults.model,
+    baseUrl: providerBaseUrl(provider, raw.baseUrl),
+    model: providerModel(provider, raw.model),
     embeddingModel:
       provider === "openai"
         ? cleanOptionalString(raw.embeddingModel) ?? defaults.embeddingModel
@@ -304,8 +322,8 @@ export function buildStoredAiKeys(input: AiKeysUpdate, existingRaw?: unknown): S
 
   const stored: StoredAiKeys = {
     provider,
-    baseUrl: cleanOptionalString(input.baseUrl) ?? existing?.baseUrl ?? defaults.baseUrl,
-    model: cleanOptionalString(input.model) ?? existing?.model ?? defaults.model,
+    baseUrl: providerBaseUrl(provider, input.baseUrl ?? (sameProvider ? existing?.baseUrl : undefined)),
+    model: providerModel(provider, input.model ?? (sameProvider ? existing?.model : undefined)),
     updatedAt: new Date().toISOString(),
   };
   if (provider === "openai") {

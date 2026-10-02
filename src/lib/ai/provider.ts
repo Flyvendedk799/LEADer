@@ -482,7 +482,7 @@ async function geminiSubscriptionChat(
     expiresAt: 0,
     email: null,
     projectId: status.projectId || null,
-    isDogfood: false,
+    isDogfood: true,
   } as any;
 
   const clientOptions = antigravityCliOptions(identity, cfg.baseUrl || "");
@@ -493,9 +493,12 @@ async function geminiSubscriptionChat(
     parts: [{ text: m.content }],
   }));
 
-  const request = toCodeAssistRequest(cfg.model || "", turns, { systemInstruction: system });
+  const request = toCodeAssistRequest(cfg.model || "", turns, {
+    projectId: status.projectId || undefined,
+    systemInstruction: system,
+  });
 
-  const res = await fetch(`${clientOptions.baseURL}/generateContent`, {
+  const res = await fetch(`${clientOptions.baseURL}:generateContent`, {
     method: "POST",
     headers: clientOptions.defaultHeaders,
     body: JSON.stringify(request),
@@ -503,6 +506,12 @@ async function geminiSubscriptionChat(
 
   if (!res.ok) throw await providerFailure(res, cfg, "Antigravity subscription request");
 
-  const body = (await res.json()) as any;
-  return body.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const body = (await res.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    response?: { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  };
+  const candidate = body.response?.candidates?.[0] ?? body.candidates?.[0];
+  const answer = candidate?.content?.parts?.map((part) => part.text || "").join("") ?? "";
+  if (!answer) throw new Error("AGY returned no text for this model");
+  return answer;
 }

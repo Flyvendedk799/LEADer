@@ -1,5 +1,6 @@
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CLOUD_CODE_DAILY_BASE_URL, antigravityCliOptions, toCodeAssistRequest } from "@flyvendedk799/ai-auth";
 import {
   buildStoredAiKeys,
   getStoredApiKey,
@@ -119,6 +120,33 @@ describe("AI key storage", () => {
       accountId: "owner-id",
       apiKey: "",
     });
+  });
+
+  it("routes existing Antigravity settings through AGY's Cloud Code endpoint", () => {
+    const oldSettings = {
+      provider: "gemini-subscription",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      model: "gemini-3.1-pro",
+    } as const;
+    const config = aiConfig(oldSettings, "owner-id");
+    const client = antigravityCliOptions(
+      { accessToken: "test-token", projectId: null, isDogfood: true } as Parameters<typeof antigravityCliOptions>[0],
+      config.baseUrl,
+    );
+    const request = toCodeAssistRequest(config.model, "Reply OK");
+
+    expect(config.baseUrl).toBe(CLOUD_CODE_DAILY_BASE_URL);
+    expect(client.baseURL).toBe(CLOUD_CODE_DAILY_BASE_URL);
+    expect(request.model).toBe("gemini-3.1-pro-low");
+    expect(buildStoredAiKeys(oldSettings).baseUrl).toBe(CLOUD_CODE_DAILY_BASE_URL);
+  });
+
+  it("uses AGY defaults when switching to Antigravity without an explicit URL", () => {
+    const openAi = buildStoredAiKeys({ provider: "openai", model: "gpt-4o-mini" });
+    const switched = buildStoredAiKeys({ provider: "gemini-subscription" }, openAi);
+
+    expect(switched.baseUrl).toBe(CLOUD_CODE_DAILY_BASE_URL);
+    expect(switched.model).toBe("gemini-3-flash");
   });
 });
 
