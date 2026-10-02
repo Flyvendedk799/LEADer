@@ -470,7 +470,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
       <div className="rounded-md border border-border bg-surface/40 p-3 md:col-span-3">
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -509,14 +509,14 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
               </Button>
             </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             <SwitchControl id="day-sweep" label="Sweep" checked={daySweep} onCheckedChange={setDaySweep} />
             <SwitchControl id="day-harvest" label="Harvest" checked={dayHarvest} onCheckedChange={setDayHarvest} />
             <SwitchControl id="day-rescue" label="Rescue" checked={dayRescue} onCheckedChange={setDayRescue} />
             <SwitchControl id="day-sources" label="Sources" checked={daySources} onCheckedChange={setDaySources} disabled={!daySweep} />
             <SwitchControl id="day-alerts" label="Alerts" checked={dayAlerts} onCheckedChange={setDayAlerts} disabled={!daySweep} />
           </div>
-          <div className="grid gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             <NumberControl
               id="candidate-min-score"
               label="Min score"
@@ -563,7 +563,7 @@ export function WorkflowUsecaseLauncher({ lanes }: { lanes: WorkflowLaneItem[] }
               disabled={!dayRescue}
             />
           </div>
-          <div className="grid gap-2 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
             <PreviewMetric
               label="Due sources"
               value={preview?.dailySweep?.dueSources ?? 0}

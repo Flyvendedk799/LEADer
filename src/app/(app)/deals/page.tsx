@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { requireOwnerId } from "@/lib/auth";
 import { listDeals } from "@/lib/crm";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { pluralize } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +24,21 @@ export default async function DealsPage({
     else params.set(key, value);
   }
   if (!params.get("workspace")) params.set("workspace", "DK");
-  const { items, total } = await listDeals(ownerId, params);
+  const { items, total, page, pageSize } = await listDeals(ownerId, params);
+  const query = params.get("q")?.trim() ?? "";
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const pageHref = (target: number) => {
+    const next = new URLSearchParams(params);
+    if (target <= 1) next.delete("page");
+    else next.set("page", String(target));
+    return `/deals?${next.toString()}`;
+  };
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Deals"
-        description={`${total} active and historical pursuits across accounts, lanes, and sources.`}
+        description={`${pluralize(total, "pursuit")}, active and historical, across accounts, lanes, and sources.`}
       >
         <Suspense>
           <DealSavedSearch />
@@ -42,7 +51,26 @@ export default async function DealsPage({
           </Link>
         </Button>
       </PageHeader>
-      <DealTable deals={items} />
+      <DealTable deals={items} searchQuery={query} />
+      {pageCount > 1 && (
+        <nav aria-label="Deals pagination" className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+          <span className="tnum">
+            {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href={pageHref(page - 1)} aria-disabled={page <= 1} className={page <= 1 ? "pointer-events-none opacity-50" : undefined}>
+                <ChevronLeft className="h-4 w-4" /> Previous
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={pageHref(page + 1)} aria-disabled={page >= pageCount} className={page >= pageCount ? "pointer-events-none opacity-50" : undefined}>
+                Next <ChevronRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

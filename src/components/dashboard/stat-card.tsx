@@ -31,7 +31,19 @@ export function StatCard({
       <CardContent className="flex items-start justify-between gap-3 p-5">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className="tnum mt-1.5 text-2xl font-semibold leading-none tracking-tight">{value}</p>
+          <p
+            className={cn(
+              "tnum mt-1.5 whitespace-nowrap font-semibold leading-none tracking-tight",
+              // Long formatted values (e.g. "≤ 620.000 DKK") must stay on one line inside narrow tiles.
+              typeof value === "string" && value.length > 12
+                ? "text-base"
+                : typeof value === "string" && value.length > 8
+                  ? "text-xl"
+                  : "text-2xl",
+            )}
+          >
+            {value}
+          </p>
           {hint && <p className="mt-2 truncate text-xs text-muted-foreground">{hint}</p>}
         </div>
         {icon && (

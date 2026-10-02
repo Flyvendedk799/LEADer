@@ -238,7 +238,7 @@ export function WorkflowRecommendationPanel({
           </Button>
         </div>
       ) : null}
-      <div className="grid gap-2 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
         {recommendations.map((recommendation) => {
           const queueBusy = busyId === `queue-${recommendation.id}`;
           const saveBusy = busyId === `save-${recommendation.id}`;

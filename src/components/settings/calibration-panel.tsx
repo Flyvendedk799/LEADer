@@ -146,7 +146,7 @@ export function CalibrationPanel() {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <div className="text-2xl font-semibold tnum">{model?.rawSampleCount ?? 0}</div>
               <div className="text-xs text-muted-foreground">Decisions learned from</div>
@@ -256,7 +256,7 @@ export function CalibrationPanel() {
                   your discards. These adjust a lead&apos;s score by up to 12 points.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-6 sm:grid-cols-2">
+              <CardContent className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div className="space-y-2">
                   <h4 className="flex items-center gap-2 text-sm font-medium text-success">
                     <TrendingUp className="h-4 w-4" />

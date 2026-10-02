@@ -192,7 +192,7 @@ export function SourceForm({
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label>Type</Label>
               <Select value={type} onValueChange={(v) => setType(v as SourceType)}>
@@ -236,7 +236,7 @@ export function SourceForm({
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label>Frequency</Label>
               <Select
@@ -281,7 +281,7 @@ export function SourceForm({
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="grid gap-2">
               <Label htmlFor="source-country">Country</Label>
               <Input

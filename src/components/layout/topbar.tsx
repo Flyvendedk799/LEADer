@@ -59,8 +59,8 @@ export function Topbar({ user }: TopbarProps) {
         <Input
           name="q"
           defaultValue={params.get("q") ?? ""}
-          placeholder="Search deals, accounts, summaries…"
-          className="pl-9 pr-14"
+          placeholder="Search deals…"
+          className="pl-9 pr-3 sm:pr-14"
         />
         <button
           type="button"

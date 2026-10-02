@@ -28,7 +28,7 @@ export default async function DealDetailPage({ params }: { params: { id: string 
         <ScoreBadge score={deal.pursuitScore} size="lg" showLabel />
       </PageHeader>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <main className="space-y-6">
           <Card>
             <CardHeader className="pb-3">
@@ -36,7 +36,7 @@ export default async function DealDetailPage({ params }: { params: { id: string 
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="whitespace-pre-wrap text-sm leading-7">{deal.summary || deal.rawContent || "No summary yet."}</p>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <Meta label="Value" value={formatBudget(deal.valueMin, deal.valueMax, deal.currency ?? "DKK")} />
                 <Meta label="Deadline" value={`${formatDate(deal.deadline)} · ${relativeDeadline(deal.deadline)}`} />
                 <Meta label="Lane" value={deal.lane?.name ?? "Manual"} />

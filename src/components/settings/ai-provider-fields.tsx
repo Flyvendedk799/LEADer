@@ -287,7 +287,7 @@ export function AiProviderFields({
               <span className="text-sm font-medium">{group.title}</span>
               <span className="text-xs text-muted-foreground">{group.description}</span>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {group.providers.map((provider) => {
                 const defaults = PROVIDER_DEFAULTS[provider];
                 const Icon = PROVIDER_ICONS[provider];
@@ -330,7 +330,7 @@ export function AiProviderFields({
         ))}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label htmlFor="ai-model">Model</Label>
           <Select

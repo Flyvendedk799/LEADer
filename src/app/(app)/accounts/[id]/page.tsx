@@ -33,7 +33,7 @@ export default async function AccountDetailPage({ params }: { params: { id: stri
         <ScoreBadge score={account.fitScore} size="lg" showLabel />
       </PageHeader>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <main className="space-y-6">
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-sm">Deals</CardTitle></CardHeader>

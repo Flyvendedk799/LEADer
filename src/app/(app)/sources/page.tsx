@@ -18,7 +18,7 @@ export default async function SourcesPage() {
   })) as unknown as SourceRow[];
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+    <div>
       <PageHeader
         title="Sources"
         description="Known places Lida can scan alongside on-demand Discover searches."

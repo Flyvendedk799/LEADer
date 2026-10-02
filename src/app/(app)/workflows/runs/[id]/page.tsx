@@ -171,7 +171,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
         queue={queue}
       />
 
-      <section className="grid gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <RunMetric label="Status" value={run.status.toLowerCase()} icon={<Activity />} badge={run.status} />
         <RunMetric label="Workspace" value={run.workspace} icon={<BriefcaseBusiness />} />
         <RunMetric label="Started" value={run.startedAt ? formatDate(run.startedAt) : "Not started"} icon={<Clock3 />} />
@@ -179,35 +179,35 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
       </section>
 
       {run.playbook === "operating-day" ? (
-        <section className="grid gap-3 md:grid-cols-4">
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <RunMetric label="Source leads" value={numberValue(operatingSources?.created)} icon={<RotateCw />} />
           <RunMetric label="Saved deals" value={numberValue(operatingCandidates?.saved)} icon={<BriefcaseBusiness />} />
           <RunMetric label="Rescue tasks" value={operatingRescueTasks} icon={<Sparkles />} />
           <RunMetric label="Digests" value={numberValue(operatingDigest?.created)} icon={<ListChecks />} />
         </section>
       ) : run.playbook === "research-brief" ? (
-        <section className="grid gap-3 md:grid-cols-4">
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <RunMetric label="Subject" value={typeof result?.subject === "string" ? truncate(result.subject, 28) : "Research"} icon={<Search />} />
           <RunMetric label="Created tasks" value={numberValue(result?.createdTasks)} icon={<ListChecks />} />
           <RunMetric label="Existing tasks" value={numberValue(result?.skippedExistingTasks)} icon={<CheckCircle2 />} />
           <RunMetric label="Runbook" value={runbook.length || worksheet.length || checklist.length} icon={<Target />} />
         </section>
       ) : run.playbook === "candidate-harvest" ? (
-        <section className="grid gap-3 md:grid-cols-4">
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <RunMetric label="Reviewed" value={numberValue(candidates?.reviewed)} icon={<Target />} />
           <RunMetric label="Saved deals" value={numberValue(candidates?.saved)} icon={<BriefcaseBusiness />} />
           <RunMetric label="Already in pipe" value={numberValue(candidates?.alreadyInPipeline)} icon={<CheckCircle2 />} />
           <RunMetric label="Min score" value={numberValue(candidates?.minScore)} icon={<ListChecks />} />
         </section>
       ) : run.playbook === "pipeline-rescue" ? (
-        <section className="grid gap-3 md:grid-cols-4">
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <RunMetric label="Stale tasks" value={numberValue(staleDeals?.tasksCreated)} icon={<RotateCw />} />
           <RunMetric label="Deadline tasks" value={numberValue(deadlines?.tasksCreated)} icon={<CalendarClock />} />
           <RunMetric label="Next actions" value={numberValue(result?.nextActionsUpdated)} icon={<ListChecks />} />
           <RunMetric label="Skipped existing" value={numberValue(result?.skippedExistingTasks)} icon={<CheckCircle2 />} />
         </section>
       ) : (
-        <section className="grid gap-3 md:grid-cols-4">
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <RunMetric label="Sources ran" value={numberValue(sources?.ran)} icon={<RotateCw />} />
           <RunMetric label="New leads" value={numberValue(sources?.created)} icon={<BriefcaseBusiness />} />
           <RunMetric label="Reminders" value={numberValue(reminders?.created)} icon={<CalendarClock />} />
@@ -221,7 +221,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
             <CardTitle className="text-sm">Linked CRM context</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-2 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
               {linkedTargets.map((target) => {
                 const content = (
                   <>
@@ -283,7 +283,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
                 ))}
               </div>
             ) : null}
-            <div className="grid gap-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
               {decisionFocus.fields.map((field) => (
                 <div key={field.id} className="rounded-md border border-border bg-surface/40 p-3">
                   <p className="text-xs font-semibold uppercase text-muted-foreground">{field.label}</p>
@@ -306,7 +306,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
             {decisionFrame.purpose ? (
               <p className="text-sm leading-6 text-muted-foreground">{decisionFrame.purpose}</p>
             ) : null}
-            <div className="grid gap-2 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {decisionFrame.fields.map((field) => (
                 <div key={field.id} className="rounded-md border border-border bg-surface/40 p-3">
                   <p className="text-xs font-semibold uppercase text-muted-foreground">{field.label}</p>
@@ -339,7 +339,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
             <CardTitle className="text-sm">Linked discovery candidate</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">
                   {linkedCandidateTitle || linkedCandidateId || "Discovery candidate"}
@@ -379,7 +379,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
             <CardTitle className="text-sm">Operator runbook</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-2 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {runbook.map((raw, index) => {
                 const step = objectValue(raw)!;
                 const title = typeof step.title === "string" ? step.title : `Runbook step ${index + 1}`;
@@ -469,7 +469,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
             <CardTitle className="text-sm">Research checklist</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-2 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {checklist.map((raw, index) => {
                 const step = objectValue(raw)!;
                 const title = typeof step.title === "string" ? step.title : `Research step ${index + 1}`;
@@ -517,7 +517,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
             <CardTitle className="text-sm">Research worksheet</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {worksheet.map((raw, index) => {
                 const section = objectValue(raw)!;
                 const title = typeof section.title === "string" ? section.title : `Worksheet section ${index + 1}`;
@@ -557,7 +557,7 @@ export default async function WorkflowRunDetailPage({ params }: { params: { id: 
         </Card>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Activity log</CardTitle>

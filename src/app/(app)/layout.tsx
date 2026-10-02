@@ -25,7 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Topbar user={{ name: user.name, email: user.email }} />
         </Suspense>
         <main className="flex-1 overflow-y-auto scrollbar-thin">
-          <div className="mx-auto w-full max-w-[1400px] px-4 py-6 md:px-6">{children}</div>
+          <div className="mx-auto w-full max-w-[1400px] px-4 pb-24 pt-6 md:px-6">{children}</div>
         </main>
       </div>
     </div>
