@@ -7,12 +7,20 @@ import { saveCandidateAsDeal } from "@/lib/crm";
 import { db } from "@/lib/db";
 import { discoveryCandidateActionSchema } from "@/lib/validators";
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(
+  req: Request,
+  props: { params: Promise<{ id: string }> },
+) {
+  const params = await props.params;
   try {
     const ownerId = await requireOwnerId();
     const body = await req.json().catch(() => ({}));
     const parsed = discoveryCandidateActionSchema.safeParse(body);
-    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    if (!parsed.success)
+      return NextResponse.json(
+        { error: parsed.error.flatten() },
+        { status: 400 },
+      );
 
     const { action, reason, feedback } = parsed.data;
     if (action === "save") {
@@ -21,10 +29,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     const status =
-      action === "dismiss" ? "DISMISSED" :
-      action === "duplicate" ? "DUPLICATE" :
-      action === "review" ? "REVIEWED" :
-      undefined;
+      action === "dismiss"
+        ? "DISMISSED"
+        : action === "duplicate"
+          ? "DUPLICATE"
+          : action === "review"
+            ? "REVIEWED"
+            : undefined;
 
     const candidate = await db.discoveryCandidate.updateMany({
       where: { id: params.id, ownerId },
@@ -34,7 +45,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         ...(feedback ? { feedback: feedback as Prisma.InputJsonValue } : {}),
       },
     });
-    if (candidate.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (candidate.count === 0)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     const updated = await db.discoveryCandidate.findFirst({
       where: { id: params.id, ownerId },
       include: { evidence: true, deal: true, account: true, lane: true },

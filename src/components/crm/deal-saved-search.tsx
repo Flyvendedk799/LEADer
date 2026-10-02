@@ -33,36 +33,56 @@ export function DealSavedSearch() {
         body: JSON.stringify({ name: name.trim(), filters }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "Could not save search");
+      if (!res.ok)
+        throw new Error(
+          typeof data?.error === "string"
+            ? data.error
+            : "Could not save search",
+        );
       setName("");
       toast.success("Search saved");
       router.refresh();
     } catch (err) {
-      toast.error("Could not save search", err instanceof Error ? err.message : "Try again");
+      toast.error(
+        "Could not save search",
+        err instanceof Error ? err.message : "Try again",
+      );
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <form
-      className="flex flex-wrap items-center gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save();
-      }}
-    >
-      <Input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Name this view"
-        className="h-9 w-48"
-        aria-label="Saved search name"
-      />
-      <Button type="submit" variant="outline" size="sm" disabled={saving || !name.trim()}>
-        <Bookmark className="h-4 w-4" />
-        Save search
-      </Button>
-    </form>
+    <details className="relative">
+      <summary className="rounded-md border bg-card px-3 py-2 text-sm font-medium">
+        Save view
+      </summary>
+      <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-lg border bg-popover p-3 shadow-lg">
+        <form
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name this view"
+            className="h-9 w-48"
+            aria-label="Saved search name"
+          />
+          <Button
+            type="submit"
+            variant="outline"
+            size="sm"
+            disabled={saving || !name.trim()}
+          >
+            <Bookmark className="h-4 w-4" />
+            Save search
+          </Button>
+        </form>
+      </div>
+    </details>
   );
 }

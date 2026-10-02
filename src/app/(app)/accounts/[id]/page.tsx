@@ -13,7 +13,10 @@ import { ResearchBriefLauncher } from "@/components/workflows/research-brief-lau
 
 export const dynamic = "force-dynamic";
 
-export default async function AccountDetailPage({ params }: { params: { id: string } }) {
+export default async function AccountDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  const params = await props.params;
   const ownerId = await requireOwnerId();
   const account = await db.account.findFirst({
     where: { id: params.id, ownerId },
@@ -29,43 +32,76 @@ export default async function AccountDetailPage({ params }: { params: { id: stri
 
   return (
     <div className="space-y-6">
-      <PageHeader title={account.name} description={`${account.type} · ${account.workspace}`}>
+      <PageHeader
+        title={account.name}
+        description={`${account.type} · ${account.workspace}`}
+      >
         <ScoreBadge score={account.fitScore} size="lg" showLabel />
       </PageHeader>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <main className="space-y-6">
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">Deals</CardTitle></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Deals</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-3">
               {account.deals.map((deal) => (
-                <Link key={deal.id} href={`/deals/${deal.id}`} className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface/40 px-3 py-2 hover:border-primary/50">
+                <Link
+                  key={deal.id}
+                  href={`/deals/${deal.id}`}
+                  className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface/40 px-3 py-2 hover:border-primary/50"
+                >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{deal.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {formatBudget(deal.valueMin, deal.valueMax, deal.currency ?? "DKK")} · {deal.lane?.name ?? "Manual"}
+                      {formatBudget(
+                        deal.valueMin,
+                        deal.valueMax,
+                        deal.currency ?? "DKK",
+                      )}{" "}
+                      · {deal.lane?.name ?? "Manual"}
                     </p>
                   </div>
                   <DealStatusBadge status={deal.status} />
                 </Link>
               ))}
-              {account.deals.length === 0 && <p className="text-sm text-muted-foreground">No deals yet.</p>}
+              {account.deals.length === 0 && (
+                <p className="text-sm text-muted-foreground">No deals yet.</p>
+              )}
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">Evidence</CardTitle></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Evidence</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-3">
               {account.evidence.map((evidence) => (
-                <div key={evidence.id} className="rounded-md border border-border bg-surface/40 p-3">
+                <div
+                  key={evidence.id}
+                  className="rounded-md border border-border bg-surface/40 p-3"
+                >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium">{evidence.title || evidence.kind}</p>
-                    {evidence.url && <a href={evidence.url} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4 text-muted-foreground" /></a>}
+                    <p className="text-sm font-medium">
+                      {evidence.title || evidence.kind}
+                    </p>
+                    {evidence.url && (
+                      <a href={evidence.url} target="_blank" rel="noreferrer">
+                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                      </a>
+                    )}
                   </div>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{evidence.snippet}</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    {evidence.snippet}
+                  </p>
                 </div>
               ))}
-              {account.evidence.length === 0 && <p className="text-sm text-muted-foreground">No evidence yet.</p>}
+              {account.evidence.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No evidence yet.
+                </p>
+              )}
             </CardContent>
           </Card>
         </main>
@@ -76,7 +112,11 @@ export default async function AccountDetailPage({ params }: { params: { id: stri
               <ResearchBriefLauncher
                 defaultSubject={account.name}
                 subjectType="company"
-                objective={account.people.some((person) => person.email || person.phone) ? "qualify-lead" : "find-contact"}
+                objective={
+                  account.people.some((person) => person.email || person.phone)
+                    ? "qualify-lead"
+                    : "find-contact"
+                }
                 depth="standard"
                 workspace={account.workspace}
                 accountId={account.id}
@@ -85,41 +125,73 @@ export default async function AccountDetailPage({ params }: { params: { id: stri
           </Card>
 
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">People</CardTitle></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">People</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-3">
               {account.people.map((person) => (
-                <div key={person.id} className="rounded-md border border-border bg-surface/40 p-3 text-sm">
-                  <p className="font-medium">{person.name || person.email || "Unnamed person"}</p>
-                  <p className="text-xs text-muted-foreground">{[person.role, person.email].filter(Boolean).join(" · ") || "No details"}</p>
+                <div
+                  key={person.id}
+                  className="rounded-md border border-border bg-surface/40 p-3 text-sm"
+                >
+                  <p className="font-medium">
+                    {person.name || person.email || "Unnamed person"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {[person.role, person.email].filter(Boolean).join(" · ") ||
+                      "No details"}
+                  </p>
                 </div>
               ))}
-              {account.people.length === 0 && <p className="text-sm text-muted-foreground">No people yet.</p>}
+              {account.people.length === 0 && (
+                <p className="text-sm text-muted-foreground">No people yet.</p>
+              )}
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">Touchpoints</CardTitle></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Touchpoints</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-2">
               {account.touchpoints.map((touchpoint) => (
-                <div key={touchpoint.id} className="rounded-md border border-border bg-surface/40 p-2 text-sm">
+                <div
+                  key={touchpoint.id}
+                  className="rounded-md border border-border bg-surface/40 p-2 text-sm"
+                >
                   <p className="font-medium">{touchpoint.summary}</p>
-                  <p className="text-xs text-muted-foreground">{touchpoint.kind} · {formatDate(touchpoint.occurredAt)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {touchpoint.kind} · {formatDate(touchpoint.occurredAt)}
+                  </p>
                 </div>
               ))}
-              {account.touchpoints.length === 0 && <p className="text-sm text-muted-foreground">No touchpoints yet.</p>}
+              {account.touchpoints.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No touchpoints yet.
+                </p>
+              )}
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">Tasks</CardTitle></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Tasks</CardTitle>
+            </CardHeader>
             <CardContent className="space-y-2">
               {account.tasks.map((task) => (
-                <div key={task.id} className="rounded-md border border-border bg-surface/40 p-2 text-sm">
+                <div
+                  key={task.id}
+                  className="rounded-md border border-border bg-surface/40 p-2 text-sm"
+                >
                   <p className="font-medium">{task.title}</p>
-                  <p className="text-xs text-muted-foreground">{task.status} · {formatDate(task.dueAt)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {task.status} · {formatDate(task.dueAt)}
+                  </p>
                 </div>
               ))}
-              {account.tasks.length === 0 && <p className="text-sm text-muted-foreground">No tasks yet.</p>}
+              {account.tasks.length === 0 && (
+                <p className="text-sm text-muted-foreground">No tasks yet.</p>
+              )}
             </CardContent>
           </Card>
         </aside>

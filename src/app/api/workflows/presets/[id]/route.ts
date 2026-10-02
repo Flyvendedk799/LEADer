@@ -13,7 +13,9 @@ import {
   workflowPresetUpdateSchema,
 } from "@/lib/workflows/presets";
 
-function presetPayload(preset: Awaited<ReturnType<typeof db.workflowPreset.findFirstOrThrow>>) {
+function presetPayload(
+  preset: Awaited<ReturnType<typeof db.workflowPreset.findFirstOrThrow>>,
+) {
   const input = presetToWorkflowInput(preset);
   return {
     ...preset,
@@ -24,36 +26,64 @@ function presetPayload(preset: Awaited<ReturnType<typeof db.workflowPreset.findF
 }
 
 function uniqueNameError(error: unknown) {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(
+  req: Request,
+  props: { params: Promise<{ id: string }> },
+) {
+  const params = await props.params;
   try {
     const ownerId = await requireOwnerId();
-    const existing = await db.workflowPreset.findFirst({ where: { id: params.id, ownerId } });
-    if (!existing) return NextResponse.json({ error: "Workflow preset not found" }, { status: 404 });
+    const existing = await db.workflowPreset.findFirst({
+      where: { id: params.id, ownerId },
+    });
+    if (!existing)
+      return NextResponse.json(
+        { error: "Workflow preset not found" },
+        { status: 404 },
+      );
 
     const json = await req.json().catch(() => ({}));
     const parsed = workflowPresetUpdateSchema.safeParse(json ?? {});
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json(
+        { error: parsed.error.flatten() },
+        { status: 400 },
+      );
     }
 
     const merged = {
       name: parsed.data.name ?? existing.name,
-      description: parsed.data.description === undefined ? existing.description : parsed.data.description,
+      description:
+        parsed.data.description === undefined
+          ? existing.description
+          : parsed.data.description,
       playbook: parsed.data.playbook ?? existing.playbook,
       workspace: parsed.data.workspace ?? existing.workspace,
-      options: parsed.data.options === undefined ? existing.options ?? {} : parsed.data.options,
+      options:
+        parsed.data.options === undefined
+          ? (existing.options ?? {})
+          : parsed.data.options,
       pinned: parsed.data.pinned ?? existing.pinned,
       scheduleEnabled: parsed.data.scheduleEnabled ?? existing.scheduleEnabled,
-      scheduleIntervalHours: parsed.data.scheduleIntervalHours ?? existing.scheduleIntervalHours,
+      scheduleIntervalHours:
+        parsed.data.scheduleIntervalHours ?? existing.scheduleIntervalHours,
       scheduleNextRunAt:
-        parsed.data.scheduleNextRunAt === undefined ? existing.scheduleNextRunAt : parsed.data.scheduleNextRunAt,
+        parsed.data.scheduleNextRunAt === undefined
+          ? existing.scheduleNextRunAt
+          : parsed.data.scheduleNextRunAt,
     };
     const presetInput = workflowPresetFormSchema.safeParse(merged);
     if (!presetInput.success) {
-      return NextResponse.json({ error: presetInput.error.flatten() }, { status: 400 });
+      return NextResponse.json(
+        { error: presetInput.error.flatten() },
+        { status: 400 },
+      );
     }
 
     try {
@@ -64,7 +94,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ preset: presetPayload(preset) });
     } catch (error) {
       if (uniqueNameError(error)) {
-        return NextResponse.json({ error: "A workflow preset with that name already exists." }, { status: 409 });
+        return NextResponse.json(
+          { error: "A workflow preset with that name already exists." },
+          { status: 409 },
+        );
       }
       throw error;
     }
@@ -73,11 +106,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(
+  _req: Request,
+  props: { params: Promise<{ id: string }> },
+) {
+  const params = await props.params;
   try {
     const ownerId = await requireOwnerId();
-    const deleted = await db.workflowPreset.deleteMany({ where: { id: params.id, ownerId } });
-    if (deleted.count === 0) return NextResponse.json({ error: "Workflow preset not found" }, { status: 404 });
+    const deleted = await db.workflowPreset.deleteMany({
+      where: { id: params.id, ownerId },
+    });
+    if (deleted.count === 0)
+      return NextResponse.json(
+        { error: "Workflow preset not found" },
+        { status: 404 },
+      );
     return NextResponse.json({ ok: true });
   } catch (err) {
     return apiError(err);

@@ -4,14 +4,14 @@ import { requireOwnerId } from "@/lib/auth";
 import { opportunityUpdateSchema } from "@/lib/validators";
 import { apiError } from "@/lib/api";
 
-type Ctx = { params: { id: string } };
+type Ctx = { params: Promise<{ id: string }> };
 
 // GET /api/opportunities/[id] — full detail (owner-scoped, 404 otherwise).
 export async function GET(_req: Request, ctx: Ctx) {
   try {
     const ownerId = await requireOwnerId();
     const opp = await db.opportunity.findUnique({
-      where: { id: ctx.params.id },
+      where: { id: (await ctx.params).id },
       include: {
         source: true,
         contacts: true,
@@ -36,7 +36,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
   try {
     const ownerId = await requireOwnerId();
 
-    const existing = await db.opportunity.findUnique({ where: { id: ctx.params.id } });
+    const existing = await db.opportunity.findUnique({
+      where: { id: (await ctx.params).id },
+    });
     if (!existing || existing.ownerId !== ownerId) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -44,7 +46,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const json = await req.json().catch(() => null);
     const parsed = opportunityUpdateSchema.safeParse(json);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json(
+        { error: parsed.error.flatten() },
+        { status: 400 },
+      );
     }
     const body = parsed.data;
 
@@ -54,15 +59,19 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
     // Always refresh isActive from the effective deadline (incoming body.deadline
     // if present, else the existing row's deadline) unless isActive was explicit.
-    const effectiveDeadline = body.deadline !== undefined ? body.deadline : existing.deadline;
+    const effectiveDeadline =
+      body.deadline !== undefined ? body.deadline : existing.deadline;
     if (body.isActive === undefined) {
-      data.isActive = !effectiveDeadline || new Date(effectiveDeadline).getTime() >= Date.now();
+      data.isActive =
+        !effectiveDeadline ||
+        new Date(effectiveDeadline).getTime() >= Date.now();
     }
 
-    const statusChanged = body.status != null && body.status !== existing.status;
+    const statusChanged =
+      body.status != null && body.status !== existing.status;
 
     const updated = await db.opportunity.update({
-      where: { id: ctx.params.id },
+      where: { id: (await ctx.params).id },
       data,
     });
 
@@ -96,11 +105,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
 export async function DELETE(_req: Request, ctx: Ctx) {
   try {
     const ownerId = await requireOwnerId();
-    const existing = await db.opportunity.findUnique({ where: { id: ctx.params.id } });
+    const existing = await db.opportunity.findUnique({
+      where: { id: (await ctx.params).id },
+    });
     if (!existing || existing.ownerId !== ownerId) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    await db.opportunity.delete({ where: { id: ctx.params.id } });
+    await db.opportunity.delete({ where: { id: (await ctx.params).id } });
     return NextResponse.json({ ok: true });
   } catch (err) {
     return apiError(err);

@@ -2,6 +2,12 @@ import { createHash } from "node:crypto";
 
 /** Candidate opportunity produced by any ingestion lane before persistence. */
 export interface OpportunityCandidate {
+  provenance?: {
+    status: "read" | "snippet" | "blocked" | "failed" | "attachment";
+    retrievedAt: string;
+    url?: string;
+    reason?: string;
+  };
   title: string;
   description?: string;
   rawContent?: string;
@@ -27,10 +33,18 @@ function normUrl(url?: string): string {
     const u = new URL(url);
     u.hash = "";
     // Drop common tracking params for stable dedupe.
-    ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"].forEach(
-      (p) => u.searchParams.delete(p),
-    );
-    return `${u.origin}${u.pathname}${u.search}`.toLowerCase().replace(/\/$/, "");
+    [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+      "fbclid",
+      "gclid",
+    ].forEach((p) => u.searchParams.delete(p));
+    return `${u.origin}${u.pathname}${u.search}`
+      .toLowerCase()
+      .replace(/\/$/, "");
   } catch {
     return url.toLowerCase().trim();
   }

@@ -27,9 +27,20 @@ import { workspaceFromRoute, workspaceLabel } from "@/lib/workspace-context";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { toast } from "@/hooks/use-toast";
 import { openPlatformAgent } from "@/components/agent/platform-agent";
-import { GLOBAL_NAV, PRIMARY_NAV, SETTINGS_NAV, type NavItem } from "./nav";
+import {
+  GLOBAL_NAV,
+  PRIMARY_NAV,
+  TOOLS_NAV,
+  SETTINGS_NAV,
+  type NavItem,
+} from "./nav";
 
-const NAV_ALL: NavItem[] = [...PRIMARY_NAV, GLOBAL_NAV, SETTINGS_NAV];
+const NAV_ALL: NavItem[] = [
+  ...PRIMARY_NAV,
+  ...TOOLS_NAV,
+  GLOBAL_NAV,
+  SETTINGS_NAV,
+];
 
 /** Custom event other components (e.g. the topbar button) can fire to open the palette. */
 export const COMMAND_EVENT = "leader:command-palette";
@@ -65,7 +76,11 @@ type WorkflowRunResponse = {
   error?: unknown;
 };
 
-type WorkflowPlaybook = "daily-sweep" | "pipeline-rescue" | "candidate-harvest" | "operating-day";
+type WorkflowPlaybook =
+  | "daily-sweep"
+  | "pipeline-rescue"
+  | "candidate-harvest"
+  | "operating-day";
 
 export function CommandPalette() {
   const router = useRouter();
@@ -123,7 +138,10 @@ export function CommandPalette() {
     const controller = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/deals?q=${encodeURIComponent(term)}&pageSize=6`, { signal: controller.signal });
+        const res = await fetch(
+          `/api/deals?q=${encodeURIComponent(term)}&scope=all&pageSize=6&workspace=${activeWorkspace}`,
+          { signal: controller.signal },
+        );
         if (!res.ok) throw new Error();
         const data = (await res.json()) as { items: OppHit[] };
         setHits(data.items ?? []);
@@ -137,36 +155,45 @@ export function CommandPalette() {
       controller.abort();
       clearTimeout(t);
     };
-  }, [query, open]);
+  }, [query, open, activeWorkspace]);
 
   const close = React.useCallback(() => {
     setOpen(false);
   }, []);
 
-  const generateAlerts = React.useCallback(async (type: "REMINDERS" | "DIGEST", id: string) => {
-    setActionId(id);
-    try {
-      const res = await fetch("/api/alerts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, workspace: activeWorkspace }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "Could not run workflow action");
-      const created = Number(data?.created ?? 0);
-      const emailed = Number(data?.emailed ?? 0);
-      toast.success(
-        type === "DIGEST" ? "Digest generated" : "Deadlines checked",
-        emailed ? `${created} created - ${emailed} emailed` : `${created} created`,
-      );
-      router.refresh();
-      close();
-    } catch (err) {
-      toast.error("Workflow action failed", err instanceof Error ? err.message : "Try again");
-    } finally {
-      setActionId(null);
-    }
-  }, [activeWorkspace, close, router]);
+  const generateAlerts = React.useCallback(
+    async (type: "REMINDERS" | "DIGEST", id: string) => {
+      setActionId(id);
+      try {
+        const res = await fetch("/api/alerts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type, workspace: activeWorkspace }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok)
+          throw new Error(data?.error || "Could not run workflow action");
+        const created = Number(data?.created ?? 0);
+        const emailed = Number(data?.emailed ?? 0);
+        toast.success(
+          type === "DIGEST" ? "Digest generated" : "Deadlines checked",
+          emailed
+            ? `${created} created - ${emailed} emailed`
+            : `${created} created`,
+        );
+        router.refresh();
+        close();
+      } catch (err) {
+        toast.error(
+          "Workflow action failed",
+          err instanceof Error ? err.message : "Try again",
+        );
+      } finally {
+        setActionId(null);
+      }
+    },
+    [activeWorkspace, close, router],
+  );
 
   const runDailySweep = React.useCallback(async () => {
     const id = "act-daily-sweep";
@@ -175,39 +202,65 @@ export function CommandPalette() {
       const res = await fetch("/api/workflows/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playbook: "daily-sweep", workspace: activeWorkspace }),
+        body: JSON.stringify({
+          playbook: "daily-sweep",
+          workspace: activeWorkspace,
+        }),
       });
-      const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
-      if (!res.ok || !data?.run) throw new Error(String(data?.error || "Could not queue daily sweep"));
-      toast.success("Daily sweep queued", `${activeWorkspaceLabel} workspace. It will keep running in the background.`);
+      const data = (await res
+        .json()
+        .catch(() => null)) as WorkflowRunResponse | null;
+      if (!res.ok || !data?.run)
+        throw new Error(String(data?.error || "Could not queue daily sweep"));
+      toast.success(
+        "Daily sweep queued",
+        `${activeWorkspaceLabel} workspace. It will keep running in the background.`,
+      );
       router.refresh();
       close();
     } catch (err) {
-      toast.error("Daily sweep failed", err instanceof Error ? err.message : "Try again");
+      toast.error(
+        "Daily sweep failed",
+        err instanceof Error ? err.message : "Try again",
+      );
     } finally {
       setActionId(null);
     }
   }, [activeWorkspace, activeWorkspaceLabel, close, router]);
 
-  const queueWorkflowPlaybook = React.useCallback(async (playbook: WorkflowPlaybook, id: string, label: string) => {
-    setActionId(id);
-    try {
-      const res = await fetch("/api/workflows/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playbook, workspace: activeWorkspace }),
-      });
-      const data = (await res.json().catch(() => null)) as WorkflowRunResponse | null;
-      if (!res.ok || !data?.run) throw new Error(String(data?.error || `Could not queue ${label.toLowerCase()}`));
-      toast.success(`${label} queued`, `${activeWorkspaceLabel} workspace. It will keep running in the background.`);
-      router.refresh();
-      close();
-    } catch (err) {
-      toast.error(`${label} failed`, err instanceof Error ? err.message : "Try again");
-    } finally {
-      setActionId(null);
-    }
-  }, [activeWorkspace, activeWorkspaceLabel, close, router]);
+  const queueWorkflowPlaybook = React.useCallback(
+    async (playbook: WorkflowPlaybook, id: string, label: string) => {
+      setActionId(id);
+      try {
+        const res = await fetch("/api/workflows/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ playbook, workspace: activeWorkspace }),
+        });
+        const data = (await res
+          .json()
+          .catch(() => null)) as WorkflowRunResponse | null;
+        if (!res.ok || !data?.run)
+          throw new Error(
+            String(data?.error || `Could not queue ${label.toLowerCase()}`),
+          );
+        toast.success(
+          `${label} queued`,
+          `${activeWorkspaceLabel} workspace. It will keep running in the background.`,
+        );
+        router.refresh();
+        close();
+      } catch (err) {
+        toast.error(
+          `${label} failed`,
+          err instanceof Error ? err.message : "Try again",
+        );
+      } finally {
+        setActionId(null);
+      }
+    },
+    [activeWorkspace, activeWorkspaceLabel, close, router],
+  );
 
   const results = React.useMemo<Result[]>(() => {
     const term = query.trim().toLowerCase();
@@ -219,19 +272,24 @@ export function CommandPalette() {
         id: `opp-${o.id}`,
         group: "Deals",
         label: o.title,
-        hint: [o.account?.name, formatBudget(o.valueMin, o.valueMax, o.currency ?? "DKK")]
+        hint: [
+          o.account?.name,
+          formatBudget(o.valueMin, o.valueMax, o.currency ?? "DKK"),
+        ]
           .filter(Boolean)
           .join(" · "),
         icon: <Search className="h-4 w-4 text-muted-foreground" />,
         score: o.pursuitScore,
         perform: () => {
-          router.push(`/deals/${o.id}`);
+          router.push(`/deals/${o.id}?workspace=${activeWorkspace}`);
           close();
         },
       });
     }
 
-    const navMatches = NAV_ALL.filter((n) => !term || n.label.toLowerCase().includes(term));
+    const navMatches = NAV_ALL.filter(
+      (n) => !term || n.label.toLowerCase().includes(term),
+    );
     for (const n of navMatches) {
       const Icon = n.icon;
       out.push({
@@ -286,7 +344,12 @@ export function CommandPalette() {
         label: "Run operating day",
         hint: `${activeWorkspaceLabel}: sweep, harvest, rescue`,
         icon: <Sparkles className="h-4 w-4 text-muted-foreground" />,
-        perform: () => queueWorkflowPlaybook("operating-day", "act-operating-day", "Operating day"),
+        perform: () =>
+          queueWorkflowPlaybook(
+            "operating-day",
+            "act-operating-day",
+            "Operating day",
+          ),
       },
       {
         id: "act-candidate-harvest",
@@ -294,7 +357,12 @@ export function CommandPalette() {
         label: "Harvest hot candidates",
         hint: `${activeWorkspaceLabel}: save top candidates`,
         icon: <Target className="h-4 w-4 text-muted-foreground" />,
-        perform: () => queueWorkflowPlaybook("candidate-harvest", "act-candidate-harvest", "Candidate harvest"),
+        perform: () =>
+          queueWorkflowPlaybook(
+            "candidate-harvest",
+            "act-candidate-harvest",
+            "Candidate harvest",
+          ),
       },
       {
         id: "act-pipeline-rescue",
@@ -302,7 +370,12 @@ export function CommandPalette() {
         label: "Run pipeline rescue",
         hint: `${activeWorkspaceLabel}: stale deals, deadline prep`,
         icon: <TimerReset className="h-4 w-4 text-muted-foreground" />,
-        perform: () => queueWorkflowPlaybook("pipeline-rescue", "act-pipeline-rescue", "Pipeline rescue"),
+        perform: () =>
+          queueWorkflowPlaybook(
+            "pipeline-rescue",
+            "act-pipeline-rescue",
+            "Pipeline rescue",
+          ),
       },
       {
         id: "act-daily-sweep",
@@ -364,7 +437,8 @@ export function CommandPalette() {
       {
         id: "act-theme",
         group: "Actions",
-        label: theme === "dark" ? "Switch to light theme" : "Switch to dark theme",
+        label:
+          theme === "dark" ? "Switch to light theme" : "Switch to dark theme",
         icon:
           theme === "dark" ? (
             <Sun className="h-4 w-4 text-muted-foreground" />
@@ -381,7 +455,7 @@ export function CommandPalette() {
       if (!term || a.label.toLowerCase().includes(term)) out.push(a);
     }
 
-    if (term.length >= 3) {
+    if (term.length >= 3 && !loading) {
       out.push({
         id: "act-agent-query",
         group: "Agent",
@@ -402,6 +476,7 @@ export function CommandPalette() {
     close,
     generateAlerts,
     hits,
+    loading,
     query,
     queueWorkflowPlaybook,
     router,
@@ -412,12 +487,16 @@ export function CommandPalette() {
 
   // Keep the active index in range whenever the result set changes.
   React.useEffect(() => {
-    setActive((i) => (results.length === 0 ? 0 : Math.min(i, results.length - 1)));
+    setActive((i) =>
+      results.length === 0 ? 0 : Math.min(i, results.length - 1),
+    );
   }, [results.length]);
 
   // Scroll the active row into view.
   React.useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`);
+    const el = listRef.current?.querySelector<HTMLElement>(
+      `[data-index="${active}"]`,
+    );
     el?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
@@ -427,7 +506,9 @@ export function CommandPalette() {
       setActive((i) => (results.length ? (i + 1) % results.length : 0));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActive((i) => (results.length ? (i - 1 + results.length) % results.length : 0));
+      setActive((i) =>
+        results.length ? (i - 1 + results.length) % results.length : 0,
+      );
     } else if (e.key === "Enter") {
       e.preventDefault();
       const result = results[active];
@@ -443,7 +524,9 @@ export function CommandPalette() {
           onKeyDown={onKeyDown}
           className="fixed left-1/2 top-[12vh] z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-2xl duration-150 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
         >
-          <DialogPrimitive.Title className="sr-only">Command palette</DialogPrimitive.Title>
+          <DialogPrimitive.Title className="sr-only">
+            Command palette
+          </DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
             Search opportunities, jump to a page, or run an action.
           </DialogPrimitive.Description>
@@ -458,7 +541,7 @@ export function CommandPalette() {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search opportunities or jump to…"
+              placeholder="Search deals or jump to…"
               className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
             <kbd className="hidden rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">
@@ -466,7 +549,10 @@ export function CommandPalette() {
             </kbd>
           </div>
 
-          <div ref={listRef} className="max-h-[60vh] overflow-y-auto scrollbar-thin p-2">
+          <div
+            ref={listRef}
+            className="max-h-[60vh] overflow-y-auto scrollbar-thin p-2"
+          >
             {results.length === 0 ? (
               <p className="px-3 py-6 text-center text-sm text-muted-foreground">
                 {query.trim() ? "No matches." : "Type to search…"}
@@ -492,18 +578,30 @@ export function CommandPalette() {
                       disabled={Boolean(actionId)}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors",
-                        isActive ? "bg-primary/12 text-foreground" : "text-muted-foreground hover:bg-surface-2",
+                        isActive
+                          ? "bg-primary/12 text-foreground"
+                          : "text-muted-foreground hover:bg-surface-2",
                       )}
                     >
-                      {actionId === r.id ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : r.icon}
-                      <span className="min-w-0 flex-1 truncate text-foreground">{r.label}</span>
+                      {actionId === r.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      ) : (
+                        r.icon
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-foreground">
+                        {r.label}
+                      </span>
                       {r.hint && (
                         <span className="hidden max-w-[45%] truncate text-xs text-muted-foreground sm:inline">
                           {r.hint}
                         </span>
                       )}
-                      {r.score != null && <ScoreBadge score={r.score} size="sm" />}
-                      {isActive && <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                      {r.score != null && (
+                        <ScoreBadge score={r.score} size="sm" />
+                      )}
+                      {isActive && (
+                        <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      )}
                     </button>
                   </React.Fragment>
                 );

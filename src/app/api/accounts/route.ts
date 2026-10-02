@@ -13,10 +13,19 @@ export async function GET(req: Request) {
     const accounts = await db.account.findMany({
       where: {
         ownerId,
-        ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { description: { contains: q, mode: "insensitive" } }] } : {}),
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q, mode: "insensitive" } },
+                { description: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
       },
       orderBy: [{ fitScore: "desc" }, { updatedAt: "desc" }],
-      include: { _count: { select: { deals: true, people: true, tasks: true } } },
+      include: {
+        _count: { select: { deals: true, people: true, tasks: true } },
+      },
       take: 100,
     });
     return NextResponse.json({ accounts });
@@ -30,10 +39,14 @@ export async function POST(req: Request) {
     const ownerId = await requireOwnerId();
     const body = await req.json().catch(() => ({}));
     const parsed = accountCreateSchema.safeParse(body);
-    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    if (!parsed.success)
+      return NextResponse.json(
+        { error: parsed.error.flatten() },
+        { status: 400 },
+      );
     const account = await db.account.upsert({
       where: { ownerId_name: { ownerId, name: parsed.data.name } },
-      update: parsed.data,
+      update: {},
       create: { ownerId, ...parsed.data },
     });
     return NextResponse.json(account, { status: 201 });

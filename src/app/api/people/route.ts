@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertOwnedLinks } from "@/lib/crm/ownership";
 import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -8,10 +9,14 @@ import { personCreateSchema } from "@/lib/validators";
 export async function GET(req: Request) {
   try {
     const ownerId = await requireOwnerId();
-    const accountId = new URL(req.url).searchParams.get("accountId") || undefined;
+    const accountId =
+      new URL(req.url).searchParams.get("accountId") || undefined;
     const people = await db.person.findMany({
       where: { ownerId, ...(accountId ? { accountId } : {}) },
-      include: { account: true, _count: { select: { dealLinks: true, tasks: true } } },
+      include: {
+        account: true,
+        _count: { select: { dealLinks: true, tasks: true } },
+      },
       orderBy: { updatedAt: "desc" },
       take: 100,
     });
@@ -26,7 +31,12 @@ export async function POST(req: Request) {
     const ownerId = await requireOwnerId();
     const body = await req.json().catch(() => ({}));
     const parsed = personCreateSchema.safeParse(body);
-    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    if (!parsed.success)
+      return NextResponse.json(
+        { error: parsed.error.flatten() },
+        { status: 400 },
+      );
+    await assertOwnedLinks(ownerId, parsed.data);
     const { dealId, ...fields } = parsed.data;
     const data = { ...fields, email: fields.email || undefined };
     const person = data.email
@@ -37,7 +47,10 @@ export async function POST(req: Request) {
         })
       : await db.person.create({ data: { ownerId, ...data } });
     if (dealId) {
-      const deal = await db.deal.findFirst({ where: { id: dealId, ownerId }, select: { id: true } });
+      const deal = await db.deal.findFirst({
+        where: { id: dealId, ownerId },
+        select: { id: true },
+      });
       if (deal) {
         await db.dealPerson.upsert({
           where: { dealId_personId: { dealId: deal.id, personId: person.id } },

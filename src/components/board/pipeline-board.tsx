@@ -29,6 +29,7 @@ const COLUMNS: DealStatus[] = DEAL_STATUSES;
 export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
   const router = useRouter();
   const [items, setItems] = React.useState(initial);
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
   const [overStatus, setOverStatus] = React.useState<DealStatus | null>(null);
 
@@ -43,16 +44,20 @@ export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
     return map;
   }, [items]);
 
-  async function moveTo(status: DealStatus) {
-    const id = draggingId;
+  async function moveTo(status: DealStatus, selectedId?: string) {
+    const id = selectedId ?? draggingId;
+    if (pendingId) return;
     setDraggingId(null);
     setOverStatus(null);
     if (!id) return;
     const card = items.find((deal) => deal.id === id);
     if (!card || card.status === status) return;
 
+    setPendingId(id);
     const previous = card.status;
-    setItems((prev) => prev.map((deal) => (deal.id === id ? { ...deal, status } : deal)));
+    setItems((prev) =>
+      prev.map((deal) => (deal.id === id ? { ...deal, status } : deal)),
+    );
     try {
       const res = await fetch(`/api/deals/${id}`, {
         method: "PATCH",
@@ -60,11 +65,20 @@ export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
         body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error("Failed to update status");
-      toast.success("Status updated", `${card.title.slice(0, 40)} → ${DEAL_STATUS_META[status].label}`);
+      toast.success(
+        "Status updated",
+        `${card.title.slice(0, 40)} → ${DEAL_STATUS_META[status].label}`,
+      );
       router.refresh();
     } catch {
-      setItems((prev) => prev.map((deal) => (deal.id === id ? { ...deal, status: previous } : deal)));
+      setItems((prev) =>
+        prev.map((deal) =>
+          deal.id === id ? { ...deal, status: previous } : deal,
+        ),
+      );
       toast.error("Couldn't move card", "Status change failed — reverted.");
+    } finally {
+      setPendingId(null);
     }
   }
 
@@ -83,7 +97,9 @@ export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
             }}
             onDragLeave={(e) => {
               if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                setOverStatus((current) => (current === status ? null : current));
+                setOverStatus((current) =>
+                  current === status ? null : current,
+                );
               }
             }}
             onDrop={() => moveTo(status)}
@@ -107,7 +123,9 @@ export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
                 <div
                   className={cn(
                     "flex flex-1 items-center justify-center rounded-lg border border-dashed py-8 text-xs",
-                    isOver ? "border-primary/50 text-primary" : "border-border/60 text-muted-foreground",
+                    isOver
+                      ? "border-primary/50 text-primary"
+                      : "border-border/60 text-muted-foreground",
                   )}
                 >
                   {isOver ? "Drop here" : "No deals"}
@@ -116,7 +134,7 @@ export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
                 cards.map((deal) => (
                   <article
                     key={deal.id}
-                    draggable
+                    draggable={!pendingId}
                     onDragStart={(e) => {
                       setDraggingId(deal.id);
                       e.dataTransfer.effectAllowed = "move";
@@ -144,18 +162,39 @@ export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
                         {deal.account && (
                           <div className="mt-1 flex items-center gap-1 truncate text-xs text-muted-foreground">
                             <Building2 className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{deal.account.name}</span>
+                            <span className="truncate">
+                              {deal.account.name}
+                            </span>
                           </div>
                         )}
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <span className="tnum flex items-center gap-1 text-xs text-muted-foreground">
                             <Wallet className="h-3 w-3" />
-                            {formatBudget(deal.valueMin, deal.valueMax, deal.currency ?? "DKK")}
+                            {formatBudget(
+                              deal.valueMin,
+                              deal.valueMax,
+                              deal.currency ?? "DKK",
+                            )}
                           </span>
                           <ScoreBadge score={deal.pursuitScore} size="sm" />
                         </div>
                         <div className="mt-2">
                           <DeadlinePill deadline={deal.deadline} />
+                          <select
+                            aria-label={`Stage for ${deal.title}`}
+                            value={deal.status}
+                            disabled={pendingId !== null}
+                            onChange={(e) =>
+                              void moveTo(e.target.value as DealStatus, deal.id)
+                            }
+                            className="mt-3 h-8 w-full rounded-md border bg-background px-2 text-xs"
+                          >
+                            {COLUMNS.map((stage) => (
+                              <option key={stage} value={stage}>
+                                {DEAL_STATUS_META[stage].label}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                     </div>

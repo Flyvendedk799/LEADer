@@ -31,7 +31,11 @@ export function collectSameHostLinks(
     } catch {
       continue;
     }
-    if (abs.origin !== origin || (abs.protocol !== "http:" && abs.protocol !== "https:")) continue;
+    if (
+      abs.origin !== origin ||
+      (abs.protocol !== "http:" && abs.protocol !== "https:")
+    )
+      continue;
     abs.hash = "";
     const normalized = abs.toString();
     if (seen.has(normalized) || out.includes(normalized)) continue;
@@ -51,10 +55,22 @@ export function collectSameHostLinks(
  */
 export async function fetchWebCandidates(
   pageUrl: string,
-  opts: { keywords?: string[]; parserKey?: string | null } = {},
+  opts: {
+    keywords?: string[];
+    parserKey?: string | null;
+    maxPages?: number;
+  } = {},
 ): Promise<OpportunityCandidate[]> {
   const settings = crawlerSettings();
-  const maxPages = settings.playwrightEnabled ? 1 : Math.max(1, settings.maxPagesPerRun || 1);
+  const maxPages = settings.playwrightEnabled
+    ? 1
+    : Math.max(
+        1,
+        Math.min(
+          opts.maxPages ?? settings.maxPagesPerRun,
+          settings.maxPagesPerRun,
+        ) || 1,
+      );
   const queue = [pageUrl];
   const seenPages = new Set<string>();
   const collected: OpportunityCandidate[] = [];
@@ -67,7 +83,8 @@ export async function fetchWebCandidates(
     await assertPublicUrl(next);
     const allowed = await isAllowedByRobots(next);
     if (!allowed) {
-      if (seenPages.size === 1) throw new Error(`Blocked by robots.txt: ${next}`);
+      if (seenPages.size === 1)
+        throw new Error(`Blocked by robots.txt: ${next}`);
       continue;
     }
     await rateLimit(next);
@@ -75,7 +92,9 @@ export async function fetchWebCandidates(
     const html = await loadPageHtml(next, settings);
     const $ = cheerio.load(html);
     const siteParser = getParser(opts.parserKey);
-    collected.push(...(siteParser ? siteParser($, next) : genericExtract($, next)));
+    collected.push(
+      ...(siteParser ? siteParser($, next) : genericExtract($, next)),
+    );
 
     if (settings.playwrightEnabled || seenPages.size >= maxPages) break;
     const hrefs: string[] = [];
@@ -84,7 +103,9 @@ export async function fetchWebCandidates(
       if (href) hrefs.push(href);
     });
     const seen = new Set<string>([...seenPages, ...queue]);
-    queue.push(...collectSameHostLinks(hrefs, next, seen, maxPages - seenPages.size));
+    queue.push(
+      ...collectSameHostLinks(hrefs, next, seen, maxPages - seenPages.size),
+    );
   }
 
   const kw = (opts.keywords || []).map((k) => k.toLowerCase()).filter(Boolean);
@@ -104,7 +125,10 @@ async function loadPageHtml(
     const browser = await chromium.launch({ headless: true });
     try {
       const page = await browser.newPage({ userAgent: settings.userAgent });
-      await page.goto(pageUrl, { timeout: settings.timeoutMs, waitUntil: "domcontentloaded" });
+      await page.goto(pageUrl, {
+        timeout: settings.timeoutMs,
+        waitUntil: "domcontentloaded",
+      });
       return await page.content();
     } finally {
       await browser.close();
@@ -115,7 +139,8 @@ async function loadPageHtml(
     headers: { "User-Agent": settings.userAgent },
     signal: AbortSignal.timeout(settings.timeoutMs),
   });
-  if (res.status < 200 || res.status >= 300) throw new Error(`Fetch failed (${res.status}) for ${pageUrl}`);
+  if (res.status < 200 || res.status >= 300)
+    throw new Error(`Fetch failed (${res.status}) for ${pageUrl}`);
   return res.text;
 }
 
@@ -126,11 +151,13 @@ async function loadPageHtml(
  *   3. The page's main heading + meta description as a single candidate.
  * Site-specific selectors live in lib/ingestion/parsers (referenced by parserKey).
  */
-function genericExtract($: cheerio.CheerioAPI, pageUrl: string): OpportunityCandidate[] {
+function genericExtract(
+  $: cheerio.CheerioAPI,
+  pageUrl: string,
+): OpportunityCandidate[] {
   const structured = extractStructured($, pageUrl);
   if (structured.length) return structured;
 
-  const origin = new URL(pageUrl).origin;
   const out: OpportunityCandidate[] = [];
 
   const cardSelectors = [
@@ -153,12 +180,20 @@ function genericExtract($: cheerio.CheerioAPI, pageUrl: string): OpportunityCand
       const link = $el.find("a[href]").first().attr("href");
       const desc = $el.text().replace(/\s+/g, " ").trim().slice(0, 600);
       if (desc.length < 40) return;
+      let url = pageUrl;
+      try {
+        const parsed = new URL(link || pageUrl, pageUrl);
+        if (!["https:", "http:"].includes(parsed.protocol)) return;
+        url = parsed.toString();
+      } catch {
+        return;
+      }
       seen.add(title);
       out.push({
         title: title.slice(0, 200),
         description: desc,
         rawContent: desc,
-        url: link ? new URL(link, origin).toString() : pageUrl,
+        url,
         applicationRoute: "UNKNOWN",
       });
     });
@@ -166,7 +201,10 @@ function genericExtract($: cheerio.CheerioAPI, pageUrl: string): OpportunityCand
   }
 
   if (out.length === 0) {
-    const title = $("h1").first().text().trim() || $("title").text().trim() || "Untitled page";
+    const title =
+      $("h1").first().text().trim() ||
+      $("title").text().trim() ||
+      "Untitled page";
     const desc =
       $('meta[name="description"]').attr("content") ||
       $("p").first().text().trim() ||

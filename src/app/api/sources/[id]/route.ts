@@ -5,14 +5,18 @@ import { sourceUpdateSchema } from "@/lib/validators";
 import { apiError } from "@/lib/api";
 
 // GET /api/sources/[id] — fetch one owner-scoped source.
-export async function GET(_req: Request, ctx: { params: { id: string } }) {
+export async function GET(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
   try {
     const ownerId = await requireOwnerId();
     const source = await db.source.findFirst({
-      where: { id: ctx.params.id, ownerId },
+      where: { id: (await ctx.params).id, ownerId },
       include: { _count: { select: { opportunities: true } } },
     });
-    if (!source) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!source)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(source);
   } catch (err) {
     return apiError(err);
@@ -20,17 +24,26 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
 }
 
 // PATCH /api/sources/[id] — partial update of an owner-scoped source.
-export async function PATCH(req: Request, ctx: { params: { id: string } }) {
+export async function PATCH(
+  req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
   try {
     const ownerId = await requireOwnerId();
     const json = await req.json();
     const parsed = sourceUpdateSchema.safeParse(json);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json(
+        { error: parsed.error.flatten() },
+        { status: 400 },
+      );
     }
 
-    const existing = await db.source.findFirst({ where: { id: ctx.params.id, ownerId } });
-    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const existing = await db.source.findFirst({
+      where: { id: (await ctx.params).id, ownerId },
+    });
+    if (!existing)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const { url, ...rest } = parsed.data;
     const source = await db.source.update({
@@ -48,11 +61,17 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
 }
 
 // DELETE /api/sources/[id] — remove an owner-scoped source.
-export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
+export async function DELETE(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
   try {
     const ownerId = await requireOwnerId();
-    const existing = await db.source.findFirst({ where: { id: ctx.params.id, ownerId } });
-    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const existing = await db.source.findFirst({
+      where: { id: (await ctx.params).id, ownerId },
+    });
+    if (!existing)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     await db.source.delete({ where: { id: existing.id } });
     return NextResponse.json({ ok: true });

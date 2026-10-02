@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { assertAutomatable, isAutomatable } from "./compliance";
 import { dedupeHash } from "./dedupe";
-import { extractBudget, extractDeadline, detectApplicationRoute } from "./extract";
+import {
+  extractBudget,
+  extractDeadline,
+  extractExplicitDeadline,
+  detectApplicationRoute,
+} from "./extract";
 
 describe("compliance gate", () => {
   it("allows public source types", () => {
@@ -46,7 +51,26 @@ describe("heuristic extraction", () => {
     expect(extractDeadline("ingen dato her")).toBeNull();
   });
   it("detects application route cues", () => {
-    expect(detectApplicationRoute("Send din ansøgning her")).toBe("APPLICATION");
+    expect(detectApplicationRoute("Send din ansøgning her")).toBe(
+      "APPLICATION",
+    );
     expect(detectApplicationRoute("Kontakt os på mail@x.dk")).toBe("DIRECT");
+  });
+  it("does not turn publication dates or project years into deadlines or budgets", () => {
+    expect(
+      extractExplicitDeadline("Published 2026-01-15. New software project."),
+    ).toBeNull();
+    expect(
+      extractExplicitDeadline(
+        "Published 2026-01-15. Deadline: 2026-11-20",
+      )?.getMonth(),
+    ).toBe(10);
+    expect(
+      extractBudget("Research programme 2020-2026 with a European partner").max,
+    ).toBeUndefined();
+    expect(extractBudget("European supplier: budget 80.000 DKK").currency).toBe(
+      "DKK",
+    );
+    expect(extractDeadline("2026-02-31")).toBeNull();
   });
 });

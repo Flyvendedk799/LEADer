@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { PageHeader } from "@/components/shared/page-header";
+import { DealFilters } from "@/components/crm/deal-filters";
 import { DealTable } from "@/components/crm/deal-table";
 import { DealSavedSearch } from "@/components/crm/deal-saved-search";
 import { NewDealDialog } from "@/components/crm/new-deal-dialog";
@@ -12,11 +13,10 @@ import { pluralize } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function DealsPage({
-  searchParams,
-}: {
-  searchParams: Record<string, string | string[]>;
+export default async function DealsPage(props: {
+  searchParams: Promise<Record<string, string | string[]>>;
 }) {
+  const searchParams = await props.searchParams;
   const ownerId = await requireOwnerId();
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(searchParams)) {
@@ -38,33 +38,63 @@ export default async function DealsPage({
     <div className="space-y-5">
       <PageHeader
         title="Deals"
-        description={`${pluralize(total, "pursuit")}, active and historical, across accounts, lanes, and sources.`}
+        description={`${pluralize(total, "deal")} in view. Turn promising leads into your next project.`}
       >
         <Suspense>
           <DealSavedSearch />
           <NewDealDialog />
         </Suspense>
-        <Button asChild>
-          <Link href="/discover">
+        <Button asChild variant="outline">
+          <Link href={`/discover?workspace=${params.get("workspace")}`}>
             <Search className="h-4 w-4" />
             Find leads
           </Link>
         </Button>
       </PageHeader>
-      <DealTable deals={items} searchQuery={query} />
+      <Suspense>
+        <DealFilters />
+      </Suspense>
+      <DealTable
+        deals={items}
+        searchQuery={
+          query ||
+          (params.get("status") || params.get("attention")
+            ? "these filters"
+            : "")
+        }
+        workspace={params.get("workspace") || "DK"}
+      />
       {pageCount > 1 && (
-        <nav aria-label="Deals pagination" className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+        <nav
+          aria-label="Deals pagination"
+          className="flex items-center justify-between gap-3 text-sm text-muted-foreground"
+        >
           <span className="tnum">
-            {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
+            {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of{" "}
+            {total}
           </span>
           <div className="flex items-center gap-2">
             <Button asChild variant="outline" size="sm">
-              <Link href={pageHref(page - 1)} aria-disabled={page <= 1} className={page <= 1 ? "pointer-events-none opacity-50" : undefined}>
+              <Link
+                href={pageHref(page - 1)}
+                aria-disabled={page <= 1}
+                className={
+                  page <= 1 ? "pointer-events-none opacity-50" : undefined
+                }
+              >
                 <ChevronLeft className="h-4 w-4" /> Previous
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm">
-              <Link href={pageHref(page + 1)} aria-disabled={page >= pageCount} className={page >= pageCount ? "pointer-events-none opacity-50" : undefined}>
+              <Link
+                href={pageHref(page + 1)}
+                aria-disabled={page >= pageCount}
+                className={
+                  page >= pageCount
+                    ? "pointer-events-none opacity-50"
+                    : undefined
+                }
+              >
                 Next <ChevronRight className="h-4 w-4" />
               </Link>
             </Button>

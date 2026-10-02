@@ -4,37 +4,126 @@ import type { OpportunityFilter } from "@/lib/types";
 // Shared enums (kept in sync with prisma/schema.prisma + lib/types.ts).
 export const zWorkspace = z.enum(["DK", "GLOBAL"]);
 export const zSourceType = z.enum([
-  "PUBLIC_WEB", "RSS", "PROCUREMENT", "ACCELERATOR", "NEWSLETTER", "API",
-  "FACEBOOK_MANUAL", "UPLOAD", "MANUAL",
+  "PUBLIC_WEB",
+  "RSS",
+  "PROCUREMENT",
+  "ACCELERATOR",
+  "NEWSLETTER",
+  "API",
+  "FACEBOOK_MANUAL",
+  "UPLOAD",
+  "MANUAL",
 ]);
 export const zFrequency = z.enum(["MANUAL", "HOURLY", "DAILY", "WEEKLY"]);
 export const zStatus = z.enum([
-  "NEW", "INTERESTING", "WATCH", "CONTACTED", "APPLIED", "WON", "LOST", "ARCHIVED",
+  "NEW",
+  "INTERESTING",
+  "WATCH",
+  "CONTACTED",
+  "APPLIED",
+  "WON",
+  "LOST",
+  "ARCHIVED",
 ]);
 export const zAccountType = z.enum([
-  "COMPANY", "STARTUP", "PUBLIC_BUYER", "COMMUNITY", "PARTNER", "PERSONA", "UNKNOWN",
+  "COMPANY",
+  "STARTUP",
+  "PUBLIC_BUYER",
+  "COMMUNITY",
+  "PARTNER",
+  "PERSONA",
+  "UNKNOWN",
 ]);
 export const zDealStatus = z.enum([
-  "DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION", "WON", "LOST", "ARCHIVED",
+  "DISCOVERED",
+  "QUALIFYING",
+  "INTERESTING",
+  "CONTACTED",
+  "PROPOSAL",
+  "NEGOTIATION",
+  "WON",
+  "LOST",
+  "ARCHIVED",
 ]);
-export const zDiscoveryCandidateStatus = z.enum(["NEW", "REVIEWED", "SAVED", "DISMISSED", "DUPLICATE"]);
-export const zEvidenceKind = z.enum(["SOURCE_SNIPPET", "WEB_RESULT", "STRUCTURED_DATA", "AI_EXTRACT", "USER_NOTE"]);
-export const zTouchpointKind = z.enum(["CALL", "EMAIL", "MEETING", "NOTE", "COMMUNITY", "MESSAGE", "OTHER"]);
+export const zDiscoveryCandidateStatus = z.enum([
+  "NEW",
+  "REVIEWED",
+  "SAVED",
+  "DISMISSED",
+  "DUPLICATE",
+]);
+export const zEvidenceKind = z.enum([
+  "SOURCE_SNIPPET",
+  "WEB_RESULT",
+  "STRUCTURED_DATA",
+  "AI_EXTRACT",
+  "USER_NOTE",
+]);
+export const zTouchpointKind = z.enum([
+  "CALL",
+  "EMAIL",
+  "MEETING",
+  "NOTE",
+  "COMMUNITY",
+  "MESSAGE",
+  "OTHER",
+]);
 export const zTaskStatus = z.enum(["OPEN", "DONE", "DISMISSED"]);
 export const zTaskPriority = z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]);
-export const zConversionAssetKind = z.enum(["OUTREACH", "PROPOSAL", "FOLLOW_UP", "CHECKLIST", "CALL_PREP", "PITCH", "SUMMARY"]);
+export const zConversionAssetKind = z.enum([
+  "OUTREACH",
+  "PROPOSAL",
+  "FOLLOW_UP",
+  "CHECKLIST",
+  "CALL_PREP",
+  "PITCH",
+  "SUMMARY",
+]);
 export const zApplicationRoute = z.enum(["DIRECT", "APPLICATION", "UNKNOWN"]);
 export const zIngestMethod = z.enum(["AUTOMATED", "MANUAL", "COMMUNITY"]);
 export const zDraftKind = z.enum([
-  "SUMMARY", "APPLICATION", "PITCH", "EMAIL", "CHECKLIST", "COMPARISON", "EXPLANATION",
+  "SUMMARY",
+  "APPLICATION",
+  "PITCH",
+  "EMAIL",
+  "CHECKLIST",
+  "COMPARISON",
+  "EXPLANATION",
 ]);
-export const zExportFormat = z.enum(["csv", "xlsx", "pdf", "markdown", "notion"]);
+export const zExportFormat = z.enum([
+  "csv",
+  "xlsx",
+  "pdf",
+  "markdown",
+  "notion",
+]);
 export const zAiAction = z.enum([
-  "summarize", "extract", "classify", "planDiscoverySearch", "explainScore", "draftApplication",
-  "draftPitch", "draftEmail", "checklist", "compare", "similar", "nextAction",
-  "searchQueries", "qualifyLead", "draftOutreach", "draftProposal", "draftFollowUp", "summarizeAccount", "nextBestAction",
+  "summarize",
+  "extract",
+  "classify",
+  "planDiscoverySearch",
+  "explainScore",
+  "draftApplication",
+  "draftPitch",
+  "draftEmail",
+  "checklist",
+  "compare",
+  "similar",
+  "nextAction",
+  "searchQueries",
+  "qualifyLead",
+  "draftOutreach",
+  "draftProposal",
+  "draftFollowUp",
+  "summarizeAccount",
+  "nextBestAction",
 ]);
-export const zAiProvider = z.enum(["openai", "anthropic", "codex", "claude-subscription"]);
+export const zAiProvider = z.enum([
+  "openai",
+  "anthropic",
+  "codex",
+  "claude-subscription",
+]);
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export const registerSchema = z.object({
@@ -91,14 +180,21 @@ const opportunityBase = z.object({
 });
 
 export const opportunityCreateSchema = opportunityBase.refine(
-  (d) => d.budgetMin == null || d.budgetMax == null || d.budgetMin <= d.budgetMax,
-  { message: "budgetMin must be less than or equal to budgetMax", path: ["budgetMax"] },
+  (d) =>
+    d.budgetMin == null || d.budgetMax == null || d.budgetMin <= d.budgetMax,
+  {
+    message: "budgetMin must be less than or equal to budgetMax",
+    path: ["budgetMax"],
+  },
 );
 export const opportunityUpdateSchema = opportunityBase.partial().extend({
   isActive: z.boolean().optional(),
 });
 
-export const noteCreateSchema = z.object({ body: z.string().min(1), pinned: z.boolean().optional() });
+export const noteCreateSchema = z.object({
+  body: z.string().min(1),
+  pinned: z.boolean().optional(),
+});
 
 // Bulk operations over a selection of opportunities (owner-scoped server-side).
 export const zBulkAction = z.enum([
@@ -185,7 +281,9 @@ export const discoverySearchSchema = z.object({
   maxResults: z.number().int().min(4).max(30).default(12),
   includeWeb: z.boolean().default(true),
   includeSources: z.boolean().default(true),
-  provider: z.enum(["auto", "tavily", "brave", "serper", "none"]).default("auto"),
+  provider: z
+    .enum(["auto", "tavily", "brave", "serper", "none"])
+    .default("auto"),
   resultKind: z.enum(["all", "opportunities", "sources"]).default("all"),
 });
 
@@ -215,10 +313,18 @@ export const discoveryCandidateSchema = z.object({
   priceText: z.string().optional(),
   deadline: z.string().optional(),
   postedAt: z.string().optional(),
-  freshness: z.enum(["active", "expired", "stale", "unknown"]).default("unknown"),
+  freshness: z
+    .enum(["active", "expired", "stale", "unknown"])
+    .default("unknown"),
   applicationRoute: zApplicationRoute.default("UNKNOWN"),
   contacts: z
-    .array(z.object({ name: z.string().optional(), email: z.string().optional(), role: z.string().optional() }))
+    .array(
+      z.object({
+        name: z.string().optional(),
+        email: z.string().optional(),
+        role: z.string().optional(),
+      }),
+    )
     .default([]),
   attachments: z.array(discoveryAttachmentSchema).default([]),
   sourceName: z.string().default("Discover"),
@@ -238,8 +344,12 @@ export const discoveryCandidateSchema = z.object({
 export const discoverySaveSchema = z.object({
   workspace: zWorkspace.default("DK"),
   candidate: discoveryCandidateSchema.refine(
-    (d) => d.budgetMin == null || d.budgetMax == null || d.budgetMin <= d.budgetMax,
-    { message: "budgetMin must be less than or equal to budgetMax", path: ["budgetMax"] },
+    (d) =>
+      d.budgetMin == null || d.budgetMax == null || d.budgetMin <= d.budgetMax,
+    {
+      message: "budgetMin must be less than or equal to budgetMax",
+      path: ["budgetMax"],
+    },
   ),
 });
 
@@ -261,7 +371,11 @@ export const discoveryFeedbackSchema = z.object({
 
 // ── CRM V2 ──────────────────────────────────────────────────────────────────
 export const discoveryLaneCreateSchema = z.object({
-  slug: z.string().min(2).max(80).regex(/^[a-z0-9-]+$/),
+  slug: z
+    .string()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9-]+$/),
   name: z.string().min(2),
   description: z.string().min(5),
   workspace: zWorkspace.default("DK"),
@@ -288,7 +402,9 @@ export const discoveryRunCreateSchema = z.object({
   maxResults: z.number().int().min(4).max(30).default(12),
   includeWeb: z.boolean().default(true),
   includeSources: z.boolean().default(true),
-  provider: z.enum(["auto", "tavily", "brave", "serper", "none"]).default("auto"),
+  provider: z
+    .enum(["auto", "tavily", "brave", "serper", "none"])
+    .default("auto"),
 });
 
 export const discoveryCandidateActionSchema = z.object({
@@ -347,6 +463,9 @@ export const dealCreateSchema = z.object({
   nextAction: z.string().optional(),
 });
 export const dealUpdateSchema = dealCreateSchema.partial().extend({
+  valueMin: z.number().int().nonnegative().nullable().optional(),
+  valueMax: z.number().int().nonnegative().nullable().optional(),
+  deadline: z.coerce.date().nullable().optional(),
   wonLostReason: z.string().optional(),
   statusReason: z.string().optional(),
 });
@@ -361,7 +480,9 @@ export const taskCreateSchema = z.object({
   status: zTaskStatus.default("OPEN"),
   priority: zTaskPriority.default("MEDIUM"),
 });
-export const taskPatchSchema = taskCreateSchema.partial().extend({ id: z.string().min(1) });
+export const taskPatchSchema = taskCreateSchema
+  .partial()
+  .extend({ id: z.string().min(1) });
 
 export const touchpointCreateSchema = z.object({
   accountId: z.string().optional(),
@@ -434,10 +555,15 @@ const ROUTE_VALUES = zApplicationRoute.options as readonly string[];
 const INGEST_VALUES = zIngestMethod.options as readonly string[];
 
 export function parseFilters(searchParams: URLSearchParams): OpportunityFilter {
-  const arr = (k: string) => searchParams.getAll(k).flatMap((v) => v.split(",")).filter(Boolean);
+  const arr = (k: string) =>
+    searchParams
+      .getAll(k)
+      .flatMap((v) => v.split(","))
+      .filter(Boolean);
   // Keep only values that are valid enum members so a hand-crafted querystring
   // can't push an invalid value into a Prisma `{ in: [...] }` filter.
-  const keep = (k: string, allowed: readonly string[]) => arr(k).filter((v) => allowed.includes(v));
+  const keep = (k: string, allowed: readonly string[]) =>
+    arr(k).filter((v) => allowed.includes(v));
   const num = (k: string) => {
     const v = searchParams.get(k);
     return v != null && v !== "" ? Number(v) : undefined;
@@ -465,8 +591,14 @@ export function parseFilters(searchParams: URLSearchParams): OpportunityFilter {
     activeOnly: bool("activeOnly"),
     scoreMin: num("scoreMin"),
     scoreMax: num("scoreMax"),
-    applicationRoute: keep("applicationRoute", ROUTE_VALUES) as OpportunityFilter["applicationRoute"],
-    ingestMethod: keep("ingestMethod", INGEST_VALUES) as OpportunityFilter["ingestMethod"],
+    applicationRoute: keep(
+      "applicationRoute",
+      ROUTE_VALUES,
+    ) as OpportunityFilter["applicationRoute"],
+    ingestMethod: keep(
+      "ingestMethod",
+      INGEST_VALUES,
+    ) as OpportunityFilter["ingestMethod"],
     sort: (searchParams.get("sort") as OpportunityFilter["sort"]) || "score",
     order: (searchParams.get("order") as "asc" | "desc") || "desc",
     page: num("page") || 1,

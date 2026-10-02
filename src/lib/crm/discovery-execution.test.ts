@@ -33,10 +33,16 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
-vi.mock("@/lib/discovery", () => ({ runDiscoverySearch: mocks.runDiscoverySearch }));
+vi.mock("@/lib/discovery", () => ({
+  runDiscoverySearch: mocks.runDiscoverySearch,
+}));
 vi.mock("@/lib/ai", () => ({ runAi: mocks.runAi }));
 
-import { createDiscoveryMission, executeDiscoveryMission, sanitizeDiscoveryMissionQueries } from ".";
+import {
+  createDiscoveryMission,
+  executeDiscoveryMission,
+  sanitizeDiscoveryMissionQueries,
+} from ".";
 
 const lane = {
   id: "lane-1",
@@ -97,7 +103,8 @@ function activeTenderCandidate() {
     ...candidate,
     id: "tender-candidate",
     title: "Intranet",
-    description: "Delivery and implementation of a new intranet software solution.",
+    description:
+      "Delivery and implementation of a new intranet software solution.",
     rawContent: [
       "Intranet",
       "Ordregiver: METROSELSKABET I/S",
@@ -131,7 +138,9 @@ describe("discovery mission execution", () => {
     });
     mocks.db.discoveryMission.updateMany.mockResolvedValue({ count: 1 });
     mocks.db.discoveryMission.update.mockResolvedValue({});
-    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "CANCELED" });
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({
+      status: "CANCELED",
+    });
     mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
       id: "mission-1",
       status: "CANCELED",
@@ -201,14 +210,59 @@ describe("discovery mission execution", () => {
     expect(mocks.db.discoveryMission.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          log: expect.objectContaining({ push: expect.stringContaining("search results were discarded") }),
+          log: expect.objectContaining({
+            push: expect.stringContaining("search results were discarded"),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("persists the requested workspace even when the source has no country", async () => {
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({
+      status: "RUNNING",
+    });
+    mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
+      id: "global-run",
+      status: "SUCCESS",
+      candidates: [],
+    });
+    mocks.db.discoveryCandidate.findFirst.mockResolvedValue(null);
+    mocks.db.discoveryCandidate.create.mockResolvedValue({
+      id: "new-candidate",
+      evidence: [],
+      lane,
+    });
+    await executeDiscoveryMission("owner-1", "global-run", {
+      laneId: lane.id,
+      workspace: "GLOBAL",
+      query: "software project",
+      useAiPlanner: false,
+      maxResults: 8,
+      includeWeb: true,
+      includeSources: false,
+      provider: "auto",
+    });
+    expect(mocks.db.discoveryCandidate.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ workspace: "GLOBAL" }),
+      }),
+    );
+    expect(mocks.db.evidence.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({
+            provenance: expect.objectContaining({ status: "snippet" }),
+          }),
         }),
       }),
     );
   });
 
   it("creates a duplicate snapshot instead of moving an older mission candidate", async () => {
-    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({
+      status: "RUNNING",
+    });
     mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
       id: "mission-2",
       status: "SUCCESS",
@@ -247,14 +301,18 @@ describe("discovery mission execution", () => {
         data: expect.objectContaining({
           missionId: "mission-2",
           status: "DUPLICATE",
-          reasons: expect.arrayContaining(["Rediscovered in this mission; matching candidate already exists."]),
+          reasons: expect.arrayContaining([
+            "Rediscovered in this mission; matching candidate already exists.",
+          ]),
         }),
       }),
     );
   });
 
   it("records a phase timing breakdown when a mission completes", async () => {
-    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({
+      status: "RUNNING",
+    });
     mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
       id: "mission-timing",
       status: "SUCCESS",
@@ -304,7 +362,9 @@ describe("discovery mission execution", () => {
 
   it("dedupes official tenders against legacy URL-key rows by buyer, title, and deadline", async () => {
     const tender = activeTenderCandidate();
-    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({
+      status: "RUNNING",
+    });
     mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
       id: "mission-legacy-dedupe",
       status: "SUCCESS",
@@ -357,16 +417,23 @@ describe("discovery mission execution", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           ownerId: "owner-1",
-          status: { notIn: ["SAVED", "DISMISSED"] },
           OR: expect.arrayContaining([
             expect.objectContaining({
-              dedupeKey: expect.stringContaining("tender:metroselskabet i/s:intranet:"),
+              dedupeKey: expect.stringContaining(
+                "tender:metroselskabet i/s:intranet:",
+              ),
             }),
             expect.objectContaining({
               laneId: "tender-lane-1",
               title: { equals: "Intranet", mode: "insensitive" },
-              organization: { equals: "METROSELSKABET I/S", mode: "insensitive" },
-              deadline: expect.objectContaining({ gte: expect.any(Date), lt: expect.any(Date) }),
+              organization: {
+                equals: "METROSELSKABET I/S",
+                mode: "insensitive",
+              },
+              deadline: expect.objectContaining({
+                gte: expect.any(Date),
+                lt: expect.any(Date),
+              }),
             }),
           ]),
         }),
@@ -383,7 +450,9 @@ describe("discovery mission execution", () => {
   });
 
   it("uses the official Danish tender index for focused auto tender missions", async () => {
-    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({
+      status: "RUNNING",
+    });
     mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
       id: "mission-3",
       status: "SUCCESS",
@@ -422,13 +491,19 @@ describe("discovery mission execution", () => {
 
     expect(mocks.runDiscoverySearch).toHaveBeenCalledWith(
       "owner-1",
-      expect.objectContaining({ includeSources: false, provider: "none", resultKind: "opportunities" }),
+      expect.objectContaining({
+        includeSources: false,
+        provider: "none",
+        resultKind: "opportunities",
+      }),
     );
     expect(mocks.db.discoveryMission.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           log: expect.objectContaining({
-            push: expect.stringContaining("official udbud.dk active notices only"),
+            push: expect.stringContaining(
+              "official udbud.dk active notices only",
+            ),
           }),
         }),
       }),
@@ -436,7 +511,9 @@ describe("discovery mission execution", () => {
   });
 
   it("keeps wide auto Danish tender missions on the official index", async () => {
-    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({
+      status: "RUNNING",
+    });
     mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
       id: "mission-wide-tender",
       status: "SUCCESS",
@@ -475,13 +552,19 @@ describe("discovery mission execution", () => {
 
     expect(mocks.runDiscoverySearch).toHaveBeenCalledWith(
       "owner-1",
-      expect.objectContaining({ includeSources: false, provider: "none", resultKind: "opportunities" }),
+      expect.objectContaining({
+        includeSources: false,
+        provider: "none",
+        resultKind: "opportunities",
+      }),
     );
     expect(mocks.db.discoveryMission.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           log: expect.objectContaining({
-            push: expect.stringContaining("choose an explicit provider for broad web and source expansion"),
+            push: expect.stringContaining(
+              "choose an explicit provider for broad web and source expansion",
+            ),
           }),
         }),
       }),
@@ -506,7 +589,9 @@ describe("discovery mission execution", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           log: expect.arrayContaining([
-            expect.stringContaining("Queued balanced mission for official udbud.dk active notices using auto."),
+            expect.stringContaining(
+              "Queued balanced mission for official udbud.dk active notices using auto.",
+            ),
           ]),
         }),
       }),
@@ -521,7 +606,9 @@ describe("discovery mission execution", () => {
       negativeKeywords: ["job", "linkedin", "the hub"],
       evidenceRequirements: ["explicit product or technical need"],
     };
-    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({
+      status: "RUNNING",
+    });
     mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
       id: "mission-4",
       status: "SUCCESS",
@@ -576,7 +663,9 @@ describe("discovery mission execution", () => {
       negativeKeywords: ["job", "linkedin", "the hub"],
       evidenceRequirements: ["explicit product or technical need"],
     };
-    mocks.db.discoveryMission.findFirst.mockResolvedValue({ status: "RUNNING" });
+    mocks.db.discoveryMission.findFirst.mockResolvedValue({
+      status: "RUNNING",
+    });
     mocks.db.discoveryMission.findFirstOrThrow.mockResolvedValue({
       id: "mission-ai-probes",
       status: "SUCCESS",
@@ -644,7 +733,9 @@ describe("discovery mission execution", () => {
     expect(mocks.runDiscoverySearch).toHaveBeenCalledWith(
       "owner-1",
       expect.objectContaining({
-        queryVariants: expect.arrayContaining(["startup MVP paid pilot Denmark"]),
+        queryVariants: expect.arrayContaining([
+          "startup MVP paid pilot Denmark",
+        ]),
       }),
     );
     expect(mocks.db.discoveryMission.updateMany).toHaveBeenCalledWith(
@@ -659,7 +750,9 @@ describe("discovery mission execution", () => {
     expect(mocks.db.discoveryMission.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          warnings: expect.arrayContaining([expect.stringContaining("Discarded 2 probes before search")]),
+          warnings: expect.arrayContaining([
+            expect.stringContaining("Discarded 2 probes before search"),
+          ]),
         }),
       }),
     );
@@ -675,7 +768,12 @@ describe("discovery mission execution", () => {
       ],
     );
 
-    expect(result.queries).toEqual(["startup MVP paid pilot Denmark -job -internship"]);
-    expect(result.reasons).toEqual(["1 blocked term: linkedin", "1 blocked term: the hub"]);
+    expect(result.queries).toEqual([
+      "startup MVP paid pilot Denmark -job -internship",
+    ]);
+    expect(result.reasons).toEqual([
+      "1 blocked term: linkedin",
+      "1 blocked term: the hub",
+    ]);
   });
 });

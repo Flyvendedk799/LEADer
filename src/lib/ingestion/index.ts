@@ -9,7 +9,11 @@ import { type OpportunityCandidate, dedupeHash } from "./dedupe";
 import { enrichOpportunityText } from "./enrich";
 import { fetchRssCandidates } from "./rss";
 import { fetchWebCandidates } from "./web";
-import { detectApplicationRoute, extractBudget, extractDeadline } from "./extract";
+import {
+  detectApplicationRoute,
+  extractBudget,
+  extractExplicitDeadline,
+} from "./extract";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Discovery orchestrator. For a given (automatable) Source: fetch → normalise
@@ -43,13 +47,14 @@ type SourceRow = {
 
 function enrich(c: OpportunityCandidate): OpportunityCandidate {
   const text = `${c.title}\n${c.description || ""}\n${c.rawContent || ""}`;
-  const budget = c.budgetMax == null && c.budgetMin == null ? extractBudget(text) : {};
+  const budget =
+    c.budgetMax == null && c.budgetMin == null ? extractBudget(text) : {};
   return {
     ...c,
     budgetMin: c.budgetMin ?? budget.min,
     budgetMax: c.budgetMax ?? budget.max,
     currency: c.currency ?? budget.currency ?? "DKK",
-    deadline: c.deadline ?? extractDeadline(text),
+    deadline: c.deadline ?? extractExplicitDeadline(text),
     applicationRoute:
       c.applicationRoute && c.applicationRoute !== "UNKNOWN"
         ? c.applicationRoute
@@ -57,7 +62,9 @@ function enrich(c: OpportunityCandidate): OpportunityCandidate {
   };
 }
 
-async function fetchCandidates(source: SourceRow): Promise<OpportunityCandidate[]> {
+async function fetchCandidates(
+  source: SourceRow,
+): Promise<OpportunityCandidate[]> {
   if (!source.url) return [];
   switch (source.type) {
     case "RSS":
@@ -78,15 +85,34 @@ async function fetchCandidates(source: SourceRow): Promise<OpportunityCandidate[
 }
 
 /** Run discovery for one source and persist results. */
-export async function runDiscoveryForSource(sourceId: string): Promise<RunResult> {
-  const source = (await db.source.findUnique({ where: { id: sourceId } })) as SourceRow | null;
-  if (!source) return { sourceId, status: "ERROR", found: 0, created: 0, updated: 0, error: "not found" };
+export async function runDiscoveryForSource(
+  sourceId: string,
+): Promise<RunResult> {
+  const source = (await db.source.findUnique({
+    where: { id: sourceId },
+  })) as SourceRow | null;
+  if (!source)
+    return {
+      sourceId,
+      status: "ERROR",
+      found: 0,
+      created: 0,
+      updated: 0,
+      error: "not found",
+    };
 
   // Compliance gate.
   try {
     assertAutomatable(source.type as SourceType);
   } catch (e) {
-    return { sourceId, status: "SKIPPED", found: 0, created: 0, updated: 0, error: (e as Error).message };
+    return {
+      sourceId,
+      status: "SKIPPED",
+      found: 0,
+      created: 0,
+      updated: 0,
+      error: (e as Error).message,
+    };
   }
 
   const run = await db.discoveryRun.create({
@@ -107,9 +133,13 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
     if (source.url) {
       const allowed = await isAllowedByRobots(source.url).catch(() => null);
       if (allowed != null) {
-        await db.source.update({ where: { id: source.id }, data: { robotsAllowed: allowed } });
+        await db.source.update({
+          where: { id: source.id },
+          data: { robotsAllowed: allowed },
+        });
       }
-      if (allowed === false) throw new Error(`Blocked by robots.txt: ${source.url}`);
+      if (allowed === false)
+        throw new Error(`Blocked by robots.txt: ${source.url}`);
     }
 
     candidates = (await fetchCandidates(source)).map(enrich);
@@ -121,9 +151,12 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
         { budgetMaxDkk, weights, calibration },
       );
       breakdown.computedAt = new Date().toISOString();
-      const isActive = !c.deadline || new Date(c.deadline).getTime() >= Date.now();
+      const isActive =
+        !c.deadline || new Date(c.deadline).getTime() >= Date.now();
 
-      const existing = await db.opportunity.findUnique({ where: { dedupeHash: hash } });
+      const existing = await db.opportunity.findUnique({
+        where: { dedupeHash: hash },
+      });
       if (existing) {
         await db.opportunity.update({
           where: { id: existing.id },
@@ -167,12 +200,29 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
             dedupeHash: hash,
             status: "NEW",
             contacts: c.contacts?.length
-              ? { create: c.contacts.map((ct) => ({ name: ct.name, email: ct.email, role: ct.role })) }
+              ? {
+                  create: c.contacts.map((ct) => ({
+                    name: ct.name,
+                    email: ct.email,
+                    role: ct.role,
+                  })),
+                }
               : undefined,
             attachments: c.attachments?.length
-              ? { create: c.attachments.map((a) => ({ url: a.url, label: a.label, kind: a.kind })) }
+              ? {
+                  create: c.attachments.map((a) => ({
+                    url: a.url,
+                    label: a.label,
+                    kind: a.kind,
+                  })),
+                }
               : undefined,
-            activities: { create: { type: "IMPORT", message: "Discovered via automated source" } },
+            activities: {
+              create: {
+                type: "IMPORT",
+                message: "Discovered via automated source",
+              },
+            },
           },
         });
         created++;
@@ -182,7 +232,11 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
           const { vector, model } = await embed(opportunityEmbedText(opp));
           await db.opportunity.update({
             where: { id: opp.id },
-            data: { embedding: vector, embeddingModel: model, embeddedAt: new Date() },
+            data: {
+              embedding: vector,
+              embeddingModel: model,
+              embeddedAt: new Date(),
+            },
           });
         } catch {
           /* embedding is non-critical; backfill later */
@@ -206,7 +260,10 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
             });
             await db.deal.update({
               where: { id: deal.id },
-              data: { summary: enriched.aiSummary, nextAction: enriched.nextAction },
+              data: {
+                summary: enriched.aiSummary,
+                nextAction: enriched.nextAction,
+              },
             });
           }
         } catch {
@@ -220,14 +277,21 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
               type: "NEW_HIGH_MATCH",
               title: `New high-match lead: ${opp.title}`,
               body: `Score ${breakdown.total}. ${c.url ?? ""}`,
-              payload: { opportunityId: opp.id, dealId: deal.id, score: breakdown.total },
+              payload: {
+                opportunityId: opp.id,
+                dealId: deal.id,
+                score: breakdown.total,
+              },
             },
           });
         }
       }
     }
 
-    await db.source.update({ where: { id: sourceId }, data: { lastCheckedAt: new Date() } });
+    await db.source.update({
+      where: { id: sourceId },
+      data: { lastCheckedAt: new Date() },
+    });
     await db.discoveryRun.update({
       where: { id: run.id },
       data: {
@@ -240,19 +304,44 @@ export async function runDiscoveryForSource(sourceId: string): Promise<RunResult
       },
     });
 
-    return { sourceId, status: "SUCCESS", found: candidates.length, created, updated };
+    return {
+      sourceId,
+      status: "SUCCESS",
+      found: candidates.length,
+      created,
+      updated,
+    };
   } catch (e) {
     const error = (e as Error).message;
     await db.discoveryRun.update({
       where: { id: run.id },
-      data: { status: "ERROR", finishedAt: new Date(), log: error, foundCount: candidates.length },
+      data: {
+        status: "ERROR",
+        finishedAt: new Date(),
+        log: error,
+        foundCount: candidates.length,
+      },
     });
-    return { sourceId, status: "ERROR", found: candidates.length, created, updated, error };
+    return {
+      sourceId,
+      status: "ERROR",
+      found: candidates.length,
+      created,
+      updated,
+      error,
+    };
   }
 }
 
 // Source types the scheduler is allowed to fetch (mirrors the compliance gate).
-const AUTOMATABLE = ["RSS", "NEWSLETTER", "PUBLIC_WEB", "PROCUREMENT", "ACCELERATOR", "API"];
+const AUTOMATABLE = [
+  "RSS",
+  "NEWSLETTER",
+  "PUBLIC_WEB",
+  "PROCUREMENT",
+  "ACCELERATOR",
+  "API",
+];
 
 /** Is this source due to run, given its frequency and last-checked time? */
 export function isSourceDue(
@@ -273,7 +362,9 @@ export function isSourceDue(
 
 /** Run discovery for all enabled, automatable, due sources of a given owner. */
 export async function runDueDiscovery(ownerId: string): Promise<RunResult[]> {
-  const sources = await db.source.findMany({ where: { ownerId, enabled: true } });
+  const sources = await db.source.findMany({
+    where: { ownerId, enabled: true },
+  });
 
   // Relearn first so tonight's leads are ranked by everything decided today.
   // Never let a calibration failure block ingestion — ranking degrades to the
@@ -296,7 +387,9 @@ export async function runDueDiscovery(ownerId: string): Promise<RunResult[]> {
 }
 
 /** Run due discovery across every owner — the multi-tenant scheduler entrypoint. */
-export async function runDueDiscoveryAllOwners(): Promise<Record<string, RunResult[]>> {
+export async function runDueDiscoveryAllOwners(): Promise<
+  Record<string, RunResult[]>
+> {
   const owners = await db.user.findMany({ select: { id: true } });
   const byOwner: Record<string, RunResult[]> = {};
   for (const o of owners) {

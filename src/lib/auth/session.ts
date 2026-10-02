@@ -40,15 +40,17 @@ export async function createSession(
       expiresAt,
     },
   });
-  cookies().set(SESSION_COOKIE, token, cookieOptions(expiresAt));
+  (await cookies()).set(SESSION_COOKIE, token, cookieOptions(expiresAt));
   return token;
 }
 
 /** Resolve the current session's userId from the cookie, or null. */
 export async function getSessionUserId(): Promise<string | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const session = await db.session.findUnique({ where: { tokenHash: hashToken(token) } });
+  const session = await db.session.findUnique({
+    where: { tokenHash: hashToken(token) },
+  });
   if (!session) return null;
   if (session.expiresAt.getTime() < Date.now()) {
     await db.session.delete({ where: { id: session.id } }).catch(() => {});
@@ -56,18 +58,22 @@ export async function getSessionUserId(): Promise<string | null> {
   }
   // Touch lastUsedAt at most ~once/day to avoid a write on every request.
   if (Date.now() - session.lastUsedAt.getTime() > 24 * 60 * 60 * 1000) {
-    await db.session.update({ where: { id: session.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
+    await db.session
+      .update({ where: { id: session.id }, data: { lastUsedAt: new Date() } })
+      .catch(() => {});
   }
   return session.userId;
 }
 
 /** Destroy the current session (logout) and clear the cookie. */
 export async function destroyCurrentSession(): Promise<void> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (token) {
-    await db.session.deleteMany({ where: { tokenHash: hashToken(token) } }).catch(() => {});
+    await db.session
+      .deleteMany({ where: { tokenHash: hashToken(token) } })
+      .catch(() => {});
   }
-  cookies().delete(SESSION_COOKIE);
+  (await cookies()).delete(SESSION_COOKIE);
 }
 
 /** Revoke every session for a user (e.g. after a password change). */
@@ -77,7 +83,9 @@ export async function revokeAllSessions(userId: string): Promise<void> {
 
 /** Best-effort cleanup of expired sessions. */
 export async function pruneExpiredSessions(): Promise<number> {
-  const { count } = await db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+  const { count } = await db.session.deleteMany({
+    where: { expiresAt: { lt: new Date() } },
+  });
   return count;
 }
 

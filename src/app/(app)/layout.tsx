@@ -8,7 +8,11 @@ import { getCurrentUser } from "@/lib/auth";
 
 // Authenticated application shell. Server-side auth check (defence in depth on
 // top of middleware) — also gives the topbar the real user for the account menu.
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (!user.onboardedAt) redirect("/onboarding");
@@ -19,13 +23,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <CommandPalette />
       </Suspense>
       <PlatformAgent />
-      <Sidebar />
+      <Suspense fallback={<div className="hidden w-56 md:block" />}>
+        <Sidebar />
+      </Suspense>
       <div className="flex min-w-0 flex-1 flex-col">
         <Suspense fallback={<div className="h-14 border-b border-border" />}>
           <Topbar user={{ name: user.name, email: user.email }} />
         </Suspense>
-        <main className="flex-1 overflow-y-auto scrollbar-thin">
-          <div className="mx-auto w-full max-w-[1400px] px-4 pb-24 pt-6 md:px-6">{children}</div>
+        <main
+          id="main-content"
+          className="min-w-0 flex-1 overflow-y-auto scrollbar-thin"
+        >
+          <div className="mx-auto w-full max-w-[1600px] px-4 pb-24 pt-7 md:px-8 lg:pt-9">
+            {children}
+          </div>
         </main>
       </div>
     </div>

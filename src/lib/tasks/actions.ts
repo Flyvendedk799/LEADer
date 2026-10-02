@@ -17,11 +17,20 @@ const bulkTaskPatchSchema = z
     priority: zTaskPriority.optional(),
     status: zTaskStatus.optional(),
   })
-  .refine((action) => action.dueAt !== undefined || action.priority !== undefined || action.status !== undefined, {
-    message: "Provide at least one task field to update",
-  });
+  .refine(
+    (action) =>
+      action.dueAt !== undefined ||
+      action.priority !== undefined ||
+      action.status !== undefined,
+    {
+      message: "Provide at least one task field to update",
+    },
+  );
 
-export const taskPatchActionSchema = z.union([singleTaskPatchSchema, bulkTaskPatchSchema]);
+export const taskPatchActionSchema = z.union([
+  singleTaskPatchSchema,
+  bulkTaskPatchSchema,
+]);
 
 export type TaskPatchAction = z.infer<typeof taskPatchActionSchema>;
 
@@ -29,17 +38,27 @@ function uniqueIds(ids: string[]) {
   return Array.from(new Set(ids));
 }
 
-export function taskPatchWhere(ownerId: string, action: TaskPatchAction): Prisma.TaskWhereInput {
+export function taskPatchWhere(
+  ownerId: string,
+  action: TaskPatchAction,
+): Prisma.TaskWhereInput {
   if ("ids" in action) return { ownerId, id: { in: uniqueIds(action.ids) } };
   return { ownerId, id: action.id };
 }
 
-export function taskPatchData(action: TaskPatchAction, now = new Date()): Prisma.TaskUpdateManyMutationInput {
-  const { id: _id, ids: _ids, ...data } = action as TaskPatchAction & { id?: string; ids?: string[] };
+export function taskPatchData(
+  action: TaskPatchAction,
+  now = new Date(),
+): Prisma.TaskUpdateManyMutationInput {
+  const {
+    id: _id,
+    ids: _ids,
+    ...data
+  } = action as TaskPatchAction & { id?: string; ids?: string[] };
 
   return {
     ...data,
-    completedAt: data.status === "DONE" ? now : undefined,
+    completedAt: data.status === "DONE" ? now : data.status ? null : undefined,
   };
 }
 

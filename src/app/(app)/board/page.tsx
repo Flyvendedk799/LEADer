@@ -13,11 +13,10 @@ export const dynamic = "force-dynamic";
 
 const BOARD_LIMIT = 300;
 
-export default async function BoardPage({
-  searchParams,
-}: {
-  searchParams: Record<string, string | string[]>;
+export default async function BoardPage(props: {
+  searchParams: Promise<Record<string, string | string[]>>;
 }) {
+  const searchParams = await props.searchParams;
   const ownerId = await requireOwnerId();
   const ws = searchParams.workspace;
   const workspace: Workspace = ws === "GLOBAL" ? "GLOBAL" : "DK";

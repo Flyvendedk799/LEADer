@@ -1,4 +1,5 @@
 "use client";
+import { EvidenceProvenance } from "./evidence-provenance";
 
 import * as React from "react";
 import Link from "next/link";
@@ -35,7 +36,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ScoreBadge } from "@/components/shared/score-badge";
@@ -46,7 +53,10 @@ import {
 } from "@/lib/discovery-anchors";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { discoveryLiveQueueCancelMessage } from "@/lib/crm/discovery-logging";
-import { discoveryMissionCanRerun, discoveryMissionRerunBlockedMessage } from "@/lib/crm/discovery-run-actions";
+import {
+  discoveryMissionCanRerun,
+  discoveryMissionRerunBlockedMessage,
+} from "@/lib/crm/discovery-run-actions";
 import { nextHistoryLimit } from "@/lib/history-window";
 import type { Workspace } from "@/lib/types";
 import { cn, formatBudget, formatDate, pluralize, truncate } from "@/lib/utils";
@@ -83,7 +93,14 @@ type Candidate = {
   signals: string[];
   reasons: string[];
   deal?: { id: string; title: string } | null;
-  evidence?: { id: string; title?: string | null; snippet: string; url?: string | null; confidence?: number | null }[];
+  evidence?: {
+    id: string;
+    title?: string | null;
+    snippet: string;
+    url?: string | null;
+    confidence?: number | null;
+    metadata?: unknown;
+  }[];
 };
 
 type MissionResult = {
@@ -191,9 +208,13 @@ function missionCandidateSummary(mission: MissionSummary) {
       : `0 reviewable · ${hidden} rejected diagnostics`;
   }
   if (mission.lane?.slug === "tenders-procurement") {
-    return hidden ? `${reviewable} active tenders · ${hidden} rejected diagnostics` : `${reviewable} active tenders`;
+    return hidden
+      ? `${reviewable} active tenders · ${hidden} rejected diagnostics`
+      : `${reviewable} active tenders`;
   }
-  return hidden ? `${reviewable} reviewable · ${hidden} rejected` : `${reviewable} reviewable`;
+  return hidden
+    ? `${reviewable} reviewable · ${hidden} rejected`
+    : `${reviewable} reviewable`;
 }
 
 function plural(count: number, singular: string, pluralLabel = `${singular}s`) {
@@ -202,14 +223,24 @@ function plural(count: number, singular: string, pluralLabel = `${singular}s`) {
 
 type MissionTenderQualitySummaryInput = Pick<
   MissionSummary,
-  "lane" | "provider" | "warnings" | "log" | "_count" | "hiddenCandidateCount" | "status"
+  | "lane"
+  | "provider"
+  | "warnings"
+  | "log"
+  | "_count"
+  | "hiddenCandidateCount"
+  | "status"
 >;
 
-export function missionTenderQualitySummary(mission: MissionTenderQualitySummaryInput) {
+export function missionTenderQualitySummary(
+  mission: MissionTenderQualitySummaryInput,
+) {
   if (mission.lane?.slug !== "tenders-procurement") return null;
   const reviewable = mission._count?.candidates ?? 0;
   const rejected = mission.hiddenCandidateCount ?? 0;
-  const logText = [...(mission.log ?? []), ...(mission.warnings ?? [])].join(" ");
+  const logText = [...(mission.log ?? []), ...(mission.warnings ?? [])].join(
+    " ",
+  );
   const official =
     mission.provider === "udbud.dk" ||
     mission.provider === "udbud.dk+brave" ||
@@ -235,7 +266,9 @@ export function missionHistorySearchSummary(count: number) {
   return `${count} matching ${count === 1 ? "mission" : "missions"} loaded`;
 }
 
-function missionStatusVariant(status: string): React.ComponentProps<typeof Badge>["variant"] {
+function missionStatusVariant(
+  status: string,
+): React.ComponentProps<typeof Badge>["variant"] {
   if (status === "SUCCESS") return "success";
   if (status === "ERROR") return "warning";
   if (status === "RUNNING" || status === "QUEUED") return "secondary";
@@ -271,11 +304,16 @@ function missionLogParts(entry: string) {
   };
 }
 
-function normalizeQueue(queue?: Partial<DiscoveryQueueSnapshot> | null): DiscoveryQueueSnapshot {
+function normalizeQueue(
+  queue?: Partial<DiscoveryQueueSnapshot> | null,
+): DiscoveryQueueSnapshot {
   return {
-    activeMissionId: typeof queue?.activeMissionId === "string" ? queue.activeMissionId : null,
+    activeMissionId:
+      typeof queue?.activeMissionId === "string" ? queue.activeMissionId : null,
     queuedMissionIds: Array.isArray(queue?.queuedMissionIds)
-      ? queue.queuedMissionIds.filter((id): id is string => typeof id === "string")
+      ? queue.queuedMissionIds.filter(
+          (id): id is string => typeof id === "string",
+        )
       : [],
   };
 }
@@ -286,8 +324,13 @@ function missionQueueLabel(id: string, queue: DiscoveryQueueSnapshot) {
   return queuedIndex >= 0 ? `queued #${queuedIndex + 1}` : null;
 }
 
-function sortMissionsWithQueue(items: MissionSummary[], queue: DiscoveryQueueSnapshot) {
-  const queueIndex = new Map(queue.queuedMissionIds.map((id, index) => [id, index]));
+function sortMissionsWithQueue(
+  items: MissionSummary[],
+  queue: DiscoveryQueueSnapshot,
+) {
+  const queueIndex = new Map(
+    queue.queuedMissionIds.map((id, index) => [id, index]),
+  );
   const rank = (mission: MissionSummary) => {
     if (queue.activeMissionId === mission.id) return -1;
     const index = queueIndex.get(mission.id);
@@ -301,13 +344,22 @@ function sortMissionsWithQueue(items: MissionSummary[], queue: DiscoveryQueueSna
   });
 }
 
-export function mergeMissionHistory(items: MissionSummary[], mission: MissionSummary, limit: number) {
-  return [mission, ...items.filter((item) => item.id !== mission.id)].sort(
-    (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
-  ).slice(0, Math.max(1, limit));
+export function mergeMissionHistory(
+  items: MissionSummary[],
+  mission: MissionSummary,
+  limit: number,
+) {
+  return [mission, ...items.filter((item) => item.id !== mission.id)]
+    .sort(
+      (a, b) =>
+        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+    )
+    .slice(0, Math.max(1, limit));
 }
 
-function apiMissionToSummary(mission: Partial<MissionSummary> & { id: string; candidates?: Candidate[] }): MissionSummary {
+function apiMissionToSummary(
+  mission: Partial<MissionSummary> & { id: string; candidates?: Candidate[] },
+): MissionSummary {
   return {
     id: mission.id,
     status: String(mission.status ?? "QUEUED"),
@@ -326,10 +378,12 @@ function apiMissionToSummary(mission: Partial<MissionSummary> & { id: string; ca
 }
 
 function queryPreview(value?: string) {
-  return (value || "")
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean)[0] || "Discovery mission";
+  return (
+    (value || "")
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean)[0] || "Discovery mission"
+  );
 }
 
 function missionHistorySearchText(mission: MissionSummary) {
@@ -374,7 +428,13 @@ export function selectMissionToOpen(
   selectedLaneId: string | null | undefined,
   scope: HistoryScope,
 ) {
-  return missions.find((mission) => missionMatchesHistoryScope(mission, selectedLaneId, scope)) ?? missions[0] ?? null;
+  return (
+    missions.find((mission) =>
+      missionMatchesHistoryScope(mission, selectedLaneId, scope),
+    ) ??
+    missions[0] ??
+    null
+  );
 }
 
 export function LaneMissionControl({
@@ -382,25 +442,38 @@ export function LaneMissionControl({
   initialLaneId,
   initialMissionId,
   initialWorkspace = "DK",
+  readiness,
 }: {
+  readiness?: {
+    searchConfigured: boolean;
+    searchProvider: string;
+    aiConfigured: boolean;
+    sourceCount: number;
+  };
   lanes: DiscoveryLane[];
   initialLaneId?: string | null;
   initialMissionId?: string | null;
   initialWorkspace?: Workspace;
 }) {
   const router = useRouter();
-  const initialMissionLoadedRef = React.useRef<string | null | undefined>(undefined);
+  const initialMissionLoadedRef = React.useRef<string | null | undefined>(
+    undefined,
+  );
   const hiddenAnchorLoadRef = React.useRef<string | null>(null);
   const [laneId, setLaneId] = React.useState(() =>
     initialLaneId && lanes.some((lane) => lane.id === initialLaneId)
       ? initialLaneId
-      : lanes[0]?.id ?? "",
+      : (lanes.find((lane) => lane.slug === "funded-work")?.id ??
+        lanes[0]?.id ??
+        ""),
   );
   const [workspace, setWorkspace] = React.useState<Workspace>(initialWorkspace);
   const [query, setQuery] = React.useState("");
   const [provider, setProvider] = React.useState<Provider>("auto");
   const [searchMode, setSearchMode] = React.useState<SearchMode>("balanced");
-  const [useAiPlanner, setUseAiPlanner] = React.useState(true);
+  const [useAiPlanner, setUseAiPlanner] = React.useState(
+    readiness?.aiConfigured ?? false,
+  );
   const [requiredTerms, setRequiredTerms] = React.useState("");
   const [excludedTerms, setExcludedTerms] = React.useState("");
   const [maxResults, setMaxResults] = React.useState("16");
@@ -410,15 +483,23 @@ export function LaneMissionControl({
   const [refreshing, setRefreshing] = React.useState(false);
   const [missions, setMissions] = React.useState<MissionSummary[]>([]);
   const [historySearch, setHistorySearch] = React.useState("");
-  const [historyScope, setHistoryScope] = React.useState<HistoryScope>(DEFAULT_HISTORY_SCOPE);
+  const [historyScope, setHistoryScope] = React.useState<HistoryScope>(
+    DEFAULT_HISTORY_SCOPE,
+  );
   const [historyLimit, setHistoryLimit] = React.useState(20);
-  const [queueState, setQueueState] = React.useState<DiscoveryQueueSnapshot>(() => normalizeQueue());
+  const [queueState, setQueueState] = React.useState<DiscoveryQueueSnapshot>(
+    () => normalizeQueue(),
+  );
   const [lastUpdatedAt, setLastUpdatedAt] = React.useState<Date | null>(null);
-  const [activeMissionId, setActiveMissionId] = React.useState<string | null>(null);
+  const [activeMissionId, setActiveMissionId] = React.useState<string | null>(
+    null,
+  );
   const [result, setResult] = React.useState<MissionResult | null>(null);
   const [showHiddenCandidates, setShowHiddenCandidates] = React.useState(false);
   const [showAdvancedOptions, setShowAdvancedOptions] = React.useState(false);
-  const [busyMissionAction, setBusyMissionAction] = React.useState<string | null>(null);
+  const [busyMissionAction, setBusyMissionAction] = React.useState<
+    string | null
+  >(null);
   const selectedLane = lanes.find((lane) => lane.id === laneId);
   const officialTenderMode =
     selectedLane?.slug === "tenders-procurement" &&
@@ -429,56 +510,90 @@ export function LaneMissionControl({
   const hiddenCandidateCount = result?.hiddenCandidateCount ?? 0;
   const hiddenCandidates = result?.hiddenCandidates ?? [];
   const missionStatus = result?.mission.status ?? "";
-  const missionRunning = missionStatus === "QUEUED" || missionStatus === "RUNNING";
+  const missionRunning =
+    missionStatus === "QUEUED" || missionStatus === "RUNNING";
   const liveQueue =
     missionRunning ||
-    missions.some((mission) => mission.status === "QUEUED" || mission.status === "RUNNING") ||
+    missions.some(
+      (mission) => mission.status === "QUEUED" || mission.status === "RUNNING",
+    ) ||
     Boolean(queueState.activeMissionId) ||
     queueState.queuedMissionIds.length > 0;
-  const orderedMissions = React.useMemo(() => sortMissionsWithQueue(missions, queueState), [missions, queueState]);
+  const orderedMissions = React.useMemo(
+    () => sortMissionsWithQueue(missions, queueState),
+    [missions, queueState],
+  );
   const scopedMissions = React.useMemo(
-    () => orderedMissions.filter((mission) => missionMatchesHistoryScope(mission, laneId, historyScope)),
+    () =>
+      orderedMissions.filter((mission) =>
+        missionMatchesHistoryScope(mission, laneId, historyScope),
+      ),
     [historyScope, laneId, orderedMissions],
   );
   const filteredMissions = React.useMemo(
-    () => scopedMissions.filter((mission) => missionMatchesHistorySearch(mission, historySearch)),
+    () =>
+      scopedMissions.filter((mission) =>
+        missionMatchesHistorySearch(mission, historySearch),
+      ),
     [historySearch, scopedMissions],
   );
-  const canLoadOlderMissions = missions.length >= historyLimit && historyLimit < 100;
+  const canLoadOlderMissions =
+    missions.length >= historyLimit && historyLimit < 100;
   const historySearchActive = historySearch.trim().length > 0;
-  const activeQueueLabel = activeMissionId ? missionQueueLabel(activeMissionId, queueState) : null;
+  const activeQueueLabel = activeMissionId
+    ? missionQueueLabel(activeMissionId, queueState)
+    : null;
   const latestLog = result?.mission.log?.at(-1);
-  const latestLogMessage = latestLog ? missionLogParts(latestLog).message : null;
-  const tenderQualitySummary = result ? missionTenderQualitySummary({
-    lane: result.mission.lane,
-    provider: result.mission.provider,
-    warnings: result.mission.warnings,
-    log: result.mission.log,
-    _count: { candidates: candidates.length },
-    hiddenCandidateCount,
-    status: result.mission.status,
-  }) : null;
+  const latestLogMessage = latestLog
+    ? missionLogParts(latestLog).message
+    : null;
+  const tenderQualitySummary = result
+    ? missionTenderQualitySummary({
+        lane: result.mission.lane,
+        provider: result.mission.provider,
+        warnings: result.mission.warnings,
+        log: result.mission.log,
+        _count: { candidates: candidates.length },
+        hiddenCandidateCount,
+        status: result.mission.status,
+      })
+    : null;
   const counts = candidates.reduce<Record<string, number>>((acc, candidate) => {
     acc[candidate.status] = (acc[candidate.status] ?? 0) + 1;
     return acc;
   }, {});
 
-  const mergeMission = React.useCallback((mission: MissionSummary) => {
-    setMissions((current) => {
-      return mergeMissionHistory(current, mission, historyLimit);
-    });
-  }, [historyLimit]);
+  const mergeMission = React.useCallback(
+    (mission: MissionSummary) => {
+      setMissions((current) => {
+        return mergeMissionHistory(current, mission, historyLimit);
+      });
+    },
+    [historyLimit],
+  );
 
-  const syncMissionUrl = React.useCallback((id: string) => {
-    window.history.replaceState(window.history.state, "", discoveryMissionHref(id));
-  }, []);
+  const syncMissionUrl = React.useCallback(
+    (id: string, missionWorkspace = workspace) => {
+      const next = new URL(discoveryMissionHref(id), window.location.origin);
+      next.searchParams.set("workspace", missionWorkspace);
+      window.history.replaceState(
+        window.history.state,
+        "",
+        next.pathname + next.search,
+      );
+    },
+    [workspace],
+  );
 
-  const syncLaneFromMission = React.useCallback((mission?: { lane?: MissionLaneSummary | null }) => {
-    const missionLaneId = mission?.lane?.id;
-    if (missionLaneId && lanes.some((lane) => lane.id === missionLaneId)) {
-      setLaneId(missionLaneId);
-    }
-  }, [lanes]);
+  const syncLaneFromMission = React.useCallback(
+    (mission?: { lane?: MissionLaneSummary | null }) => {
+      const missionLaneId = mission?.lane?.id;
+      if (missionLaneId && lanes.some((lane) => lane.id === missionLaneId)) {
+        setLaneId(missionLaneId);
+      }
+    },
+    [lanes],
+  );
 
   React.useEffect(() => {
     setWorkspace(initialWorkspace);
@@ -494,82 +609,116 @@ export function LaneMissionControl({
     if (officialTenderMode) setIncludeSources(false);
   }, [officialTenderMode]);
 
-  const loadMission = React.useCallback(async (id: string, quiet = false, syncUrl = true, includeHidden = false) => {
-    if (!quiet) setRefreshing(true);
-    try {
-      const res = await fetch(`/api/discovery/runs/${id}${includeHidden ? "?includeHidden=1" : ""}`, { cache: "no-store" });
-      const data = (await res.json()) as MissionDetailResponse;
-      if (!res.ok) throw new Error(data?.error || "Could not load mission");
-      if (!includeHidden) setShowHiddenCandidates(false);
-      setResult(data);
-      syncLaneFromMission(data.mission);
-      setQueueState(normalizeQueue(data.queue));
-      setLastUpdatedAt(new Date());
-      setActiveMissionId(data.mission.id);
-      if (data.mission.workspace) setWorkspace(data.mission.workspace);
-      if (syncUrl) syncMissionUrl(data.mission.id);
-      mergeMission({
-        id: data.mission.id,
-        status: data.mission.status,
-        workspace: data.mission.workspace,
-        provider: data.mission.provider,
-        startedAt: data.mission.startedAt ?? new Date().toISOString(),
-        finishedAt: data.mission.finishedAt,
-        query: data.mission.query || "",
-        lane: data.mission.lane,
-        warnings: data.mission.warnings ?? [],
-        log: data.mission.log ?? [],
-        sourceScanCount: data.mission.sourceScanCount,
-        _count: { candidates: data.mission.candidates?.length ?? 0 },
-        hiddenCandidateCount: data.hiddenCandidateCount ?? 0,
-      });
-    } catch (err) {
-      if (!quiet) toast.error("Could not load mission", err instanceof Error ? err.message : "Try again");
-    } finally {
-      if (!quiet) setRefreshing(false);
-    }
-  }, [mergeMission, syncLaneFromMission, syncMissionUrl]);
+  const loadMission = React.useCallback(
+    async (
+      id: string,
+      quiet = false,
+      syncUrl = true,
+      includeHidden = false,
+    ) => {
+      if (!quiet) setRefreshing(true);
+      try {
+        const res = await fetch(
+          `/api/discovery/runs/${id}${includeHidden ? "?includeHidden=1" : ""}`,
+          { cache: "no-store" },
+        );
+        const data = (await res.json()) as MissionDetailResponse;
+        if (!res.ok) throw new Error(data?.error || "Could not load mission");
+        if (!includeHidden) setShowHiddenCandidates(false);
+        setResult(data);
+        syncLaneFromMission(data.mission);
+        setQueueState(normalizeQueue(data.queue));
+        setLastUpdatedAt(new Date());
+        setActiveMissionId(data.mission.id);
+        if (data.mission.workspace) setWorkspace(data.mission.workspace);
+        if (syncUrl) syncMissionUrl(data.mission.id, data.mission.workspace);
+        mergeMission({
+          id: data.mission.id,
+          status: data.mission.status,
+          workspace: data.mission.workspace,
+          provider: data.mission.provider,
+          startedAt: data.mission.startedAt ?? new Date().toISOString(),
+          finishedAt: data.mission.finishedAt,
+          query: data.mission.query || "",
+          lane: data.mission.lane,
+          warnings: data.mission.warnings ?? [],
+          log: data.mission.log ?? [],
+          sourceScanCount: data.mission.sourceScanCount,
+          _count: { candidates: data.mission.candidates?.length ?? 0 },
+          hiddenCandidateCount: data.hiddenCandidateCount ?? 0,
+        });
+      } catch (err) {
+        if (!quiet)
+          toast.error(
+            "Could not load mission",
+            err instanceof Error ? err.message : "Try again",
+          );
+      } finally {
+        if (!quiet) setRefreshing(false);
+      }
+    },
+    [mergeMission, syncLaneFromMission, syncMissionUrl],
+  );
 
-  const loadMissions = React.useCallback(async (
-    openLatest = false,
-    quiet = false,
-    limitOverride?: number,
-    searchOverride = historySearch,
-    scopeOverride = historyScope,
-  ) => {
-    if (!quiet) setRefreshing(true);
-    try {
-      const limit = limitOverride ?? historyLimit;
-      const params = new URLSearchParams({ limit: String(limit) });
-      const search = searchOverride.trim();
-      if (search) {
-        params.set("q", search);
-        params.set("scope", scopeOverride);
-        if (scopeOverride === "current-lane" && laneId) params.set("laneId", laneId);
+  const loadMissions = React.useCallback(
+    async (
+      openLatest = false,
+      quiet = false,
+      limitOverride?: number,
+      searchOverride = historySearch,
+      scopeOverride = historyScope,
+    ) => {
+      if (!quiet) setRefreshing(true);
+      try {
+        const limit = limitOverride ?? historyLimit;
+        const params = new URLSearchParams({ limit: String(limit), workspace });
+        const search = searchOverride.trim();
+        if (search) {
+          params.set("q", search);
+          params.set("scope", scopeOverride);
+          if (scopeOverride === "current-lane" && laneId)
+            params.set("laneId", laneId);
+        }
+        const res = await fetch(`/api/discovery/runs?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const data = (await res.json()) as MissionListResponse;
+        if (!res.ok)
+          throw new Error(data?.error || "Could not load mission history");
+        const loaded = (data.missions ?? []) as MissionSummary[];
+        setMissions(loaded);
+        setQueueState(normalizeQueue(data.queue));
+        setLastUpdatedAt(new Date());
+        const missionToOpen = openLatest
+          ? selectMissionToOpen(loaded, laneId, historyScope)
+          : null;
+        if (missionToOpen) {
+          void loadMission(missionToOpen.id, true, false);
+        }
+      } catch (err) {
+        if (!quiet)
+          toast.error(
+            "Could not load missions",
+            err instanceof Error ? err.message : "Try again",
+          );
+      } finally {
+        if (!quiet) setRefreshing(false);
       }
-      const res = await fetch(`/api/discovery/runs?${params.toString()}`, { cache: "no-store" });
-      const data = (await res.json()) as MissionListResponse;
-      if (!res.ok) throw new Error(data?.error || "Could not load mission history");
-      const loaded = (data.missions ?? []) as MissionSummary[];
-      setMissions(loaded);
-      setQueueState(normalizeQueue(data.queue));
-      setLastUpdatedAt(new Date());
-      const missionToOpen = openLatest ? selectMissionToOpen(loaded, laneId, historyScope) : null;
-      if (missionToOpen) {
-        void loadMission(missionToOpen.id, true, false);
-      }
-    } catch (err) {
-      if (!quiet) toast.error("Could not load missions", err instanceof Error ? err.message : "Try again");
-    } finally {
-      if (!quiet) setRefreshing(false);
-    }
-  }, [historyLimit, historyScope, historySearch, laneId, loadMission]);
+    },
+    [historyLimit, historyScope, historySearch, laneId, loadMission, workspace],
+  );
 
   const loadOlderMissions = React.useCallback(() => {
     const nextLimit = nextHistoryLimit(historyLimit, historySearchActive);
     setHistoryLimit(nextLimit);
     void loadMissions(false, false, nextLimit, historySearch, historyScope);
-  }, [historyLimit, historySearch, historySearchActive, historyScope, loadMissions]);
+  }, [
+    historyLimit,
+    historySearch,
+    historySearchActive,
+    historyScope,
+    loadMissions,
+  ]);
 
   React.useEffect(() => {
     const targetMissionId = initialMissionId?.trim() || null;
@@ -596,14 +745,20 @@ export function LaneMissionControl({
       return;
     }
 
-    if (shouldLoadRejectedDiscoveryAnchor({
-      activeMissionId,
-      hashId,
-      rejectedCandidateCount: hiddenCandidateCount,
-      rejectedResultsOpen: showHiddenCandidates,
-      attemptedKey: hiddenAnchorLoadRef.current,
-    }) && activeMissionId) {
-      hiddenAnchorLoadRef.current = discoveryRejectedAnchorKey(activeMissionId, hashId);
+    if (
+      shouldLoadRejectedDiscoveryAnchor({
+        activeMissionId,
+        hashId,
+        rejectedCandidateCount: hiddenCandidateCount,
+        rejectedResultsOpen: showHiddenCandidates,
+        attemptedKey: hiddenAnchorLoadRef.current,
+      }) &&
+      activeMissionId
+    ) {
+      hiddenAnchorLoadRef.current = discoveryRejectedAnchorKey(
+        activeMissionId,
+        hashId,
+      );
       setShowHiddenCandidates(true);
       void loadMission(activeMissionId, true, false, true);
       return;
@@ -612,7 +767,13 @@ export function LaneMissionControl({
     window.requestAnimationFrame(() => {
       document.getElementById(hashId)?.scrollIntoView({ block: "start" });
     });
-  }, [activeMissionId, hiddenCandidateCount, loadMission, result, showHiddenCandidates]);
+  }, [
+    activeMissionId,
+    hiddenCandidateCount,
+    loadMission,
+    result,
+    showHiddenCandidates,
+  ]);
 
   React.useEffect(() => {
     if (!activeMissionId || !missionRunning) return undefined;
@@ -621,7 +782,13 @@ export function LaneMissionControl({
       void loadMissions(false, true);
     }, 3500);
     return () => window.clearInterval(timer);
-  }, [activeMissionId, loadMission, loadMissions, missionRunning, showHiddenCandidates]);
+  }, [
+    activeMissionId,
+    loadMission,
+    loadMissions,
+    missionRunning,
+    showHiddenCandidates,
+  ]);
 
   React.useEffect(() => {
     if (!historySearchActive) return undefined;
@@ -631,7 +798,14 @@ export function LaneMissionControl({
       void loadMissions(false, true, nextLimit, historySearch, historyScope);
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [historyLimit, historyScope, historySearch, historySearchActive, laneId, loadMissions]);
+  }, [
+    historyLimit,
+    historyScope,
+    historySearch,
+    historySearchActive,
+    laneId,
+    loadMissions,
+  ]);
 
   React.useEffect(() => {
     if (!liveQueue) {
@@ -690,11 +864,16 @@ export function LaneMissionControl({
         hiddenCandidateCount: data.hiddenCandidateCount ?? 0,
       });
       toast.success(
-        data.existing ? "Discovery mission already active" : "Discovery mission queued",
+        data.existing
+          ? "Discovery mission already active"
+          : "Discovery mission queued",
         data.existing ? "Opening the active background mission." : undefined,
       );
     } catch (err) {
-      toast.error("Discovery failed", err instanceof Error ? err.message : "Could not run the lane");
+      toast.error(
+        "Discovery failed",
+        err instanceof Error ? err.message : "Could not run the lane",
+      );
     } finally {
       setLoading(false);
     }
@@ -703,10 +882,15 @@ export function LaneMissionControl({
   async function copyActiveMissionLink() {
     if (!activeMissionId) return;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}${discoveryMissionHref(activeMissionId)}`);
+      await navigator.clipboard.writeText(
+        `${window.location.origin}${discoveryMissionHref(activeMissionId)}`,
+      );
       toast.success("Mission link copied");
     } catch {
-      toast.error("Could not copy link", "Your browser blocked clipboard access.");
+      toast.error(
+        "Could not copy link",
+        "Your browser blocked clipboard access.",
+      );
     }
   }
 
@@ -718,7 +902,10 @@ export function LaneMissionControl({
     }
   }
 
-  async function controlMission(mission: MissionSummary, action: MissionAction) {
+  async function controlMission(
+    mission: MissionSummary,
+    action: MissionAction,
+  ) {
     setBusyMissionAction(`${action}-${mission.id}`);
     try {
       const res = await fetch("/api/discovery/runs", {
@@ -726,8 +913,11 @@ export function LaneMissionControl({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: mission.id, action }),
       });
-      const data = (await res.json().catch(() => null)) as MissionControlResponse | null;
-      if (!res.ok || !data?.mission) throw new Error(data?.error || "Discovery control failed");
+      const data = (await res
+        .json()
+        .catch(() => null)) as MissionControlResponse | null;
+      if (!res.ok || !data?.mission)
+        throw new Error(data?.error || "Discovery control failed");
 
       if (data.queue) setQueueState(normalizeQueue(data.queue));
       const summary = apiMissionToSummary(data.mission);
@@ -754,13 +944,22 @@ export function LaneMissionControl({
               }
             : current,
         );
-        toast.success("Discovery mission canceled", queryPreview(summary.query));
+        toast.success(
+          "Discovery mission canceled",
+          queryPreview(summary.query),
+        );
       } else {
-        toast.success("Discovery priority updated", queryPreview(summary.query));
+        toast.success(
+          "Discovery priority updated",
+          queryPreview(summary.query),
+        );
       }
       router.refresh();
     } catch (err) {
-      toast.error("Discovery control failed", err instanceof Error ? err.message : "Try again");
+      toast.error(
+        "Discovery control failed",
+        err instanceof Error ? err.message : "Try again",
+      );
     } finally {
       setBusyMissionAction(null);
     }
@@ -774,15 +973,20 @@ export function LaneMissionControl({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "CANCEL_ALL", limit: historyLimit }),
       });
-      const data = (await res.json().catch(() => null)) as MissionListResponse | null;
-      if (!res.ok || !data) throw new Error(data?.error || "Discovery control failed");
+      const data = (await res
+        .json()
+        .catch(() => null)) as MissionListResponse | null;
+      if (!res.ok || !data)
+        throw new Error(data?.error || "Discovery control failed");
 
       const nextMissions = data.missions ?? [];
       setMissions(nextMissions);
       if (data.queue) setQueueState(normalizeQueue(data.queue));
       setLastUpdatedAt(new Date());
       if (activeMissionId) {
-        const updatedActive = nextMissions.find((mission) => mission.id === activeMissionId);
+        const updatedActive = nextMissions.find(
+          (mission) => mission.id === activeMissionId,
+        );
         if (updatedActive) {
           setResult((current) =>
             current?.mission.id === updatedActive.id
@@ -792,7 +996,8 @@ export function LaneMissionControl({
                     ...current.mission,
                     status: updatedActive.status,
                     finishedAt: updatedActive.finishedAt,
-                    warnings: updatedActive.warnings ?? current.mission.warnings,
+                    warnings:
+                      updatedActive.warnings ?? current.mission.warnings,
                     log: updatedActive.log ?? current.mission.log,
                   },
                 }
@@ -800,10 +1005,16 @@ export function LaneMissionControl({
           );
         }
       }
-      toast.success("Live discovery queue canceled", discoveryLiveQueueCancelMessage(data.canceled ?? 0));
+      toast.success(
+        "Live discovery queue canceled",
+        discoveryLiveQueueCancelMessage(data.canceled ?? 0),
+      );
       router.refresh();
     } catch (err) {
-      toast.error("Discovery control failed", err instanceof Error ? err.message : "Try again");
+      toast.error(
+        "Discovery control failed",
+        err instanceof Error ? err.message : "Try again",
+      );
     } finally {
       setBusyMissionAction(null);
     }
@@ -814,7 +1025,10 @@ export function LaneMissionControl({
       const res = await fetch(`/api/discovery/candidates/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, reason: action === "dismiss" ? "Not a fit right now" : undefined }),
+        body: JSON.stringify({
+          action,
+          reason: action === "dismiss" ? "Not a fit right now" : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Action failed");
@@ -847,34 +1061,123 @@ export function LaneMissionControl({
       );
       router.refresh();
     } catch (err) {
-      toast.error("Action failed", err instanceof Error ? err.message : "Try again");
+      toast.error(
+        "Action failed",
+        err instanceof Error ? err.message : "Try again",
+      );
     }
   }
 
   return (
-    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <div className="space-y-4">
-        <form onSubmit={runMission} className="rounded-lg border border-border bg-card p-4 shadow-sm">
-          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_19rem]">
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="min-w-0 space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3" aria-label="Discovery steps">
+          {[
+            [
+              "1",
+              "Define the work",
+              "Choose a lane and describe a concrete buyer need.",
+            ],
+            [
+              "2",
+              "Collect evidence",
+              "Public sources are searched, read and checked for relevance.",
+            ],
+            [
+              "3",
+              "Review & qualify",
+              "You choose what becomes a deal, with evidence and a follow-up.",
+            ],
+          ].map(([step, title, detail]) => (
+            <div key={step} className="rounded-xl border bg-card p-4">
+              <p className="text-sm font-semibold">
+                <span className="mr-2 text-primary">{step}</span>
+                {title}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {detail}
+              </p>
+            </div>
+          ))}
+        </div>
+        {readiness && (
+          <div className="rounded-xl border bg-card p-4 text-sm">
+            <p className="font-medium">Your discovery connections</p>
+            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-muted-foreground">
+              <span>
+                Web search:{" "}
+                {readiness.searchConfigured
+                  ? readiness.searchProvider
+                  : "not connected"}
+              </span>
+              <span>
+                AI:{" "}
+                {readiness.aiConfigured ? "connected" : "rule-based matching"}
+              </span>
+              <span>
+                {readiness.sourceCount} enabled sources in {initialWorkspace}
+              </span>
+            </div>
+            {!readiness.searchConfigured && (
+              <p className="mt-3 text-sm leading-6">
+                Connect a search provider for broad web discovery. Danish
+                tenders use the public udbud.dk index; source scans use enabled
+                and curated public sources.{" "}
+                <Link
+                  href="/settings?tab=ai"
+                  className="font-medium text-primary underline underline-offset-4"
+                >
+                  Set up connections
+                </Link>
+              </p>
+            )}
+          </div>
+        )}
+        <form
+          onSubmit={runMission}
+          className="rounded-lg border border-border bg-card p-4 shadow-sm"
+        >
+          <div className="grid gap-5">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]">
               <div className="space-y-2">
-                <Label>Discovery lane</Label>
+                <Label>Type of work</Label>
                 <Select value={laneId} onValueChange={setLaneId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Choose lane" />
                   </SelectTrigger>
                   <SelectContent>
                     {lanes.map((lane) => (
-                      <SelectItem key={lane.id} value={lane.id}>{lane.name}</SelectItem>
+                      <SelectItem key={lane.id} value={lane.id}>
+                        {lane.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {selectedLane?.slug === "community-manual" ||
+                selectedLane?.slug === "warm-network" ? (
+                  <p className="rounded-md bg-muted p-3 text-sm leading-6">
+                    Private conversations need your context.{" "}
+                    <Link href="/import" className="text-primary underline">
+                      Import a conversation
+                    </Link>{" "}
+                    or{" "}
+                    <Link
+                      href={`/deals?workspace=${workspace}&new=1`}
+                      className="text-primary underline"
+                    >
+                      add a known lead
+                    </Link>
+                    . Web search below only finds public signals.
+                  </p>
+                ) : null}
                 {selectedLane && (
-                  <p className="text-sm leading-6 text-muted-foreground">{selectedLane.description}</p>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    {selectedLane.description}
+                  </p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="mission-focus">Freeform mission brief</Label>
+                <Label htmlFor="mission-focus">What are you looking for?</Label>
                 <Textarea
                   id="mission-focus"
                   value={query}
@@ -885,6 +1188,38 @@ export function LaneMissionControl({
               </div>
             </div>
 
+            <div className="rounded-lg bg-primary/5 p-4 text-sm leading-6">
+              <p className="font-medium">
+                This run: {selectedLane?.name || "Choose a type of work"} ·{" "}
+                {workspace} · up to {maxResults} leads
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                {officialTenderMode
+                  ? "Search the official Danish tender index for active software assignments."
+                  : `${includeWeb ? "Search public web results. " : ""}${effectiveIncludeSources ? "Read enabled sources and relevant public directories. " : ""}`}
+                Filter by relevance, freshness and duplicates before adding
+                results to review. AI summaries support your review; check the
+                linked source before contacting a buyer.
+              </p>
+              {selectedLane?.evidenceRequirements?.length ? (
+                <p className="mt-2 text-muted-foreground">
+                  Look for: {selectedLane.evidenceRequirements.join(" · ")}
+                </p>
+              ) : null}
+              <button
+                type="button"
+                className="mt-2 font-medium text-primary underline underline-offset-4"
+                onClick={() =>
+                  setQuery(
+                    selectedLane?.slug === "tenders-procurement"
+                      ? "Active Danish software tenders with a clear buyer, future deadline and scope suitable for a solo developer."
+                      : "Danish SMEs seeking a software partner for reporting automation or internal tools. Prefer a named buyer, concrete need and a project under 250,000 DKK. Exclude job listings and generic agency pages.",
+                  )
+                }
+              >
+                Use an example brief
+              </button>
+            </div>
             <div className="space-y-3 rounded-md border border-border bg-surface/40 p-3">
               <button
                 type="button"
@@ -893,17 +1228,26 @@ export function LaneMissionControl({
               >
                 <span className="flex items-center gap-2">
                   <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-                  Scan controls
+                  Search options
                 </span>
-                {showAdvancedOptions ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                {showAdvancedOptions ? (
+                  <ArrowUp className="h-4 w-4" />
+                ) : (
+                  <ArrowDown className="h-4 w-4" />
+                )}
               </button>
 
               {showAdvancedOptions && (
-                <div className="space-y-3 pt-2">
+                <div className="grid gap-4 pt-2 sm:grid-cols-2">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label>Provider</Label>
-                      <Select value={provider} onValueChange={(value) => setProvider(value as Provider)}>
+                      <Select
+                        value={provider}
+                        onValueChange={(value) =>
+                          setProvider(value as Provider)
+                        }
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -918,7 +1262,12 @@ export function LaneMissionControl({
                     </div>
                     <div className="space-y-1.5">
                       <Label>Workspace</Label>
-                      <Select value={workspace} onValueChange={(value) => setWorkspace(value as Workspace)}>
+                      <Select
+                        value={workspace}
+                        onValueChange={(value) =>
+                          setWorkspace(value as Workspace)
+                        }
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -943,7 +1292,12 @@ export function LaneMissionControl({
                     </div>
                     <div className="space-y-1.5">
                       <Label>Search style</Label>
-                      <Select value={searchMode} onValueChange={(value) => setSearchMode(value as SearchMode)}>
+                      <Select
+                        value={searchMode}
+                        onValueChange={(value) =>
+                          setSearchMode(value as SearchMode)
+                        }
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -956,11 +1310,19 @@ export function LaneMissionControl({
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/40 px-3 py-2">
-                    <Label htmlFor="mission-ai" className="flex items-center gap-2">
+                    <Label
+                      htmlFor="mission-ai"
+                      className="flex items-center gap-2"
+                    >
                       <Sparkles className="h-4 w-4" />
                       AI freeform planner
                     </Label>
-                    <Switch id="mission-ai" checked={useAiPlanner} onCheckedChange={setUseAiPlanner} />
+                    <Switch
+                      id="mission-ai"
+                      checked={useAiPlanner}
+                      disabled={readiness?.aiConfigured === false}
+                      onCheckedChange={setUseAiPlanner}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="mission-required">Must include</Label>
@@ -981,14 +1343,24 @@ export function LaneMissionControl({
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="mission-web" className="flex items-center gap-2">
+                    <Label
+                      htmlFor="mission-web"
+                      className="flex items-center gap-2"
+                    >
                       <Globe2 className="h-4 w-4" />
                       Web
                     </Label>
-                    <Switch id="mission-web" checked={includeWeb} onCheckedChange={setIncludeWeb} />
+                    <Switch
+                      id="mission-web"
+                      checked={includeWeb}
+                      onCheckedChange={setIncludeWeb}
+                    />
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="mission-sources" className="flex items-center gap-2">
+                    <Label
+                      htmlFor="mission-sources"
+                      className="flex items-center gap-2"
+                    >
                       <Database className="h-4 w-4" />
                       Sources
                     </Label>
@@ -1001,9 +1373,21 @@ export function LaneMissionControl({
                   </div>
                 </div>
               )}
-              <Button type="submit" disabled={loading || !laneId || (!includeWeb && !effectiveIncludeSources)} className="w-full mt-2">
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                Queue lane
+              <Button
+                type="submit"
+                disabled={
+                  loading ||
+                  !laneId ||
+                  (!includeWeb && !effectiveIncludeSources)
+                }
+                className="mt-2 sm:w-auto sm:min-w-48"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="h-4 w-4" />
+                )}
+                Find leads
               </Button>
             </div>
           </div>
@@ -1015,30 +1399,54 @@ export function LaneMissionControl({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="flex items-center gap-2 text-sm font-medium">
-                    {missionRunning ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : null}
-                    {result.mission.lane?.name ?? "Discovery mission"}
-                    <Badge variant={missionStatusVariant(result.mission.status)}>{result.mission.status.toLowerCase()}</Badge>
-                    {result.mission.workspace ? (
-                      <Badge variant="outline">{result.mission.workspace === "GLOBAL" ? "International" : "Denmark"}</Badge>
+                    {missionRunning ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     ) : null}
-                    {!candidates.length && hiddenCandidateCount > 0 ? <Badge variant="warning">all rejected</Badge> : null}
-                    {activeQueueLabel ? <Badge variant="secondary">{activeQueueLabel}</Badge> : null}
+                    {result.mission.lane?.name ?? "Discovery mission"}
+                    <Badge
+                      variant={missionStatusVariant(result.mission.status)}
+                    >
+                      {result.mission.status.toLowerCase()}
+                    </Badge>
+                    {result.mission.workspace ? (
+                      <Badge variant="outline">
+                        {result.mission.workspace === "GLOBAL"
+                          ? "International"
+                          : "Denmark"}
+                      </Badge>
+                    ) : null}
+                    {!candidates.length && hiddenCandidateCount > 0 ? (
+                      <Badge variant="warning">all rejected</Badge>
+                    ) : null}
+                    {activeQueueLabel ? (
+                      <Badge variant="secondary">{activeQueueLabel}</Badge>
+                    ) : null}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {candidates.length} reviewable {candidates.length === 1 ? "candidate" : "candidates"}
-                    {hiddenCandidateCount > 0 ? ` · ${hiddenCandidateCount} rejected` : ""}
+                    {candidates.length} reviewable{" "}
+                    {candidates.length === 1 ? "candidate" : "candidates"}
+                    {hiddenCandidateCount > 0
+                      ? ` · ${hiddenCandidateCount} rejected`
+                      : ""}
                     {" · "}
                     {result.mission.provider || "web"} search
                     {" · "}
                     {result.mission.sourceScanCount ?? 0} sources scanned
                     {" · "}
-                    {missionDuration(result.mission.startedAt, result.mission.finishedAt)}
+                    {missionDuration(
+                      result.mission.startedAt,
+                      result.mission.finishedAt,
+                    )}
                   </p>
                   {latestLogMessage ? (
-                    <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{latestLogMessage}</p>
+                    <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                      {latestLogMessage}
+                    </p>
                   ) : null}
                   {tenderQualitySummary ? (
-                    <p className="mt-1 text-xs font-medium text-foreground">{tenderQualitySummary}</p>
+                    <p className="mt-1 text-xs font-medium text-foreground">
+                      {tenderQualitySummary}
+                    </p>
                   ) : null}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -1061,12 +1469,19 @@ export function LaneMissionControl({
                       disabled={refreshing || !activeMissionId}
                     >
                       <Eye className="h-4 w-4" />
-                      {showHiddenCandidates ? "Hide diagnostics" : `Diagnostics: ${hiddenCandidateCount}`}
+                      {showHiddenCandidates
+                        ? "Hide diagnostics"
+                        : `Diagnostics: ${hiddenCandidateCount}`}
                     </Button>
                   ) : null}
-                  {["NEW", "REVIEWED", "SAVED", "DISMISSED", "DUPLICATE"].map((status) => (
-                    counts[status] ? <Badge key={status} variant="outline">{status.toLowerCase()}: {counts[status]}</Badge> : null
-                  ))}
+                  {["NEW", "REVIEWED", "SAVED", "DISMISSED", "DUPLICATE"].map(
+                    (status) =>
+                      counts[status] ? (
+                        <Badge key={status} variant="outline">
+                          {status.toLowerCase()}: {counts[status]}
+                        </Badge>
+                      ) : null,
+                  )}
                 </div>
               </div>
             </div>
@@ -1079,7 +1494,8 @@ export function LaneMissionControl({
                       ? "Mission running in background. It stays available in mission history."
                       : hiddenCandidateCount > 0
                         ? `${hiddenCandidateCount} results were filtered out by the lane quality gate.`
-                        : (tenderQualitySummary ?? "No candidates found for this mission.")}
+                        : (tenderQualitySummary ??
+                          "No candidates found for this mission.")}
                   </p>
                   {!missionRunning && hiddenCandidateCount > 0 ? (
                     <Button
@@ -1087,7 +1503,8 @@ export function LaneMissionControl({
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        if (!showHiddenCandidates) void toggleHiddenCandidates();
+                        if (!showHiddenCandidates)
+                          void toggleHiddenCandidates();
                       }}
                       disabled={refreshing || !activeMissionId}
                     >
@@ -1099,7 +1516,11 @@ export function LaneMissionControl({
               </Card>
             ) : (
               candidates.map((candidate) => (
-                <CandidateCard key={candidate.id} candidate={candidate} onAction={candidateAction} />
+                <CandidateCard
+                  key={candidate.id}
+                  candidate={candidate}
+                  onAction={candidateAction}
+                />
               ))
             )}
 
@@ -1109,13 +1530,17 @@ export function LaneMissionControl({
                   <div>
                     <p className="text-sm font-medium">Rejection diagnostics</p>
                     <p className="text-xs text-muted-foreground">
-                      Filtered rows are kept for audit only; they are not reviewable discoveries.
+                      Filtered rows are kept for audit only; they are not
+                      reviewable discoveries.
                     </p>
                   </div>
                   <Badge variant="warning">{hiddenCandidates.length}</Badge>
                 </div>
                 {hiddenCandidates.map((candidate) => (
-                  <RejectedCandidateRow key={`hidden-${candidate.id}`} candidate={candidate} />
+                  <RejectedCandidateRow
+                    key={`hidden-${candidate.id}`}
+                    candidate={candidate}
+                  />
                 ))}
               </div>
             ) : null}
@@ -1123,7 +1548,7 @@ export function LaneMissionControl({
         )}
       </div>
 
-      <aside className="space-y-3">
+      <aside className="min-w-0 space-y-3">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center justify-between gap-2 text-sm">
@@ -1137,7 +1562,9 @@ export function LaneMissionControl({
                   Live queue
                 </span>
               ) : lastUpdatedAt ? (
-                <span className="text-xs font-normal text-muted-foreground">{missionTime(lastUpdatedAt)}</span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {missionTime(lastUpdatedAt)}
+                </span>
               ) : null}
               {liveQueue ? (
                 <Button
@@ -1164,7 +1591,9 @@ export function LaneMissionControl({
                 disabled={refreshing}
                 title="Refresh"
               >
-                <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+                <RefreshCw
+                  className={cn("h-4 w-4", refreshing && "animate-spin")}
+                />
               </Button>
             </CardTitle>
           </CardHeader>
@@ -1173,7 +1602,9 @@ export function LaneMissionControl({
               <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/50 p-1">
                 <Button
                   type="button"
-                  variant={historyScope === "current-lane" ? "secondary" : "ghost"}
+                  variant={
+                    historyScope === "current-lane" ? "secondary" : "ghost"
+                  }
                   size="sm"
                   className="h-8"
                   onClick={() => setHistoryScope("current-lane")}
@@ -1226,20 +1657,30 @@ export function LaneMissionControl({
               filteredMissions.map((mission) => {
                 const queueLabel = missionQueueLabel(mission.id, queueState);
                 const latestMissionLog = mission.log?.at(-1);
-                const latestMissionLogMessage = latestMissionLog ? missionLogParts(latestMissionLog).message : null;
-                const missionQualitySummary = missionTenderQualitySummary(mission);
-                const queuedIndex = queueState.queuedMissionIds.indexOf(mission.id);
-                const moveable = mission.status === "QUEUED" && queuedIndex >= 0;
+                const latestMissionLogMessage = latestMissionLog
+                  ? missionLogParts(latestMissionLog).message
+                  : null;
+                const missionQualitySummary =
+                  missionTenderQualitySummary(mission);
+                const queuedIndex = queueState.queuedMissionIds.indexOf(
+                  mission.id,
+                );
+                const moveable =
+                  mission.status === "QUEUED" && queuedIndex >= 0;
                 const lastQueuedIndex = queueState.queuedMissionIds.length - 1;
-                const cancelable = mission.status === "QUEUED" || mission.status === "RUNNING";
+                const cancelable =
+                  mission.status === "QUEUED" || mission.status === "RUNNING";
                 const rerunnable = discoveryMissionCanRerun(mission.status);
-                const rerunBlockedMessage = discoveryMissionRerunBlockedMessage(mission.status);
+                const rerunBlockedMessage = discoveryMissionRerunBlockedMessage(
+                  mission.status,
+                );
                 return (
                   <div
                     key={mission.id}
                     className={cn(
                       "rounded-md border border-border bg-surface/40 p-2 transition hover:border-primary/40 hover:bg-surface",
-                      activeMissionId === mission.id && "border-primary/50 bg-primary/5",
+                      activeMissionId === mission.id &&
+                        "border-primary/50 bg-primary/5",
                     )}
                   >
                     <button
@@ -1248,28 +1689,49 @@ export function LaneMissionControl({
                       className="w-full text-left"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium">{mission.lane?.name ?? "Discovery mission"}</span>
+                        <span className="truncate text-sm font-medium">
+                          {mission.lane?.name ?? "Discovery mission"}
+                        </span>
                         <span className="flex shrink-0 items-center gap-1">
-                          {queueLabel ? <Badge variant="secondary">{queueLabel}</Badge> : null}
-                          {mission.workspace ? (
-                            <Badge variant="outline">{mission.workspace === "GLOBAL" ? "International" : "Denmark"}</Badge>
+                          {queueLabel ? (
+                            <Badge variant="secondary">{queueLabel}</Badge>
                           ) : null}
-                          <Badge variant={missionStatusVariant(mission.status)}>{mission.status.toLowerCase()}</Badge>
+                          {mission.workspace ? (
+                            <Badge variant="outline">
+                              {mission.workspace === "GLOBAL"
+                                ? "International"
+                                : "Denmark"}
+                            </Badge>
+                          ) : null}
+                          <Badge variant={missionStatusVariant(mission.status)}>
+                            {mission.status.toLowerCase()}
+                          </Badge>
                         </span>
                       </div>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">{queryPreview(mission.query)}</p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {queryPreview(mission.query)}
+                      </p>
                       {latestMissionLogMessage ? (
-                        <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{latestMissionLogMessage}</p>
+                        <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                          {latestMissionLogMessage}
+                        </p>
                       ) : null}
                       {missionQualitySummary ? (
-                        <p className="mt-1 truncate text-[11px] font-medium text-foreground">{missionQualitySummary}</p>
+                        <p className="mt-1 truncate text-[11px] font-medium text-foreground">
+                          {missionQualitySummary}
+                        </p>
                       ) : null}
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
                           <Clock3 className="h-3 w-3" />
                           {missionTime(mission.startedAt)}
                         </span>
-                        <span>{missionDuration(mission.startedAt, mission.finishedAt)}</span>
+                        <span>
+                          {missionDuration(
+                            mission.startedAt,
+                            mission.finishedAt,
+                          )}
+                        </span>
                         <span>{missionCandidateSummary(mission)}</span>
                       </div>
                     </button>
@@ -1281,7 +1743,9 @@ export function LaneMissionControl({
                             size="icon"
                             variant="outline"
                             className="h-7 w-7"
-                            disabled={Boolean(busyMissionAction) || queuedIndex === 0}
+                            disabled={
+                              Boolean(busyMissionAction) || queuedIndex === 0
+                            }
                             onClick={() => controlMission(mission, "MOVE_TOP")}
                             aria-label="Move discovery mission to top"
                             title="Move discovery mission to top"
@@ -1297,7 +1761,9 @@ export function LaneMissionControl({
                             size="icon"
                             variant="outline"
                             className="h-7 w-7"
-                            disabled={Boolean(busyMissionAction) || queuedIndex === 0}
+                            disabled={
+                              Boolean(busyMissionAction) || queuedIndex === 0
+                            }
                             onClick={() => controlMission(mission, "MOVE_UP")}
                             aria-label="Move discovery mission up"
                             title="Move discovery mission up"
@@ -1313,7 +1779,10 @@ export function LaneMissionControl({
                             size="icon"
                             variant="outline"
                             className="h-7 w-7"
-                            disabled={Boolean(busyMissionAction) || queuedIndex === lastQueuedIndex}
+                            disabled={
+                              Boolean(busyMissionAction) ||
+                              queuedIndex === lastQueuedIndex
+                            }
                             onClick={() => controlMission(mission, "MOVE_DOWN")}
                             aria-label="Move discovery mission down"
                             title="Move discovery mission down"
@@ -1333,7 +1802,9 @@ export function LaneMissionControl({
                         className="h-7 w-7"
                         disabled={Boolean(busyMissionAction) || !rerunnable}
                         onClick={() => controlMission(mission, "RERUN")}
-                        aria-label={rerunBlockedMessage ?? "Rerun discovery mission"}
+                        aria-label={
+                          rerunBlockedMessage ?? "Rerun discovery mission"
+                        }
                         title={rerunBlockedMessage ?? "Rerun discovery mission"}
                       >
                         {busyMissionAction === `RERUN-${mission.id}` ? (
@@ -1366,7 +1837,9 @@ export function LaneMissionControl({
               })
             ) : (
               <p className="py-3 text-sm text-muted-foreground">
-                {historySearchActive ? "No missions match this search." : "No missions yet."}
+                {historySearchActive
+                  ? "No missions match this search."
+                  : "No missions yet."}
               </p>
             )}
             {canLoadOlderMissions ? (
@@ -1378,8 +1851,14 @@ export function LaneMissionControl({
                 disabled={refreshing}
                 onClick={loadOlderMissions}
               >
-                {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
-                {historySearchActive ? "Search older missions" : "Load older missions"}
+                {refreshing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <History className="h-4 w-4" />
+                )}
+                {historySearchActive
+                  ? "Search older missions"
+                  : "Load older missions"}
               </Button>
             ) : null}
           </CardContent>
@@ -1396,28 +1875,52 @@ export function LaneMissionControl({
             {selectedLane ? (
               <>
                 <div>
-                  <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Evidence</p>
+                  <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                    Evidence
+                  </p>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedLane.evidenceRequirements.map((item) => (
-                      <Badge key={item} variant="outline" className="max-w-full truncate" title={item}>{item}</Badge>
+                      <Badge
+                        key={item}
+                        variant="outline"
+                        className="max-w-full truncate"
+                        title={item}
+                      >
+                        {item}
+                      </Badge>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Positive signals</p>
+                  <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                    Positive signals
+                  </p>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedLane.positiveKeywords.slice(0, 9).map((item) => (
-                      <Badge key={item} variant="secondary" className="max-w-full truncate" title={item}>{item}</Badge>
+                      <Badge
+                        key={item}
+                        variant="secondary"
+                        className="max-w-full truncate"
+                        title={item}
+                      >
+                        {item}
+                      </Badge>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Conversion angle</p>
-                  <p className="leading-6 text-muted-foreground">{selectedLane.conversionGuidance}</p>
+                  <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">
+                    Conversion angle
+                  </p>
+                  <p className="leading-6 text-muted-foreground">
+                    {selectedLane.conversionGuidance}
+                  </p>
                 </div>
               </>
             ) : (
-              <p className="text-muted-foreground">Choose a lane to inspect its playbook.</p>
+              <p className="text-muted-foreground">
+                Choose a lane to inspect its playbook.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -1431,19 +1934,29 @@ export function LaneMissionControl({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <p className="leading-6 text-muted-foreground">{result.plan.summary}</p>
+              <p className="leading-6 text-muted-foreground">
+                {result.plan.summary}
+              </p>
               <div className="flex flex-wrap gap-1.5">
-                <Badge variant="outline">{result.plan.confidence}% confidence</Badge>
+                <Badge variant="outline">
+                  {result.plan.confidence}% confidence
+                </Badge>
                 {result.plan.requiredTerms.map((term) => (
-                  <Badge key={`required-${term}`} variant="secondary">must: {term}</Badge>
+                  <Badge key={`required-${term}`} variant="secondary">
+                    must: {term}
+                  </Badge>
                 ))}
                 {result.plan.excludedTerms.map((term) => (
-                  <Badge key={`exclude-${term}`} variant="warning">avoid: {term}</Badge>
+                  <Badge key={`exclude-${term}`} variant="warning">
+                    avoid: {term}
+                  </Badge>
                 ))}
               </div>
               {result.plan.notes.length ? (
                 <ul className="space-y-1 text-xs leading-5 text-muted-foreground">
-                  {result.plan.notes.map((note) => <li key={note}>{note}</li>)}
+                  {result.plan.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
                 </ul>
               ) : null}
             </CardContent>
@@ -1458,7 +1971,10 @@ export function LaneMissionControl({
             <CardContent>
               <ul className="space-y-2 text-xs text-muted-foreground">
                 {result.queries.map((generatedQuery) => (
-                  <li key={generatedQuery} className="rounded-md bg-surface/70 p-2 leading-5">
+                  <li
+                    key={generatedQuery}
+                    className="rounded-md bg-surface/70 p-2 leading-5"
+                  >
                     {generatedQuery}
                   </li>
                 ))}
@@ -1477,7 +1993,9 @@ export function LaneMissionControl({
             </CardHeader>
             <CardContent>
               <ul className="space-y-2 text-sm text-warning">
-                {result.mission.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                {result.mission.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
               </ul>
             </CardContent>
           </Card>
@@ -1496,8 +2014,15 @@ export function LaneMissionControl({
                 {result.mission.log.slice(-12).map((entry, index) => {
                   const item = missionLogParts(entry);
                   return (
-                    <li key={`${entry}-${index}`} className="rounded-md bg-surface/70 p-2 leading-5">
-                      {item.time ? <span className="mr-2 font-medium text-foreground">{item.time}</span> : null}
+                    <li
+                      key={`${entry}-${index}`}
+                      className="rounded-md bg-surface/70 p-2 leading-5"
+                    >
+                      {item.time ? (
+                        <span className="mr-2 font-medium text-foreground">
+                          {item.time}
+                        </span>
+                      ) : null}
                       <span>{item.message}</span>
                     </li>
                   );
@@ -1521,7 +2046,8 @@ function CandidateCard({
   hidden?: boolean;
 }) {
   const saved = candidate.status === "SAVED" && candidate.deal;
-  const closed = candidate.status === "DISMISSED" || candidate.status === "DUPLICATE";
+  const closed =
+    candidate.status === "DISMISSED" || candidate.status === "DUPLICATE";
   const evidence = candidate.evidence?.slice(0, 3) ?? [];
   const statusVariant =
     candidate.status === "SAVED"
@@ -1544,35 +2070,54 @@ function CandidateCard({
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="min-w-0 text-base font-semibold leading-snug">{candidate.title}</h2>
+            <h2 className="min-w-0 text-base font-semibold leading-snug">
+              {candidate.title}
+            </h2>
             {candidate.url && (
               <a
                 href={candidate.url}
                 target="_blank"
                 rel="noreferrer"
-                className={cn("text-muted-foreground hover:text-primary", hidden && "text-warning hover:text-warning")}
+                className={cn(
+                  "text-muted-foreground hover:text-primary",
+                  hidden && "text-warning hover:text-warning",
+                )}
                 aria-label={hidden ? "Open rejected source" : "Open source"}
-                title={hidden ? `Open rejected source: ${candidate.hiddenReason ?? candidate.status.toLowerCase()}` : "Open source"}
+                title={
+                  hidden
+                    ? `Open rejected source: ${candidate.hiddenReason ?? candidate.status.toLowerCase()}`
+                    : "Open source"
+                }
               >
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             )}
-            <Badge variant={statusVariant}>{candidate.status.toLowerCase()}</Badge>
+            <Badge variant={statusVariant}>
+              {candidate.status.toLowerCase()}
+            </Badge>
             {hidden ? <Badge variant="warning">rejected result</Badge> : null}
-            {candidate.hiddenReason ? <Badge variant="warning">{candidate.hiddenReason}</Badge> : null}
+            {candidate.hiddenReason ? (
+              <Badge variant="warning">{candidate.hiddenReason}</Badge>
+            ) : null}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {[candidate.organization, candidate.sourceName, candidate.category].filter(Boolean).join(" · ") || "Discovery candidate"}
+            {[candidate.organization, candidate.sourceName, candidate.category]
+              .filter(Boolean)
+              .join(" · ") || "Discovery candidate"}
           </p>
         </div>
         <div className="flex items-center gap-4">
           <div className="text-center">
             <ScoreBadge score={candidate.confidenceScore} size="sm" />
-            <p className="mt-1 text-[10px] uppercase text-muted-foreground">Confidence</p>
+            <p className="mt-1 text-[10px] uppercase text-muted-foreground">
+              Confidence
+            </p>
           </div>
           <div className="text-center">
             <ScoreBadge score={candidate.pursuitScore} size="lg" showLabel />
-            <p className="mt-1 text-[10px] uppercase text-muted-foreground">Pursuit</p>
+            <p className="mt-1 text-[10px] uppercase text-muted-foreground">
+              Pursuit
+            </p>
           </div>
         </div>
       </div>
@@ -1582,33 +2127,74 @@ function CandidateCard({
       </p>
 
       <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
-        <Meta label="Budget" value={formatBudget(candidate.budgetMin, candidate.budgetMax, candidate.currency ?? "DKK")} />
+        <Meta
+          label="Budget"
+          value={formatBudget(
+            candidate.budgetMin,
+            candidate.budgetMax,
+            candidate.currency ?? "DKK",
+          )}
+        />
         <Meta label="Deadline" value={formatDate(candidate.deadline)} />
-        <Meta label="Source" value={candidate.sourceKind === "source-scan" ? "saved source" : candidate.provider || "web"} />
-        <Meta label="Status" value={hidden ? "rejected" : candidate.status.toLowerCase()} />
+        <Meta
+          label="Source"
+          value={
+            candidate.sourceKind === "source-scan"
+              ? "saved source"
+              : candidate.provider || "web"
+          }
+        />
+        <Meta
+          label="Status"
+          value={hidden ? "rejected" : candidate.status.toLowerCase()}
+        />
       </div>
 
       {(candidate.signals.length > 0 || candidate.reasons.length > 0) && (
         <div className="mt-4 flex flex-wrap gap-1.5">
-          {[...candidate.signals, ...candidate.reasons].slice(0, 12).map((signal) => (
-            <Badge key={signal} variant={signal.startsWith("avoid:") || signal.startsWith("Negative") ? "warning" : "secondary"} className="max-w-full truncate" title={signal}>
-              {signal}
-            </Badge>
-          ))}
+          {[...candidate.signals, ...candidate.reasons]
+            .slice(0, 12)
+            .map((signal) => (
+              <Badge
+                key={signal}
+                variant={
+                  signal.startsWith("avoid:") || signal.startsWith("Negative")
+                    ? "warning"
+                    : "secondary"
+                }
+                className="max-w-full truncate"
+                title={signal}
+              >
+                {signal}
+              </Badge>
+            ))}
         </div>
       )}
 
       {evidence.length > 0 && (
         <div className="mt-4 grid gap-2">
           {evidence.map((item) => (
-            <div key={item.id} className="rounded-md border border-border bg-surface/50 p-3 text-sm text-muted-foreground">
+            <div
+              key={item.id}
+              className="rounded-md border border-border bg-surface/50 p-3 text-sm text-muted-foreground"
+            >
               <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                <p className="font-medium text-foreground">{item.title || "Evidence"}</p>
-                {item.confidence != null && <Badge variant="outline">{item.confidence}% confidence</Badge>}
+                <p className="font-medium text-foreground">
+                  {item.title || "Evidence"}
+                </p>
+                {item.confidence != null && (
+                  <Badge variant="outline">{item.confidence}% confidence</Badge>
+                )}
               </div>
+              <EvidenceProvenance metadata={item.metadata} />
               <p className="leading-6">{truncate(item.snippet, 300)}</p>
               {item.url && (
-                <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
                   <ExternalLink className="h-3 w-3" />
                   {hidden ? "Rejected source" : "Source"}
                 </a>
@@ -1621,24 +2207,43 @@ function CandidateCard({
       {!hidden ? (
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
           {saved ? (
-            <Button asChild size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white">
+            <Button
+              asChild
+              size="sm"
+              variant="default"
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
               <Link href={`/deals/${candidate.deal!.id}`}>
                 <CheckCircle2 className="h-4 w-4 mr-1.5" />
                 Deal saved — View
               </Link>
             </Button>
           ) : closed ? (
-            <Button variant="secondary" size="sm" onClick={() => onAction(candidate.id, "review")}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onAction(candidate.id, "review")}
+            >
               <RotateCw className="h-4 w-4 mr-1.5" />
               Re-evaluate
             </Button>
           ) : (
             <>
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => onAction(candidate.id, "dismiss")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => onAction(candidate.id, "dismiss")}
+              >
                 <XCircle className="h-4 w-4 mr-1.5" />
                 Dismiss
               </Button>
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => onAction(candidate.id, "duplicate")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => onAction(candidate.id, "duplicate")}
+              >
                 <CopyX className="h-4 w-4 mr-1.5" />
                 Duplicate
               </Button>
@@ -1656,8 +2261,9 @@ function CandidateCard({
 
 function RejectedCandidateRow({ candidate }: { candidate: Candidate }) {
   const sourceText =
-    [candidate.organization, candidate.sourceName, candidate.provider].filter(Boolean).join(" · ") ||
-    "Filtered discovery row";
+    [candidate.organization, candidate.sourceName, candidate.provider]
+      .filter(Boolean)
+      .join(" · ") || "Filtered discovery row";
   const reason = candidate.hiddenReason || candidate.status.toLowerCase();
 
   return (
@@ -1669,16 +2275,29 @@ function RejectedCandidateRow({ candidate }: { candidate: Candidate }) {
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="warning">filtered out</Badge>
-            <Badge variant="outline" className="max-w-full truncate" title={reason}>{reason}</Badge>
-            <h3 className="min-w-0 text-sm font-medium leading-snug text-muted-foreground">{candidate.title}</h3>
+            <Badge
+              variant="outline"
+              className="max-w-full truncate"
+              title={reason}
+            >
+              {reason}
+            </Badge>
+            <h3 className="min-w-0 text-sm font-medium leading-snug text-muted-foreground">
+              {candidate.title}
+            </h3>
           </div>
-          <p className="text-xs text-muted-foreground">Not a reviewable lead · {sourceText}</p>
+          <p className="text-xs text-muted-foreground">
+            Not a reviewable lead · {sourceText}
+          </p>
           <p className="text-sm leading-6 text-muted-foreground">
             {truncate(candidate.description || candidate.rawContent, 320)}
           </p>
         </div>
         {candidate.url ? (
-          <p className="max-w-full break-all font-mono text-[11px] leading-5 text-warning" title={candidate.url}>
+          <p
+            className="max-w-full break-all font-mono text-[11px] leading-5 text-warning"
+            title={candidate.url}
+          >
             Filtered URL: {truncate(candidate.url, 140)}
           </p>
         ) : null}
@@ -1687,10 +2306,20 @@ function RejectedCandidateRow({ candidate }: { candidate: Candidate }) {
   );
 }
 
-function Meta({ label, value, className }: { label: string; value: string; className?: string }) {
+function Meta({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
   return (
     <div className="min-w-0 rounded-md border border-border bg-surface/40 px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase text-muted-foreground">{label}</div>
+      <div className="text-[10px] font-semibold uppercase text-muted-foreground">
+        {label}
+      </div>
       <div className={cn("mt-1 truncate font-medium", className)}>{value}</div>
     </div>
   );

@@ -33,7 +33,12 @@ export function NewDealDialog() {
   const searchParams = useSearchParams();
   const [open, setOpen] = React.useState(false);
   const routeWorkspace = workspaceFromRoute(pathname, searchParams);
-  const queryWorkspace = searchParams.get("workspace") === "GLOBAL" ? "GLOBAL" : searchParams.get("workspace") === "DK" ? "DK" : routeWorkspace;
+  const queryWorkspace =
+    searchParams.get("workspace") === "GLOBAL"
+      ? "GLOBAL"
+      : searchParams.get("workspace") === "DK"
+        ? "DK"
+        : routeWorkspace;
 
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -46,7 +51,8 @@ export function NewDealDialog() {
   const [valueMax, setValueMax] = React.useState("");
   const [deadline, setDeadline] = React.useState("");
   const [category, setCategory] = React.useState("");
-  const [applicationRoute, setApplicationRoute] = React.useState<ApplicationRoute>("UNKNOWN");
+  const [applicationRoute, setApplicationRoute] =
+    React.useState<ApplicationRoute>("UNKNOWN");
   const [workspace, setWorkspace] = React.useState<Workspace>(queryWorkspace);
 
   React.useEffect(() => {
@@ -56,7 +62,11 @@ export function NewDealDialog() {
       const next = new URLSearchParams(searchParams.toString());
       next.delete("new");
       const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      window.history.replaceState(
+        window.history.state,
+        "",
+        qs ? `${pathname}?${qs}` : pathname,
+      );
     }
   }, [queryWorkspace, searchParams, pathname, router]);
 
@@ -83,37 +93,30 @@ export function NewDealDialog() {
       toast.error("Title needs at least 3 characters");
       return;
     }
-    if (valueMin !== "" && valueMax !== "" && Number(valueMin) > Number(valueMax)) {
+    if (
+      valueMin !== "" &&
+      valueMax !== "" &&
+      Number(valueMin) > Number(valueMax)
+    ) {
       toast.error("Value min must be ≤ max");
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      let accountId: string | undefined;
-      if (organization.trim()) {
-        const accountRes = await fetch("/api/accounts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: organization.trim(),
-            website: url.trim(),
-            workspace,
-          }),
-        });
-        const account = await accountRes.json().catch(() => ({}));
-        if (!accountRes.ok) throw new Error(account?.error || "Failed to save account");
-        accountId = account.id;
-      }
-
-      const payload: Record<string, unknown> = { title: title.trim(), workspace, applicationRoute };
-      if (accountId) payload.accountId = accountId;
+      const payload: Record<string, unknown> = {
+        title: title.trim(),
+        workspace,
+        applicationRoute,
+      };
+      if (organization.trim()) payload.organization = organization.trim();
       if (summary.trim()) payload.summary = summary.trim();
       if (url.trim()) payload.url = url.trim();
       if (category.trim()) payload.category = category.trim();
       if (valueMin !== "") payload.valueMin = Number(valueMin);
       if (valueMax !== "") payload.valueMax = Number(valueMax);
-      if (deadline !== "") payload.deadline = `${deadline}T23:59:59`;
+      if (deadline !== "")
+        payload.deadline = new Date(`${deadline}T23:59:59`).toISOString();
 
       const res = await fetch("/api/deals", {
         method: "POST",
@@ -121,7 +124,12 @@ export function NewDealDialog() {
         body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof body?.error === "string" ? body.error : "Failed to create deal");
+      if (!res.ok)
+        throw new Error(
+          typeof body?.error === "string"
+            ? body.error
+            : "Failed to create deal",
+        );
       toast.success("Deal created");
       setOpen(false);
       reset();
@@ -153,53 +161,104 @@ export function NewDealDialog() {
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New deal</DialogTitle>
-          <DialogDescription>Add a lead straight into the pipeline.</DialogDescription>
+          <DialogDescription>
+            Add a lead straight into the pipeline.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="nd-title">Title</Label>
-            <Input id="nd-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Deal title" />
+            <Input
+              id="nd-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Deal title"
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="nd-summary">Summary</Label>
-            <Textarea id="nd-summary" value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="What is this about?" />
+            <Textarea
+              id="nd-summary"
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              placeholder="What is this about?"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="nd-org">Account</Label>
-              <Input id="nd-org" value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Company or buyer" />
+              <Input
+                id="nd-org"
+                value={organization}
+                onChange={(e) => setOrganization(e.target.value)}
+                placeholder="Company or buyer"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="nd-url">URL</Label>
-              <Input id="nd-url" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
+              <Input
+                id="nd-url"
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://…"
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="nd-min">Value min</Label>
-              <Input id="nd-min" type="number" min={0} value={valueMin} onChange={(e) => setValueMin(e.target.value)} />
+              <Input
+                id="nd-min"
+                type="number"
+                min={0}
+                value={valueMin}
+                onChange={(e) => setValueMin(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="nd-max">Value max</Label>
-              <Input id="nd-max" type="number" min={0} value={valueMax} onChange={(e) => setValueMax(e.target.value)} />
+              <Input
+                id="nd-max"
+                type="number"
+                min={0}
+                value={valueMax}
+                onChange={(e) => setValueMax(e.target.value)}
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="nd-deadline">Deadline</Label>
-              <Input id="nd-deadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+              <Input
+                id="nd-deadline"
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="nd-category">Category</Label>
-              <Input id="nd-category" value={category} onChange={(e) => setCategory(e.target.value)} />
+              <Input
+                id="nd-category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Application route</Label>
-              <Select value={applicationRoute} onValueChange={(v) => setApplicationRoute(v as ApplicationRoute)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={applicationRoute}
+                onValueChange={(v) =>
+                  setApplicationRoute(v as ApplicationRoute)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="DIRECT">Direct</SelectItem>
                   <SelectItem value="APPLICATION">Application</SelectItem>
@@ -209,8 +268,13 @@ export function NewDealDialog() {
             </div>
             <div className="space-y-1.5">
               <Label>Workspace</Label>
-              <Select value={workspace} onValueChange={(v) => setWorkspace(v as Workspace)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={workspace}
+                onValueChange={(v) => setWorkspace(v as Workspace)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="DK">Denmark</SelectItem>
                   <SelectItem value="GLOBAL">International</SelectItem>

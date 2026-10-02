@@ -1,10 +1,18 @@
+import { fileURLToPath } from "node:url";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    // Keep heavy server-only deps out of the client/edge bundle (Next 14 key).
-    serverComponentsExternalPackages: ["exceljs", "pdf-lib", "rss-parser", "cheerio", "playwright", "playwright-core", "@vercel/functions"],
-  },
+  outputFileTracingRoot: fileURLToPath(new URL(".", import.meta.url)),
+  // Keep server-only dependencies out of the client and edge bundles.
+  serverExternalPackages: [
+    "exceljs",
+    "pdf-lib",
+    "rss-parser",
+    "cheerio",
+    "playwright",
+    "playwright-core",
+    "@vercel/functions",
+  ],
 };
 
 export default nextConfig;

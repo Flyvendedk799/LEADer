@@ -16,34 +16,28 @@ scoring, compliant ingestion, AI assistance, and one-click exports.
 
 ---
 
-## What it does
+## Daily workflow
 
-| Module | What you get |
-|---|---|
-| **Discover workbench** | Describe the lead you want (e.g. funded MVP / software udbud / SMV:Digital / AI automation) → Lida searches via Tavily, Brave, or Serper, scans saved sources, extracts candidates, scores them, and lets you save good leads into the pipeline. |
-| **Source Management** | Add public websites, RSS, procurement portals, accelerator pages, newsletters, APIs, or community/manual sources. Keywords, region, category, frequency, enable/disable, last-checked. |
-| **Discovery engine** | Compliant fetch of **public** pages/RSS → parse → extract budget/deadline/contact → dedupe → score → store. Site-specific parser stubs for EHSYS / Beyond Beta / Erhvervshuse. |
-| **Community import** | Compliant, **manual-only** Facebook/community import (paste text+URL → AI extract → confirm). Never scrapes closed groups. |
-| **Lead scoring** | Explainable **0–100** match score with a per-criterion breakdown, fully **customisable weights** in Settings. |
-| **Outcome learning** | The ranking **learns from your own wins**. Every lead you win, apply to or archive retunes which criteria and which concrete sources/categories/words actually predict your conversions — shrunk toward the defaults by how much evidence exists, and fully inspectable in **Settings → Learning**. See [`docs/OUTCOME_LEARNING.md`](docs/OUTCOME_LEARNING.md). |
-| **Watchlists & lists** | Watchlist, custom lists, tags, saved searches, status pipeline, priorities, reminders. |
-| **Pipeline board** | Kanban view of your pipeline — drag opportunities between status columns to update them (optimistic, owner-scoped). DK/Global workspace toggle. |
-| **Bulk actions** | Multi-select opportunities, then set status/priority, add to watchlist, add to a list, export, or delete — all in one batch (owner-scoped server-side). |
-| **Command palette** | `⌘K` / `Ctrl+K` opens a global palette: live opportunity search, jump to any page, create a new opportunity, toggle theme — keyboard-first. |
-| **Opportunity detail** | Summary, requirements, contacts, attachments, notes, activity timeline, saved AI drafts, related opportunities. |
-| **Search & filtering** | Keyword, budget min/max, deadline range, active-only, source, category, score, status, tags, region, has-budget, application route — plus sortable table columns (title/budget/deadline/score). |
-| **AI suite** | Summarise · extract · classify · explain match · draft application/pitch/email/checklist · compare · **find similar (embeddings)** · next action. Provider-agnostic, **runs offline with mock output + local embeddings**. |
-| **Dashboard** | New/active leads, upcoming deadlines, best matches, watchlist, applied, won/lost, pipeline value, leads by source/category/status. |
-| **Exporting** | CSV · XLSX · PDF report · Markdown · Notion-ready — fixed field contract. |
-| **Alerts** | In-app alerts inbox (bell + unread badge), deadline reminders, new high-match alerts, digests — **delivered by email** when a provider is configured. |
-| **Auth** | Real multi-user accounts: register/login, scrypt-hashed passwords, opaque server-side sessions, route-gating middleware, per-user data isolation. |
-| **Settings** | Profile, preferred project types, excluded categories, budget limits, scoring weights, sources, API config, export preferences, **password / security**. |
+1. **Today** shows your next tasks, review queue, deadlines and pipeline. Switch between Denmark and Global; values remain grouped by currency.
+2. **Discover** explains the run, checks provider readiness and lets you choose a work lane, write a brief, set required/excluded terms, and choose sources. Runs keep their progress, warnings and history; they can be canceled or retried.
+3. **Review leads** keeps discoveries outside your sales pipeline until you check their evidence. Source metadata distinguishes a page read from a search excerpt, a blocked source or an unread document. Match scores and AI summaries are aids to review, not verified facts.
+4. **Add to deals** saves the account, deal, original evidence, extracted email contacts and a dated qualification task in one transaction. Repeated saves return the existing deal. Previously dismissed or saved discoveries do not become new review items on the next run.
+5. **Deals** supports search, stages, attention filters, list/board views and editing. Each deal groups its brief, tasks, evidence, contacts, conversation history and saved drafts.
+6. **Tasks** supports standalone reminders and deal follow-ups, including completion, reopening and rescheduling. **Accounts** keeps buyer context; **Automations** separates launching work, run history and items needing attention.
+
+### Discovery connections and limits
+
+Broad web discovery requires a Tavily, Brave Search or Serper key in **Settings → AI** (or the corresponding environment variable). Danish tender discovery can use the public udbud.dk index without a search key. Source scans use enabled public sources and curated Danish sources. AI planning and summaries require a configured model; without it, deterministic matching remains available and AI draft examples are labeled.
+
+Only public, robots-allowed pages are fetched. Network requests have timeouts, redirect validation and size limits. Discovery caps page reads and source traversal. Search excerpts and PDF links remain explicitly unverified when full content cannot be read. Private conversations belong in **Community import** or a manually added deal. No outreach is sent when you save a lead.
+
+Review source dates, buyer identity and extracted numbers before acting. Public sites and paid providers can fail or change their markup; run warnings and retained source URLs are there to make those failures inspectable.
 
 ---
 
 ## Tech stack
 
-Next.js 14 (App Router, TS) · Tailwind + shadcn/ui · PostgreSQL · Prisma · Zod ·
+Next.js 15.5 (App Router, TS) · Tailwind + shadcn/ui · PostgreSQL · Prisma · Zod ·
 provider-agnostic OpenAI-compatible AI layer · fetch/RSS (+ optional Playwright) crawlers
 for **public sources only** · ExcelJS / pdf-lib for exports.
 
@@ -51,7 +45,7 @@ for **public sources only** · ExcelJS / pdf-lib for exports.
 
 ## Quick start (local)
 
-> Prereqs: **Node ≥ 18.18** and **Docker** (for Postgres). Uses `npm` by default; `pnpm`/`yarn` work too.
+> Prereqs: **Node ≥ 22.12** and PostgreSQL (use Docker or the bundled local server). Uses `npm` by default; `pnpm`/`yarn` work too.
 
 ```bash
 # 1. Install deps
@@ -60,11 +54,15 @@ npm install
 # 2. Configure env
 cp .env.example .env          # defaults already match the Docker Postgres below
 
-# 3. Start Postgres
+# 3. Start Postgres (choose one)
 docker compose up -d db
+# Or, without Docker, in a separate terminal:
+npm run db:local
 
-# 4. Create schema + generate client + seed demo data
-npm run setup                 # = prisma generate && prisma db push && db:seed
+# 4. Apply migrations and seed demo data
+npm run db:generate
+npm run db:migrate:deploy
+npm run db:seed
 
 # 5. Run the app
 npm run dev                   # http://localhost:3000
@@ -75,11 +73,12 @@ Then **sign in at http://localhost:3000/login** with the credentials the seed pr
 `/register`. Prefer to skip login while hacking locally? Set `AUTH_DEV_BYPASS=true`
 (ignored in production) to run as the seeded user.
 
-That's it — the dashboard, opportunities, sources, lists, watchlist, import and settings
-pages are all populated by the seed. **No API keys needed**: the AI layer returns
-deterministic mock output (and a local embedding model powers "find similar") until you
+The seed populates example accounts, deals and discovery lanes. CRM use needs no API keys.
+AI draft actions show labeled example output (and local embeddings power similarity) until you
 choose a local Codex/ChatGPT or Claude Code subscription provider, add an OpenAI/Claude
 API key during onboarding or in **Settings → AI**, or set `LLM_API_KEY`.
+
+`db:local` stores persistent data in `tmp/pg-data` and binds only to localhost. Keep it running while using the app. Back up that folder with PostgreSQL stopped, or use `pg_dump`; do not delete it during cleanup.
 
 ### Useful scripts
 ```bash

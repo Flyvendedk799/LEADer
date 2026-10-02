@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 
+import { assertOwnedLinks } from "@/lib/crm/ownership";
 import { apiError } from "@/lib/api";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -13,7 +14,11 @@ export async function GET(req: Request) {
     const dealId = url.searchParams.get("dealId") || undefined;
     const accountId = url.searchParams.get("accountId") || undefined;
     const touchpoints = await db.touchpoint.findMany({
-      where: { ownerId, ...(dealId ? { dealId } : {}), ...(accountId ? { accountId } : {}) },
+      where: {
+        ownerId,
+        ...(dealId ? { dealId } : {}),
+        ...(accountId ? { accountId } : {}),
+      },
       include: { account: true, deal: true, person: true },
       orderBy: { occurredAt: "desc" },
       take: 100,
@@ -29,7 +34,12 @@ export async function POST(req: Request) {
     const ownerId = await requireOwnerId();
     const body = await req.json().catch(() => ({}));
     const parsed = touchpointCreateSchema.safeParse(body);
-    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    if (!parsed.success)
+      return NextResponse.json(
+        { error: parsed.error.flatten() },
+        { status: 400 },
+      );
+    await assertOwnedLinks(ownerId, parsed.data);
     const touchpoint = await db.touchpoint.create({
       data: {
         ownerId,

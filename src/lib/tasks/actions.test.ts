@@ -1,12 +1,30 @@
 import { describe, expect, it } from "vitest";
 
-import { taskPatchActionSchema, taskPatchData, taskPatchEmptyMessage, taskPatchWhere } from "./actions";
+import {
+  taskPatchActionSchema,
+  taskPatchData,
+  taskPatchEmptyMessage,
+  taskPatchWhere,
+} from "./actions";
 
 describe("task actions", () => {
+  it("clears completion time when a completed task is reopened", () => {
+    expect(
+      taskPatchData(
+        taskPatchActionSchema.parse({ id: "task-1", status: "OPEN" }),
+      ).completedAt,
+    ).toBeNull();
+  });
   it("keeps single-task handling owner scoped", () => {
-    const parsed = taskPatchActionSchema.parse({ id: "task-1", status: "DONE" });
+    const parsed = taskPatchActionSchema.parse({
+      id: "task-1",
+      status: "DONE",
+    });
 
-    expect(taskPatchWhere("owner-1", parsed)).toEqual({ ownerId: "owner-1", id: "task-1" });
+    expect(taskPatchWhere("owner-1", parsed)).toEqual({
+      ownerId: "owner-1",
+      id: "task-1",
+    });
     expect(taskPatchEmptyMessage(parsed)).toBe("Task not found");
   });
 
@@ -26,7 +44,10 @@ describe("task actions", () => {
 
   it("sets completedAt when tasks are completed", () => {
     const now = new Date("2026-06-22T10:00:00.000Z");
-    const parsed = taskPatchActionSchema.parse({ ids: ["task-1"], status: "DONE" });
+    const parsed = taskPatchActionSchema.parse({
+      ids: ["task-1"],
+      status: "DONE",
+    });
 
     expect(taskPatchData(parsed, now)).toEqual({
       status: "DONE",

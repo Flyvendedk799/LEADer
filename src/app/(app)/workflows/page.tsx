@@ -25,14 +25,29 @@ import { WorkflowActivityFeed } from "@/components/workflows/workflow-activity-f
 import { WorkflowAlertQueue } from "@/components/workflows/workflow-alert-queue";
 import { WorkflowCandidateQueue } from "@/components/workflows/workflow-candidate-queue";
 import { WorkflowDealQueue } from "@/components/workflows/workflow-deal-queue";
-import { WorkflowDiscoveryMissionQueue, type WorkflowDiscoveryMissionItem } from "@/components/workflows/workflow-discovery-mission-queue";
-import { WorkflowPresetPanel, type WorkflowPresetPanelItem } from "@/components/workflows/workflow-preset-panel";
+import {
+  WorkflowDiscoveryMissionQueue,
+  type WorkflowDiscoveryMissionItem,
+} from "@/components/workflows/workflow-discovery-mission-queue";
+import {
+  WorkflowPresetPanel,
+  type WorkflowPresetPanelItem,
+} from "@/components/workflows/workflow-preset-panel";
 import { WorkflowRunQueue } from "@/components/workflows/workflow-run-queue";
 import { WorkflowSavedSearchQueue } from "@/components/workflows/workflow-saved-search-queue";
 import { WorkflowSourceQueue } from "@/components/workflows/workflow-source-queue";
-import { WorkflowRecommendationPanel, type WorkflowRecommendationItem } from "@/components/workflows/workflow-recommendation-panel";
-import { WorkflowResearchTargetQueue, type WorkflowResearchTargetItem } from "@/components/workflows/workflow-research-target-queue";
+import {
+  WorkflowRecommendationPanel,
+  type WorkflowRecommendationItem,
+} from "@/components/workflows/workflow-recommendation-panel";
+import {
+  WorkflowResearchTargetQueue,
+  type WorkflowResearchTargetItem,
+} from "@/components/workflows/workflow-research-target-queue";
 import { WorkflowUsecaseLauncher } from "@/components/workflows/workflow-usecase-launcher";
+import { workspaceFromRoute } from "@/lib/workspace-context";
+import { taskWorkspaceWhere } from "@/lib/tasks/scope";
+import { SectionTabs } from "@/components/shared/section-tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -53,9 +68,18 @@ import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { isSourceDue } from "@/lib/ingestion";
-import { describeSavedSearchFilters, savedSearchDiscoveryPayload, savedSearchFiltersToHref } from "@/lib/saved-searches";
+import {
+  describeSavedSearchFilters,
+  savedSearchDiscoveryPayload,
+  savedSearchFiltersToHref,
+} from "@/lib/saved-searches";
 import { cn, formatBudget } from "@/lib/utils";
-import { ensureDefaultWorkflowPresets, presetToWorkflowInput, workflowPresetOptionSummary, workflowPresetScheduleSummary } from "@/lib/workflows/presets";
+import {
+  ensureDefaultWorkflowPresets,
+  presetToWorkflowInput,
+  workflowPresetOptionSummary,
+  workflowPresetScheduleSummary,
+} from "@/lib/workflows/presets";
 import { ACTIVE_WORKFLOW_RUN_STATUSES } from "@/lib/workflows/preset-runs";
 import { previewWorkflowRun } from "@/lib/workflows/preview";
 import { recoverWorkflowQueue } from "@/lib/workflows/queue";
@@ -74,8 +98,22 @@ import { workflowRunResultSummary } from "@/lib/workflows/result-summary";
 
 export const dynamic = "force-dynamic";
 
-const OPEN_DEAL_STATUSES = ["DISCOVERED", "QUALIFYING", "INTERESTING", "CONTACTED", "PROPOSAL", "NEGOTIATION"] as const;
-const AUTOMATABLE_SOURCE_TYPES = new Set(["RSS", "NEWSLETTER", "PUBLIC_WEB", "PROCUREMENT", "ACCELERATOR", "API"]);
+const OPEN_DEAL_STATUSES = [
+  "DISCOVERED",
+  "QUALIFYING",
+  "INTERESTING",
+  "CONTACTED",
+  "PROPOSAL",
+  "NEGOTIATION",
+] as const;
+const AUTOMATABLE_SOURCE_TYPES = new Set([
+  "RSS",
+  "NEWSLETTER",
+  "PUBLIC_WEB",
+  "PROCUREMENT",
+  "ACCELERATOR",
+  "API",
+]);
 const missionCandidateGateSelect = {
   title: true,
   description: true,
@@ -93,7 +131,12 @@ const missionCandidateGateSelect = {
 } satisfies Partial<Record<keyof CandidateLike, true>>;
 
 function firstQuery(value = "") {
-  return value.split("\n").map((item) => item.trim()).filter(Boolean)[0] || "Discovery mission";
+  return (
+    value
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean)[0] || "Discovery mission"
+  );
 }
 
 function visibleMissionCandidateMeta(mission: {
@@ -104,9 +147,18 @@ function visibleMissionCandidateMeta(mission: {
   warnings: string[];
   _count: { candidates: number };
 }) {
-  const visible = filterReviewableDiscoveryCandidates(mission.lane, mission.candidates);
-  const baseWarnings = discoveryMissionDisplayWarnings(mission, mission.warnings);
-  const hiddenWarning = hiddenDiscoveryCandidatesWarning(visible.removed, visible.reasons);
+  const visible = filterReviewableDiscoveryCandidates(
+    mission.lane,
+    mission.candidates,
+  );
+  const baseWarnings = discoveryMissionDisplayWarnings(
+    mission,
+    mission.warnings,
+  );
+  const hiddenWarning = hiddenDiscoveryCandidatesWarning(
+    visible.removed,
+    visible.reasons,
+  );
   return {
     candidateCount: visible.candidates.length,
     hiddenCandidateCount: visible.removed,
@@ -135,18 +187,28 @@ function alertPayload(raw: unknown) {
   const payload = raw as Record<string, unknown>;
   return {
     dealId: typeof payload.dealId === "string" ? payload.dealId : undefined,
-    opportunityId: typeof payload.opportunityId === "string" ? payload.opportunityId : undefined,
-    workspace: typeof payload.workspace === "string" ? payload.workspace : undefined,
+    opportunityId:
+      typeof payload.opportunityId === "string"
+        ? payload.opportunityId
+        : undefined,
+    workspace:
+      typeof payload.workspace === "string" ? payload.workspace : undefined,
   };
 }
 
 function alertHref(raw: unknown) {
   const payload = alertPayload(raw);
   if (payload?.dealId) return `/deals/${payload.dealId}`;
-  return payload?.opportunityId ? `/opportunities/${payload.opportunityId}` : "/workflows";
+  return payload?.opportunityId
+    ? `/opportunities/${payload.opportunityId}`
+    : "/workflows";
 }
 
-export default async function WorkflowsPage() {
+export default async function WorkflowsPage(props: {
+  searchParams: Promise<Record<string, string | string[]>>;
+}) {
+  const searchParams = await props.searchParams;
+  const workspace = workspaceFromRoute("/workflows", searchParams);
   const ownerId = await requireOwnerId();
   const now = new Date();
   const weekFromNow = new Date(now.getTime() + 7 * 86400000);
@@ -188,7 +250,7 @@ export default async function WorkflowsPage() {
       select: { id: true, slug: true, name: true, description: true },
     }),
     db.discoveryMission.findMany({
-      where: { ownerId },
+      where: { ownerId, workspace },
       include: {
         lane: true,
         candidates: { select: missionCandidateGateSelect },
@@ -198,24 +260,31 @@ export default async function WorkflowsPage() {
       take: 20,
     }),
     db.workflowRun.findMany({
-      where: { ownerId },
+      where: { ownerId, workspace },
       include: { preset: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
     db.workflowPreset.findMany({
-      where: { ownerId },
+      where: { ownerId, workspace },
       orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
       take: 8,
     }),
     db.workflowRun.findMany({
       where: {
         ownerId,
+        workspace,
         presetId: { not: null },
         status: { in: [...ACTIVE_WORKFLOW_RUN_STATUSES] },
       },
       orderBy: { createdAt: "desc" },
-      select: { id: true, presetId: true, status: true, trigger: true, createdAt: true },
+      select: {
+        id: true,
+        presetId: true,
+        status: true,
+        trigger: true,
+        createdAt: true,
+      },
     }),
     db.workflowPresetEvent.findMany({
       where: { ownerId },
@@ -232,14 +301,18 @@ export default async function WorkflowsPage() {
       },
     }),
     db.discoveryCandidate.findMany({
-      where: { ownerId, status: "NEW", pursuitScore: { gte: 70 } },
-      include: { lane: true, evidence: { take: 1, orderBy: { createdAt: "desc" } } },
+      where: { ownerId, workspace, status: "NEW", pursuitScore: { gte: 70 } },
+      include: {
+        lane: true,
+        evidence: { take: 1, orderBy: { createdAt: "desc" } },
+      },
       orderBy: [{ pursuitScore: "desc" }, { createdAt: "desc" }],
       take: 24,
     }),
     db.account.findMany({
       where: {
         ownerId,
+        workspace,
         deals: { some: { status: { in: [...OPEN_DEAL_STATUSES] } } },
       },
       include: {
@@ -268,6 +341,7 @@ export default async function WorkflowsPage() {
     db.workflowRun.findMany({
       where: {
         ownerId,
+        workspace,
         playbook: "research-brief",
         status: { in: [...ACTIVE_WORKFLOW_RUN_STATUSES] },
         finishedAt: null,
@@ -277,36 +351,56 @@ export default async function WorkflowsPage() {
       take: 50,
     }),
     db.task.findMany({
-      where: { ownerId, status: "OPEN", dueAt: { lt: now } },
+      where: {
+        ownerId,
+        ...taskWorkspaceWhere(workspace),
+        status: "OPEN",
+        dueAt: { lt: now },
+      },
       include: { deal: { include: { account: true } }, account: true },
       orderBy: [{ priority: "desc" }, { dueAt: "asc" }],
       take: 8,
     }),
     db.task.findMany({
-      where: { ownerId, status: "OPEN", dueAt: { gte: now, lte: weekFromNow } },
+      where: {
+        ownerId,
+        ...taskWorkspaceWhere(workspace),
+        status: "OPEN",
+        dueAt: { gte: now, lte: weekFromNow },
+      },
       include: { deal: { include: { account: true } }, account: true },
       orderBy: [{ dueAt: "asc" }, { priority: "desc" }],
       take: 8,
     }),
     db.deal.findMany({
-      where: { ownerId, status: { in: [...OPEN_DEAL_STATUSES] }, updatedAt: { lt: staleCutoff } },
+      where: {
+        ownerId,
+        workspace,
+        status: { in: [...OPEN_DEAL_STATUSES] },
+        updatedAt: { lt: staleCutoff },
+      },
       include: { account: true, lane: true },
       orderBy: { updatedAt: "asc" },
       take: 8,
     }),
     db.deal.findMany({
-      where: { ownerId, status: { in: [...OPEN_DEAL_STATUSES] }, deadline: { gte: now } },
+      where: {
+        ownerId,
+        workspace,
+        status: { in: [...OPEN_DEAL_STATUSES] },
+        deadline: { gte: now },
+      },
       include: { account: true, lane: true },
       orderBy: { deadline: "asc" },
       take: 8,
     }),
     db.source.findMany({
-      where: { ownerId, enabled: true },
+      where: { ownerId, workspace, enabled: true },
       orderBy: [{ lastCheckedAt: "asc" }, { createdAt: "desc" }],
       take: 10,
     }),
     db.source.findMany({
-      where: { ownerId, enabled: true },
+      where: { ownerId, workspace, enabled: true },
       select: { id: true, type: true, frequency: true, lastCheckedAt: true },
     }),
     db.savedSearch.findMany({
@@ -347,110 +441,126 @@ export default async function WorkflowsPage() {
     }),
     db.deal.groupBy({
       by: ["status"],
-      where: { ownerId },
+      where: { ownerId, workspace },
       _count: { _all: true },
     }),
     db.deal.aggregate({
-      where: { ownerId, status: { in: [...OPEN_DEAL_STATUSES] } },
+      where: { ownerId, workspace, status: { in: [...OPEN_DEAL_STATUSES] } },
       _sum: { valueMax: true, valueMin: true },
     }),
   ]);
 
-  const runningMissions = missions.filter((mission) => mission.status === "QUEUED" || mission.status === "RUNNING");
-  const runningWorkflowRuns = workflowRuns.filter((run) => run.status === "QUEUED" || run.status === "RUNNING");
+  const runningMissions = missions.filter(
+    (mission) => mission.status === "QUEUED" || mission.status === "RUNNING",
+  );
+  const runningWorkflowRuns = workflowRuns.filter(
+    (run) => run.status === "QUEUED" || run.status === "RUNNING",
+  );
   const openTaskCount = overdueTasks.length + dueTasks.length;
-  const openPipelineValue = pipelineValue._sum.valueMax ?? pipelineValue._sum.valueMin ?? 0;
+  const openPipelineValue =
+    pipelineValue._sum.valueMax ?? pipelineValue._sum.valueMin ?? 0;
   const dueSourceCount = sourceSchedules.filter(
-    (source) => AUTOMATABLE_SOURCE_TYPES.has(source.type) && isSourceDue(source, now),
+    (source) =>
+      AUTOMATABLE_SOURCE_TYPES.has(source.type) && isSourceDue(source, now),
   ).length;
-  const hotCandidates = filterVisibleLaneCandidates(hotCandidatesRaw).slice(0, 8);
-  const contactResearchTargets: WorkflowResearchTargetItem[] = contactGapAccounts
-    .flatMap((account) => {
-      const reachablePeopleCount = countReachablePeople(account.people);
-      const openDealCount = account.deals.length;
-      const latestDeal = account.deals[0] ?? null;
-      const targets: WorkflowResearchTargetItem[] = [];
+  const hotCandidates = filterVisibleLaneCandidates(hotCandidatesRaw).slice(
+    0,
+    8,
+  );
+  const contactResearchTargets: WorkflowResearchTargetItem[] =
+    contactGapAccounts
+      .flatMap((account) => {
+        const reachablePeopleCount = countReachablePeople(account.people);
+        const openDealCount = account.deals.length;
+        const latestDeal = account.deals[0] ?? null;
+        const targets: WorkflowResearchTargetItem[] = [];
 
-      if (needsContactResearch({ people: account.people, openDealCount })) {
-        const stats = {
-          peopleCount: account.people.length,
-          reachablePeopleCount,
-          openDealCount,
-          latestDealTitle: latestDeal?.title ?? null,
-        };
-        const activeRun = findActiveResearchBriefRun(activeResearchBriefRuns, {
-          accountId: account.id,
-          dealId: latestDeal?.id ?? null,
-          subjectType: "company",
-          objective: "find-contact",
-          workspace: account.workspace,
-        });
-        targets.push({
-          id: `account:${account.id}`,
-          kind: "account",
-          accountId: account.id,
-          personId: null,
-          name: account.name,
-          subject: account.name,
-          subjectType: "company",
-          workspace: account.workspace,
-          type: account.type,
-          peopleCount: stats.peopleCount,
-          reachablePeopleCount,
-          openDealCount,
-          latestDealId: latestDeal?.id ?? null,
-          latestDealTitle: latestDeal?.title ?? null,
-          reason: contactResearchReason(stats),
-          activeRunId: activeRun?.id ?? null,
-          activeRunStatus: activeRun?.status ?? null,
-        });
-      }
+        if (needsContactResearch({ people: account.people, openDealCount })) {
+          const stats = {
+            peopleCount: account.people.length,
+            reachablePeopleCount,
+            openDealCount,
+            latestDealTitle: latestDeal?.title ?? null,
+          };
+          const activeRun = findActiveResearchBriefRun(
+            activeResearchBriefRuns,
+            {
+              accountId: account.id,
+              dealId: latestDeal?.id ?? null,
+              subjectType: "company",
+              objective: "find-contact",
+              workspace: account.workspace,
+            },
+          );
+          targets.push({
+            id: `account:${account.id}`,
+            kind: "account",
+            accountId: account.id,
+            personId: null,
+            name: account.name,
+            subject: account.name,
+            subjectType: "company",
+            workspace: account.workspace,
+            type: account.type,
+            peopleCount: stats.peopleCount,
+            reachablePeopleCount,
+            openDealCount,
+            latestDealId: latestDeal?.id ?? null,
+            latestDealTitle: latestDeal?.title ?? null,
+            reason: contactResearchReason(stats),
+            activeRunId: activeRun?.id ?? null,
+            activeRunStatus: activeRun?.status ?? null,
+          });
+        }
 
-      for (const person of account.people) {
-        if (!needsPersonContactResearch({ person, openDealCount })) continue;
-        const subject = personResearchSubject({
-          personName: person.name,
-          personRole: person.role,
-          accountName: account.name,
-        });
-        const activeRun = findActiveResearchBriefRun(activeResearchBriefRuns, {
-          accountId: account.id,
-          personId: person.id,
-          dealId: latestDeal?.id ?? null,
-          subject,
-          subjectType: "person",
-          objective: "find-contact",
-          workspace: account.workspace,
-        });
-        targets.push({
-          id: `person:${person.id}`,
-          kind: "person",
-          accountId: account.id,
-          personId: person.id,
-          name: person.name ?? account.name,
-          subject,
-          subjectType: "person",
-          workspace: account.workspace,
-          type: person.role ?? "Person",
-          peopleCount: account.people.length,
-          reachablePeopleCount,
-          openDealCount,
-          latestDealId: latestDeal?.id ?? null,
-          latestDealTitle: latestDeal?.title ?? null,
-          reason: personContactResearchReason({
+        for (const person of account.people) {
+          if (!needsPersonContactResearch({ person, openDealCount })) continue;
+          const subject = personResearchSubject({
             personName: person.name,
             personRole: person.role,
             accountName: account.name,
+          });
+          const activeRun = findActiveResearchBriefRun(
+            activeResearchBriefRuns,
+            {
+              accountId: account.id,
+              personId: person.id,
+              dealId: latestDeal?.id ?? null,
+              subject,
+              subjectType: "person",
+              objective: "find-contact",
+              workspace: account.workspace,
+            },
+          );
+          targets.push({
+            id: `person:${person.id}`,
+            kind: "person",
+            accountId: account.id,
+            personId: person.id,
+            name: person.name ?? account.name,
+            subject,
+            subjectType: "person",
+            workspace: account.workspace,
+            type: person.role ?? "Person",
+            peopleCount: account.people.length,
+            reachablePeopleCount,
+            openDealCount,
+            latestDealId: latestDeal?.id ?? null,
             latestDealTitle: latestDeal?.title ?? null,
-          }),
-          activeRunId: activeRun?.id ?? null,
-          activeRunStatus: activeRun?.status ?? null,
-        });
-      }
+            reason: personContactResearchReason({
+              personName: person.name,
+              personRole: person.role,
+              accountName: account.name,
+              latestDealTitle: latestDeal?.title ?? null,
+            }),
+            activeRunId: activeRun?.id ?? null,
+            activeRunStatus: activeRun?.status ?? null,
+          });
+        }
 
-      return targets;
-    })
-    .slice(0, 6);
+        return targets;
+      })
+      .slice(0, 6);
   const actionTasks = [...overdueTasks, ...dueTasks].map((task) => ({
     id: task.id,
     title: task.title,
@@ -476,13 +586,16 @@ export default async function WorkflowsPage() {
     });
     const researchSubject = researchDefaults.subject;
     const researchSubjectType = researchDefaults.subjectType;
-    const activeResearchRun = findActiveResearchBriefRun(activeResearchBriefRuns, {
-      candidateId: candidate.id,
-      subject: researchSubject,
-      subjectType: researchSubjectType,
-      objective: researchDefaults.objective,
-      workspace: candidate.workspace,
-    });
+    const activeResearchRun = findActiveResearchBriefRun(
+      activeResearchBriefRuns,
+      {
+        candidateId: candidate.id,
+        subject: researchSubject,
+        subjectType: researchSubjectType,
+        objective: researchDefaults.objective,
+        workspace: candidate.workspace,
+      },
+    );
     return {
       id: candidate.id,
       title: candidate.title,
@@ -524,7 +637,10 @@ export default async function WorkflowsPage() {
     automatable: AUTOMATABLE_SOURCE_TYPES.has(source.type),
     due: AUTOMATABLE_SOURCE_TYPES.has(source.type) && isSourceDue(source, now),
   }));
-  const defaultLaneId = lanes.find((lane) => lane.slug === "sme-ai-automation")?.id ?? lanes[0]?.id ?? null;
+  const defaultLaneId =
+    lanes.find((lane) => lane.slug === "sme-ai-automation")?.id ??
+    lanes[0]?.id ??
+    null;
   const savedSearchItems = savedSearches.map((search) => ({
     id: search.id,
     name: search.name,
@@ -532,7 +648,10 @@ export default async function WorkflowsPage() {
     summary: describeSavedSearchFilters(search.filters),
     createdAt: search.createdAt.toISOString(),
     discoveryPayload: defaultLaneId
-      ? savedSearchDiscoveryPayload(search.filters, { laneId: defaultLaneId, name: search.name })
+      ? savedSearchDiscoveryPayload(search.filters, {
+          laneId: defaultLaneId,
+          name: search.name,
+        })
       : null,
   }));
   const alertItems = unreadAlerts.map((alert) => ({
@@ -566,26 +685,29 @@ export default async function WorkflowsPage() {
       presetName: run.preset?.name ?? null,
     };
   });
-  const discoveryMissionItems: WorkflowDiscoveryMissionItem[] = missions.map((mission) => {
-    const visible = visibleMissionCandidateMeta(mission);
-    return {
-      id: mission.id,
-      status: mission.status,
-      provider: discoveryMissionProviderLabel(mission),
-      startedAt: mission.startedAt.toISOString(),
-      finishedAt: mission.finishedAt?.toISOString() ?? null,
-      query: mission.query,
-      laneName: mission.lane.name,
-      warnings: visible.warnings,
-      log: mission.log,
-      candidateCount: visible.candidateCount,
-      hiddenCandidateCount: visible.hiddenCandidateCount,
-    };
-  });
+  const discoveryMissionItems: WorkflowDiscoveryMissionItem[] = missions.map(
+    (mission) => {
+      const visible = visibleMissionCandidateMeta(mission);
+      return {
+        id: mission.id,
+        status: mission.status,
+        provider: discoveryMissionProviderLabel(mission),
+        startedAt: mission.startedAt.toISOString(),
+        finishedAt: mission.finishedAt?.toISOString() ?? null,
+        query: mission.query,
+        laneName: mission.lane.name,
+        warnings: visible.warnings,
+        log: mission.log,
+        candidateCount: visible.candidateCount,
+        hiddenCandidateCount: visible.hiddenCandidateCount,
+      };
+    },
+  );
   const workflowPresetItems: WorkflowPresetPanelItem[] = await Promise.all(
     workflowPresets.map(async (preset) => {
       const input = presetToWorkflowInput(preset);
-      const activeRun = activePresetRuns.find((run) => run.presetId === preset.id) ?? null;
+      const activeRun =
+        activePresetRuns.find((run) => run.presetId === preset.id) ?? null;
       const recentEvents = workflowPresetEvents
         .filter((event) => event.presetId === preset.id)
         .slice(0, 3)
@@ -711,7 +833,10 @@ export default async function WorkflowsPage() {
       },
     });
   }
-  const visibleWorkflowRecommendations = filterWorkflowRecommendations(workflowRecommendations, runningWorkflowRuns);
+  const visibleWorkflowRecommendations = filterWorkflowRecommendations(
+    workflowRecommendations,
+    runningWorkflowRuns,
+  );
   const workflowActivityItems = [
     ...workflowRuns.map((run) => ({
       id: `workflow-run-${run.id}`,
@@ -719,10 +844,14 @@ export default async function WorkflowsPage() {
       title: `${run.playbook.replace(/-/g, " ")} playbook`,
       description: run.preset?.name
         ? `${run.trigger}: ${run.preset.name}`
-        : run.log.at(-1) ?? null,
+        : (run.log.at(-1) ?? null),
       status: run.status,
       href: `/workflows/runs/${run.id}`,
-      createdAt: (run.finishedAt ?? run.startedAt ?? run.createdAt).toISOString(),
+      createdAt: (
+        run.finishedAt ??
+        run.startedAt ??
+        run.createdAt
+      ).toISOString(),
     })),
     ...missions.map((mission) => ({
       id: `mission-${mission.id}`,
@@ -737,7 +866,9 @@ export default async function WorkflowsPage() {
       id: `source-run-${run.id}`,
       kind: "source" as const,
       title: run.source?.name ? `Source run: ${run.source.name}` : "Source run",
-      description: run.log ?? `Found ${run.foundCount} - ${run.newCount} new - ${run.updatedCount} updated`,
+      description:
+        run.log ??
+        `Found ${run.foundCount} - ${run.newCount} new - ${run.updatedCount} updated`,
       status: run.status,
       href: "/sources",
       createdAt: (run.finishedAt ?? run.startedAt).toISOString(),
@@ -757,7 +888,11 @@ export default async function WorkflowsPage() {
       title: asset.title ?? `${asset.kind.toLowerCase()} asset`,
       description: asset.deal?.title ?? asset.account?.name ?? null,
       status: asset.kind,
-      href: asset.deal?.id ? `/deals/${asset.deal.id}` : asset.account?.id ? `/accounts/${asset.account.id}` : "/deals",
+      href: asset.deal?.id
+        ? `/deals/${asset.deal.id}`
+        : asset.account?.id
+          ? `/accounts/${asset.account.id}`
+          : "/deals",
       createdAt: asset.createdAt.toISOString(),
     })),
     ...recentOpportunityActivities.map((activity) => ({
@@ -770,226 +905,223 @@ export default async function WorkflowsPage() {
       createdAt: activity.createdAt.toISOString(),
     })),
   ]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )
     .slice(0, 12);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Workflow command"
-        description="Mission control for acquisition work: running searches, queues, stale deals, next actions, and source coverage."
-      >
-        <Button asChild>
-          <Link href="/discover">
-            <PlayCircle className="h-4 w-4" />
-            Queue discovery
-          </Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href="/deals">
-            <BriefcaseBusiness className="h-4 w-4" />
-            Pipeline
-          </Link>
-        </Button>
-      </PageHeader>
-
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <ControlMetric label="Running" value={runningMissions.length + runningWorkflowRuns.length} icon={<Radar />} tone="primary" />
-        <ControlMetric label="Hot candidates" value={hotCandidates.length} icon={<Target />} tone="warning" />
-        <ControlMetric label="Contact gaps" value={contactResearchTargets.length} icon={<Search />} tone="warning" />
-        <ControlMetric label="Due actions" value={openTaskCount} icon={<CalendarClock />} tone="warning" />
-        <ControlMetric label="Stale deals" value={staleDeals.length} icon={<TimerReset />} tone="default" />
-        <ControlMetric label="Open value" value={formatBudget(null, openPipelineValue, "DKK")} icon={<BriefcaseBusiness />} tone="success" />
-      </section>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Sparkles className="h-4 w-4 text-primary" />
-            Recommended moves
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <WorkflowRecommendationPanel recommendations={visibleWorkflowRecommendations.slice(0, 4)} />
-        </CardContent>
-      </Card>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Radar className="h-4 w-4 text-primary" />
-                Discovery runs
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkflowDiscoveryMissionQueue missions={discoveryMissionItems} queue={discoveryQueue} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Compass className="h-4 w-4 text-primary" />
-                Playbook runs
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkflowRunQueue runs={workflowRunItems} queue={workflowQueue} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Target className="h-4 w-4 text-warning" />
-                Hot candidate triage
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkflowCandidateQueue candidates={candidateItems} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <CalendarClock className="h-4 w-4 text-warning" />
-                Action queue
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkflowActionQueue tasks={actionTasks} nowIso={now.toISOString()} />
-            </CardContent>
-          </Card>
-        </div>
-
-        <aside className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Search className="h-4 w-4 text-primary" />
-                Contact research
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkflowResearchTargetQueue targets={contactResearchTargets} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <TimerReset className="h-4 w-4 text-primary" />
-                Stale deals
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkflowDealQueue deals={staleDeals.map(workflowDeal)} mode="stale" />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Clock3 className="h-4 w-4 text-primary" />
-                Deadline watch
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkflowDealQueue deals={upcomingDeadlines.map(workflowDeal)} mode="deadline" />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Database className="h-4 w-4 text-primary" />
-                Source coverage
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkflowSourceQueue sources={sourceItems} dueCount={dueSourceCount} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Search className="h-4 w-4 text-primary" />
-                Saved searches
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkflowSavedSearchQueue searches={savedSearchItems} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Bell className="h-4 w-4 text-primary" />
-                Alerts
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkflowAlertQueue alerts={alertItems} />
-            </CardContent>
-          </Card>
-        </aside>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Compass className="h-4 w-4 text-primary" />
-              Operating modes
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <WorkflowPresetPanel presets={workflowPresetItems} />
-            <WorkflowUsecaseLauncher lanes={laneItems} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <CheckCircle2 className="h-4 w-4 text-success" />
-              Pipeline distribution
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {statusGroups.map((group) => {
-              const meta = DEAL_STATUS_META[group.status];
-              return (
-                <div key={group.status} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
-                    <span className="truncate">{meta.label}</span>
-                  </span>
-                  <span className="tnum text-muted-foreground">{group._count._all}</span>
-                </div>
-              );
-            })}
-            {statusGroups.length === 0 ? <EmptyLine>No deals yet.</EmptyLine> : null}
-          </CardContent>
-        </Card>
-      </section>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Activity className="h-4 w-4 text-primary" />
-            Recent workflow activity
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <WorkflowActivityFeed items={workflowActivityItems} />
-        </CardContent>
-      </Card>
+        title="Automations"
+        description={`Put repeatable work on a schedule. Start workflows and review results for ${workspace === "DK" ? "Denmark" : "International"}.`}
+      />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <ControlMetric
+          label="Running"
+          value={runningMissions.length + runningWorkflowRuns.length}
+          icon={<Radar />}
+          tone="primary"
+        />
+        <ControlMetric
+          label="Due actions"
+          value={openTaskCount}
+          icon={<CalendarClock />}
+          tone="warning"
+        />
+        <ControlMetric
+          label="Stale deals"
+          value={staleDeals.length}
+          icon={<TimerReset />}
+          tone="default"
+        />
+      </div>
+      <SectionTabs
+        sections={[
+          {
+            id: "launch",
+            label: "Start & schedule",
+            content: (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Suggested next steps
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowRecommendationPanel
+                      recommendations={visibleWorkflowRecommendations.slice(
+                        0,
+                        4,
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Saved workflows & schedules
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowPresetPanel presets={workflowPresetItems} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Choose a workflow
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowUsecaseLauncher lanes={laneItems} />
+                  </CardContent>
+                </Card>
+              </>
+            ),
+          },
+          {
+            id: "runs",
+            label: "Runs & history",
+            content: (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Discovery runs</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowDiscoveryMissionQueue
+                      missions={discoveryMissionItems}
+                      queue={discoveryQueue}
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Workflow runs</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowRunQueue
+                      runs={workflowRunItems}
+                      queue={workflowQueue}
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Recent activity</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowActivityFeed items={workflowActivityItems} />
+                  </CardContent>
+                </Card>
+              </>
+            ),
+          },
+          {
+            id: "attention",
+            label: "Needs attention",
+            content: (
+              <div className="grid gap-5 lg:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Candidate review
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowCandidateQueue candidates={candidateItems} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Action queue</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowActionQueue
+                      tasks={actionTasks}
+                      nowIso={now.toISOString()}
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Stale deals</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowDealQueue
+                      deals={staleDeals.map(workflowDeal)}
+                      mode="stale"
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Upcoming deadlines
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowDealQueue
+                      deals={upcomingDeadlines.map(workflowDeal)}
+                      mode="deadline"
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Contact research
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowResearchTargetQueue
+                      targets={contactResearchTargets}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            ),
+          },
+          {
+            id: "resources",
+            label: "Sources & alerts",
+            content: (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Source coverage</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowSourceQueue
+                      sources={sourceItems}
+                      dueCount={dueSourceCount}
+                    />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Saved searches</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowSavedSearchQueue searches={savedSearchItems} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Alerts</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <WorkflowAlertQueue alerts={alertItems} />
+                  </CardContent>
+                </Card>
+              </>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
@@ -1015,10 +1147,17 @@ function ControlMetric({
     <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            {label}
+          </p>
           <p className="mt-2 text-2xl font-semibold tracking-normal">{value}</p>
         </div>
-        <div className={cn("flex h-10 w-10 items-center justify-center rounded-md", toneClass)}>
+        <div
+          className={cn(
+            "flex h-10 w-10 items-center justify-center rounded-md",
+            toneClass,
+          )}
+        >
           {icon}
         </div>
       </div>
@@ -1027,5 +1166,7 @@ function ControlMetric({
 }
 
 function EmptyLine({ children }: { children: ReactNode }) {
-  return <p className="py-4 text-center text-sm text-muted-foreground">{children}</p>;
+  return (
+    <p className="py-4 text-center text-sm text-muted-foreground">{children}</p>
+  );
 }

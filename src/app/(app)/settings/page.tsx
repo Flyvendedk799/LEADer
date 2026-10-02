@@ -29,17 +29,19 @@ const SETTINGS_TABS = [
 ] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
-export default async function SettingsPage({
-  searchParams,
-}: {
-  searchParams?: { tab?: string };
+export default async function SettingsPage(props: {
+  searchParams?: Promise<{ tab?: string }>;
 }) {
+  const searchParams = await props.searchParams;
   const user = await getCurrentUser();
 
   if (!user) {
     return (
       <div className="max-w-3xl">
-        <PageHeader title="Settings" description="Profile, scoring, and export preferences." />
+        <PageHeader
+          title="Settings"
+          description="Profile, scoring, and export preferences."
+        />
         <EmptyState
           icon={SettingsIcon}
           title="No user found"
@@ -50,10 +52,13 @@ export default async function SettingsPage({
   }
 
   // Prisma JSON blobs → typed shapes (see lib/types.ts).
-  const weights = (user.scoringWeights as ScoreWeights | null) ?? DEFAULT_WEIGHTS;
+  const weights =
+    (user.scoringWeights as ScoreWeights | null) ?? DEFAULT_WEIGHTS;
   const exportPrefs = (user.exportPrefs as ExportPreferences | null) ?? null;
   const aiKeys: PublicAiKeys = publicAiKeys(user.aiKeys);
-  const defaultTab: SettingsTab = SETTINGS_TABS.includes(searchParams?.tab as SettingsTab)
+  const defaultTab: SettingsTab = SETTINGS_TABS.includes(
+    searchParams?.tab as SettingsTab,
+  )
     ? (searchParams?.tab as SettingsTab)
     : "profile";
 
@@ -93,15 +98,21 @@ export default async function SettingsPage({
               <div className="grid gap-3 text-sm sm:grid-cols-3">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Building2 className="h-4 w-4" />
-                  <span className="tnum">{formatBudget(undefined, 100000, "DKK")}</span>
+                  <span className="tnum">
+                    {formatBudget(undefined, 100000, "DKK")}
+                  </span>
                 </div>
-                <div className="text-muted-foreground">Active opportunities</div>
-                <div className="text-muted-foreground">Direct application route</div>
+                <div className="text-muted-foreground">
+                  Active opportunities
+                </div>
+                <div className="text-muted-foreground">
+                  Direct application route
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                These defaults bias discovery and scoring toward small (&lt; 100k DKK),
-                active, directly-applicable AI / fullstack / MVP / startup work. Edit the
-                fields below to personalise them.
+                These defaults bias discovery and scoring toward small (&lt;
+                100k DKK), active, directly-applicable AI / fullstack / MVP /
+                startup work. Edit the fields below to personalise them.
               </p>
             </CardContent>
           </Card>
@@ -135,12 +146,14 @@ export default async function SettingsPage({
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-muted-foreground">
               <p>
-                Public source fetches use a simple HTTP download. Same-host pages are capped by
-                CRAWLER_MAX_PAGES_PER_RUN, and robots.txt is cached on the source.
+                Public source fetches use a simple HTTP download. Same-host
+                pages are capped by CRAWLER_MAX_PAGES_PER_RUN, and robots.txt is
+                cached on the source.
               </p>
               <p>
-                Set CRAWLER_ENABLE_PLAYWRIGHT=1 only on a local or self-hosted machine. That renders
-                one JavaScript page with Playwright. Scheduled runs on Vercel stay on the HTTP fetch.
+                Set CRAWLER_ENABLE_PLAYWRIGHT=1 only on a local or self-hosted
+                machine. That renders one JavaScript page with Playwright.
+                Scheduled runs on Vercel stay on the HTTP fetch.
               </p>
             </CardContent>
           </Card>

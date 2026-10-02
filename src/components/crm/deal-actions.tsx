@@ -18,7 +18,11 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
-import { DEAL_STATUSES, type DealStatus, type TouchpointKind } from "@/lib/types";
+import {
+  DEAL_STATUSES,
+  type DealStatus,
+  type TouchpointKind,
+} from "@/lib/types";
 
 async function postJson(url: string, body: unknown) {
   const res = await fetch(url, {
@@ -28,7 +32,8 @@ async function postJson(url: string, body: unknown) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const message = typeof data?.error === "string" ? data.error : "Request failed";
+    const message =
+      typeof data?.error === "string" ? data.error : "Request failed";
     throw new Error(message);
   }
   return data;
@@ -70,7 +75,10 @@ export function DealActions({
       router.refresh();
     } catch (err) {
       setCurrent(previous);
-      toast.error("Couldn't update status", err instanceof Error ? err.message : "Try again");
+      toast.error(
+        "Couldn't update status",
+        err instanceof Error ? err.message : "Try again",
+      );
     } finally {
       setBusy(null);
     }
@@ -85,14 +93,19 @@ export function DealActions({
         dealId,
         accountId: accountId ?? undefined,
         title: taskTitle.trim(),
-        dueAt: taskDue ? `${taskDue}T23:59:59` : undefined,
+        dueAt: taskDue
+          ? new Date(`${taskDue}T17:00:00`).toISOString()
+          : undefined,
       });
       setTaskTitle("");
       setTaskDue("");
       toast.success("Task added");
       router.refresh();
     } catch (err) {
-      toast.error("Couldn't add task", err instanceof Error ? err.message : "Try again");
+      toast.error(
+        "Couldn't add task",
+        err instanceof Error ? err.message : "Try again",
+      );
     } finally {
       setBusy(null);
     }
@@ -114,7 +127,10 @@ export function DealActions({
       toast.success("Person added");
       router.refresh();
     } catch (err) {
-      toast.error("Couldn't add person", err instanceof Error ? err.message : "Try again");
+      toast.error(
+        "Couldn't add person",
+        err instanceof Error ? err.message : "Try again",
+      );
     } finally {
       setBusy(null);
     }
@@ -135,7 +151,10 @@ export function DealActions({
       toast.success("Touchpoint logged");
       router.refresh();
     } catch (err) {
-      toast.error("Couldn't log touchpoint", err instanceof Error ? err.message : "Try again");
+      toast.error(
+        "Couldn't log touchpoint",
+        err instanceof Error ? err.message : "Try again",
+      );
     } finally {
       setBusy(null);
     }
@@ -144,13 +163,23 @@ export function DealActions({
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-sm">Status</CardTitle></CardHeader>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Status</CardTitle>
+        </CardHeader>
         <CardContent>
-          <Select value={current} onValueChange={(value) => changeStatus(value as DealStatus)} disabled={busy === "status"}>
-            <SelectTrigger aria-label="Deal status"><SelectValue /></SelectTrigger>
+          <Select
+            value={current}
+            onValueChange={(value) => changeStatus(value as DealStatus)}
+            disabled={busy !== null}
+          >
+            <SelectTrigger aria-label="Deal status">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               {DEAL_STATUSES.map((value) => (
-                <SelectItem key={value} value={value}>{DEAL_STATUS_META[value].label}</SelectItem>
+                <SelectItem key={value} value={value}>
+                  {DEAL_STATUS_META[value].label}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -158,12 +187,28 @@ export function DealActions({
       </Card>
 
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-sm">Add task</CardTitle></CardHeader>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Add task</CardTitle>
+        </CardHeader>
         <CardContent>
           <form onSubmit={addTask} className="space-y-2">
-            <Input value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Next step" />
-            <Input type="date" value={taskDue} onChange={(e) => setTaskDue(e.target.value)} aria-label="Task due date" />
-            <Button type="submit" size="sm" disabled={busy === "task" || !taskTitle.trim()}>
+            <Input
+              value={taskTitle}
+              onChange={(e) => setTaskTitle(e.target.value)}
+              aria-label="Follow-up task title"
+              placeholder="Next step"
+            />
+            <Input
+              type="date"
+              value={taskDue}
+              onChange={(e) => setTaskDue(e.target.value)}
+              aria-label="Task due date"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={busy !== null || !taskTitle.trim()}
+            >
               {busy === "task" && <Loader2 className="h-4 w-4 animate-spin" />}
               Save task
             </Button>
@@ -172,13 +217,34 @@ export function DealActions({
       </Card>
 
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-sm">Add person</CardTitle></CardHeader>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Add person</CardTitle>
+        </CardHeader>
         <CardContent>
           <form onSubmit={addPerson} className="space-y-2">
-            <Input value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="Name" />
-            <Input type="email" value={personEmail} onChange={(e) => setPersonEmail(e.target.value)} placeholder="Email" />
-            <Button type="submit" size="sm" disabled={busy === "person" || (!personName.trim() && !personEmail.trim())}>
-              {busy === "person" && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Input
+              value={personName}
+              onChange={(e) => setPersonName(e.target.value)}
+              aria-label="Contact name"
+              placeholder="Name"
+            />
+            <Input
+              type="email"
+              value={personEmail}
+              onChange={(e) => setPersonEmail(e.target.value)}
+              aria-label="Contact email"
+              placeholder="Email"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={
+                busy !== null || (!personName.trim() && !personEmail.trim())
+              }
+            >
+              {busy === "person" && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
               Save person
             </Button>
           </form>
@@ -186,22 +252,51 @@ export function DealActions({
       </Card>
 
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-sm">Log touchpoint</CardTitle></CardHeader>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Log activity</CardTitle>
+        </CardHeader>
         <CardContent>
           <form onSubmit={addTouchpoint} className="space-y-2">
-            <Select value={touchKind} onValueChange={(value) => setTouchKind(value as TouchpointKind)}>
-              <SelectTrigger aria-label="Touchpoint kind"><SelectValue /></SelectTrigger>
+            <Select
+              value={touchKind}
+              onValueChange={(value) => setTouchKind(value as TouchpointKind)}
+            >
+              <SelectTrigger aria-label="Touchpoint kind">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
-                {(["CALL", "EMAIL", "MEETING", "NOTE", "MESSAGE", "OTHER"] as TouchpointKind[]).map((kind) => (
-                  <SelectItem key={kind} value={kind}>{kind.charAt(0) + kind.slice(1).toLowerCase()}</SelectItem>
+                {(
+                  [
+                    "CALL",
+                    "EMAIL",
+                    "MEETING",
+                    "NOTE",
+                    "MESSAGE",
+                    "OTHER",
+                  ] as TouchpointKind[]
+                ).map((kind) => (
+                  <SelectItem key={kind} value={kind}>
+                    {kind.charAt(0) + kind.slice(1).toLowerCase()}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Label className="sr-only" htmlFor="touch-summary">Summary</Label>
-            <Textarea id="touch-summary" value={touchSummary} onChange={(e) => setTouchSummary(e.target.value)} placeholder="What happened?" />
-            <Button type="submit" size="sm" disabled={busy === "touch" || !touchSummary.trim()}>
+            <Label className="sr-only" htmlFor="touch-summary">
+              Summary
+            </Label>
+            <Textarea
+              id="touch-summary"
+              value={touchSummary}
+              onChange={(e) => setTouchSummary(e.target.value)}
+              placeholder="What happened?"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={busy !== null || !touchSummary.trim()}
+            >
               {busy === "touch" && <Loader2 className="h-4 w-4 animate-spin" />}
-              Save touchpoint
+              Save activity
             </Button>
           </form>
         </CardContent>

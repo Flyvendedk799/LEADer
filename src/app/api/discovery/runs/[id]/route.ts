@@ -12,10 +12,15 @@ import { visibleDiscoveryQueueSnapshotForOwner } from "@/lib/crm/discovery-queue
 import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import { db } from "@/lib/db";
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(
+  req: Request,
+  props: { params: Promise<{ id: string }> },
+) {
+  const params = await props.params;
   try {
     const ownerId = await requireOwnerId();
-    const includeHidden = new URL(req.url).searchParams.get("includeHidden") === "1";
+    const includeHidden =
+      new URL(req.url).searchParams.get("includeHidden") === "1";
     await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
     const mission = await db.discoveryMission.findFirst({
       where: { id: params.id, ownerId },
@@ -27,10 +32,20 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         },
       },
     });
-    if (!mission) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const visible = splitReviewableDiscoveryCandidates(mission.lane, mission.candidates);
-    const baseWarnings = discoveryMissionDisplayWarnings(mission, mission.warnings);
-    const hiddenWarning = hiddenDiscoveryCandidatesWarning(visible.removed, visible.reasons);
+    if (!mission)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const visible = splitReviewableDiscoveryCandidates(
+      mission.lane,
+      mission.candidates,
+    );
+    const baseWarnings = discoveryMissionDisplayWarnings(
+      mission,
+      mission.warnings,
+    );
+    const hiddenWarning = hiddenDiscoveryCandidatesWarning(
+      visible.removed,
+      visible.reasons,
+    );
     const filteredMission = {
       ...mission,
       provider: discoveryMissionProviderLabel(mission),

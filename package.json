@@ -2,14 +2,13 @@
   "name": "leader",
   "version": "0.1.0",
   "private": true,
-  "description": "LEADer — personal lead-intelligence platform for funded startup work, voucher assignments and tender-like opportunities (Denmark-first, global-ready).",
+  "description": "LEADer \u2014 personal lead-intelligence platform for funded startup work, voucher assignments and tender-like opportunities (Denmark-first, global-ready).",
   "scripts": {
     "dev": "next dev",
     "prebuild": "prisma generate",
     "build": "next build",
-    "pretypecheck": "prisma generate",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -22,7 +21,8 @@
     "db:studio": "prisma studio",
     "discover": "tsx scripts/run-discovery.ts",
     "embeddings:backfill": "tsx scripts/backfill-embeddings.ts",
-    "setup": "prisma generate && prisma db push && tsx prisma/seed.ts"
+    "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
+    "db:local": "node scripts/local-db.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -49,11 +49,11 @@
     "date-fns": "^4.1.0",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.454.0",
-    "next": "14.2.18",
+    "next": "^15.5.27",
     "next-themes": "^0.4.3",
     "pdf-lib": "^1.17.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "recharts": "^2.13.3",
     "rss-parser": "^3.13.0",
     "tailwind-merge": "^2.5.4",
@@ -63,21 +63,31 @@
   "devDependencies": {
     "@playwright/test": "^1.48.2",
     "@types/node": "^22.9.0",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.20",
     "cheerio": "^1.0.0",
     "dotenv": "^17.4.2",
+    "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^8.57.1",
-    "eslint-config-next": "14.2.18",
+    "eslint-config-next": "^15.5.27",
     "postcss": "^8.4.49",
     "prisma": "^5.22.0",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
-    "vitest": "^2.1.5"
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
   },
   "engines": {
-    "node": ">=18.18"
+    "node": ">=22.12"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.28"
+    },
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
   }
 }

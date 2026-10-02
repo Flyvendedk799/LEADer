@@ -4,14 +4,16 @@ import { requireOwnerId } from "@/lib/auth";
 import { noteCreateSchema } from "@/lib/validators";
 import { apiError } from "@/lib/api";
 
-type Ctx = { params: { id: string } };
+type Ctx = { params: Promise<{ id: string }> };
 
 // POST /api/opportunities/[id]/notes — add a note + NOTE activity.
 export async function POST(req: Request, ctx: Ctx) {
   try {
     const ownerId = await requireOwnerId();
 
-    const opp = await db.opportunity.findUnique({ where: { id: ctx.params.id } });
+    const opp = await db.opportunity.findUnique({
+      where: { id: (await ctx.params).id },
+    });
     if (!opp || opp.ownerId !== ownerId) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -19,13 +21,16 @@ export async function POST(req: Request, ctx: Ctx) {
     const json = await req.json().catch(() => null);
     const parsed = noteCreateSchema.safeParse(json);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json(
+        { error: parsed.error.flatten() },
+        { status: 400 },
+      );
     }
     const body = parsed.data;
 
     const note = await db.note.create({
       data: {
-        opportunityId: ctx.params.id,
+        opportunityId: (await ctx.params).id,
         authorId: ownerId,
         body: body.body,
         pinned: body.pinned ?? false,
@@ -34,7 +39,7 @@ export async function POST(req: Request, ctx: Ctx) {
 
     await db.activity.create({
       data: {
-        opportunityId: ctx.params.id,
+        opportunityId: (await ctx.params).id,
         type: "NOTE",
         message: "Note added",
       },

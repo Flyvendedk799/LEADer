@@ -1,185 +1,322 @@
+import { EvidenceProvenance } from "@/components/discovery/evidence-provenance";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Building2, ExternalLink, ListChecks } from "lucide-react";
-
+import { ArrowLeft, ExternalLink, Building2, Mail } from "lucide-react";
 import { requireOwnerId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { DEAL_INCLUDE } from "@/lib/crm";
-import { formatBudget, formatDate, relativeDeadline } from "@/lib/utils";
+import { formatBudget, formatDate } from "@/lib/utils";
 import { DealStatusBadge } from "@/components/crm/deal-status-badge";
-import { DealAiPanel } from "@/components/crm/deal-ai-panel";
 import { DealActions } from "@/components/crm/deal-actions";
-import { ScoreBadge } from "@/components/shared/score-badge";
+import { DealAiPanel } from "@/components/crm/deal-ai-panel";
+import { EditDeal } from "@/components/crm/edit-deal";
 import { PageHeader } from "@/components/shared/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SectionTabs } from "@/components/shared/section-tabs";
+import { TaskList } from "@/components/tasks/task-list";
+import { ScoreBadge } from "@/components/shared/score-badge";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { ResearchBriefLauncher } from "@/components/workflows/research-brief-launcher";
-
 export const dynamic = "force-dynamic";
-
-export default async function DealDetailPage({ params }: { params: { id: string } }) {
+export default async function DealDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  const params = await props.params;
   const ownerId = await requireOwnerId();
-  const deal = await db.deal.findFirst({ where: { id: params.id, ownerId }, include: DEAL_INCLUDE });
+  const deal = await db.deal.findFirst({
+    where: { id: params.id, ownerId },
+    include: {
+      ...DEAL_INCLUDE,
+      tasks: { orderBy: [{ status: "asc" }, { dueAt: "asc" }], take: 100 },
+      touchpoints: { orderBy: { occurredAt: "desc" }, take: 100 },
+      evidence: { orderBy: { createdAt: "desc" }, take: 100 },
+      conversionAssets: { orderBy: { createdAt: "desc" }, take: 100 },
+    },
+  });
   if (!deal) notFound();
-
   return (
     <div className="space-y-6">
-      <PageHeader title={deal.title} description={deal.account?.name ?? "No account linked"}>
-        <DealStatusBadge status={deal.status} />
-        <ScoreBadge score={deal.pursuitScore} size="lg" showLabel />
+      <Link
+        href={"/deals?workspace=" + deal.workspace}
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to deals
+      </Link>
+      <PageHeader
+        title={deal.title}
+        description={deal.account?.name || "Independent opportunity"}
+      >
+        <EditDeal deal={deal} />
+        {deal.url && (
+          <Button asChild variant="outline" size="sm">
+            <a href={deal.url} target="_blank" rel="noreferrer">
+              Source <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
+        )}
       </PageHeader>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <main className="space-y-6">
+      <div className="flex flex-wrap items-center gap-4 rounded-xl border bg-card px-5 py-4">
+        <DealStatusBadge status={deal.status} />
+        <span className="border-l pl-4 text-sm font-medium">
+          {formatBudget(deal.valueMin, deal.valueMax, deal.currency || "DKK")}
+        </span>
+        <span className="text-sm text-muted-foreground">
+          {deal.deadline
+            ? "Due " + formatDate(deal.deadline)
+            : "No deadline set"}
+        </span>
+        <div className="ml-auto">
+          <ScoreBadge score={deal.pursuitScore} showLabel />
+        </div>
+      </div>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0">
+          <SectionTabs
+            sections={[
+              {
+                id: "overview",
+                label: "Overview",
+                content: (
+                  <>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Deal brief</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="whitespace-pre-wrap text-sm leading-7 text-muted-foreground">
+                          {deal.summary ||
+                            deal.rawContent ||
+                            "Add a brief to capture the opportunity, the buyer’s needs, and why this is a fit."}
+                        </p>
+                        <div className="mt-5 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-primary">
+                            Next action
+                          </p>
+                          <p className="text-sm leading-6">
+                            {deal.nextAction ||
+                              "Choose a concrete next step. Use Edit deal to keep it visible here, then add a task to schedule it."}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Follow-ups & tasks</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <TaskList
+                          tasks={deal.tasks.map((task) => ({
+                            ...task,
+                            deal: { id: deal.id, title: deal.title },
+                          }))}
+                        />
+                      </CardContent>
+                    </Card>
+                  </>
+                ),
+              },
+              {
+                id: "evidence",
+                label: "Evidence (" + deal.evidence.length + ")",
+                content: (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Why this opportunity exists</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {deal.evidence.map((item) => (
+                        <div key={item.id} className="rounded-lg border p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-sm font-medium">
+                              {item.title || item.sourceName || item.kind}
+                            </p>
+                            {item.url && (
+                              <a
+                                href={item.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label="Open evidence source"
+                                className="text-primary"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            )}
+                          </div>
+                          <EvidenceProvenance metadata={item.metadata} />
+                          <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                            {item.snippet}
+                          </p>
+                        </div>
+                      ))}
+                      {!deal.evidence.length && (
+                        <p className="text-sm text-muted-foreground">
+                          No evidence attached yet. Check the source and record
+                          what you learn in Activity.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ),
+              },
+              {
+                id: "activity",
+                label: "Activity & contacts",
+                content: (
+                  <>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>People</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {deal.people.map(({ person, role }) => (
+                          <div
+                            key={person.id}
+                            className="rounded-lg border p-4"
+                          >
+                            <p className="text-sm font-medium">
+                              {person.name || person.email || "Contact"}
+                            </p>
+                            <p className="my-1 text-xs text-muted-foreground">
+                              {role || person.role}
+                            </p>
+                            {person.email && (
+                              <a
+                                href={"mailto:" + person.email}
+                                className="flex items-center gap-2 text-sm text-primary"
+                              >
+                                <Mail className="h-3 w-3" />
+                                {person.email}
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                        {!deal.people.length && (
+                          <p className="text-sm text-muted-foreground">
+                            Add the person you’re speaking with using the
+                            contact form.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Conversation history</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-5">
+                        {deal.touchpoints.map((item) => (
+                          <div
+                            key={item.id}
+                            className="border-l-2 border-primary/25 pl-4"
+                          >
+                            <p className="text-xs text-muted-foreground">
+                              {item.kind.toLowerCase()} ·{" "}
+                              {formatDate(item.occurredAt)}
+                            </p>
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+                              {item.summary}
+                            </p>
+                          </div>
+                        ))}
+                        {!deal.touchpoints.length && (
+                          <p className="text-sm text-muted-foreground">
+                            Log a note, email, call, or meeting to keep the
+                            conversation in context.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </>
+                ),
+              },
+              {
+                id: "drafts",
+                label: "Research & drafts",
+                content: (
+                  <>
+                    <DealAiPanel dealId={deal.id} />
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Research the opportunity</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ResearchBriefLauncher
+                          defaultSubject={deal.account?.name || deal.title}
+                          subjectType={deal.account ? "company" : "unknown"}
+                          objective="map-opportunity"
+                          depth="standard"
+                          workspace={deal.workspace}
+                          accountId={deal.accountId}
+                          dealId={deal.id}
+                        />
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Saved drafts</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {deal.conversionAssets.map((asset) => (
+                          <details
+                            key={asset.id}
+                            className="rounded-lg border p-4"
+                          >
+                            <summary className="text-sm font-medium">
+                              {asset.kind.replaceAll("_", " ").toLowerCase()} ·{" "}
+                              {formatDate(asset.createdAt)}
+                            </summary>
+                            <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">
+                              {asset.content}
+                            </p>
+                          </details>
+                        ))}
+                        {!deal.conversionAssets.length && (
+                          <p className="text-sm text-muted-foreground">
+                            Use the assistant to prepare an introduction,
+                            proposal, or follow-up. Drafts are saved here for
+                            your review.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </>
+                ),
+              },
+            ]}
+          />
+        </div>
+        <aside className="min-w-0 space-y-4">
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Deal brief</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="whitespace-pre-wrap text-sm leading-7">{deal.summary || deal.rawContent || "No summary yet."}</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <Meta label="Value" value={formatBudget(deal.valueMin, deal.valueMax, deal.currency ?? "DKK")} />
-                <Meta label="Deadline" value={`${formatDate(deal.deadline)} · ${relativeDeadline(deal.deadline)}`} />
-                <Meta label="Lane" value={deal.lane?.name ?? "Manual"} />
-              </div>
-              {deal.nextAction && (
-                <div className="rounded-md border border-primary/30 bg-primary/10 p-3 text-sm">
-                  <p className="mb-1 font-medium">Next action</p>
-                  <p className="text-muted-foreground">{deal.nextAction}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">Evidence</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              {deal.evidence.map((evidence) => (
-                <div key={evidence.id} className="rounded-md border border-border bg-surface/40 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium">{evidence.title || evidence.sourceName || evidence.kind}</p>
-                    {evidence.url && (
-                      <a href={evidence.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary">
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-                    )}
-                  </div>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{evidence.snippet}</p>
-                </div>
-              ))}
-              {deal.evidence.length === 0 && <p className="text-sm text-muted-foreground">No evidence recorded.</p>}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">Conversion assets</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              {deal.conversionAssets.map((asset) => (
-                <div key={asset.id} className="rounded-md border border-border bg-surface/40 p-3">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">{asset.kind}</p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{asset.content}</p>
-                </div>
-              ))}
-              {deal.conversionAssets.length === 0 && <p className="text-sm text-muted-foreground">Generate outreach, proposal, follow-up, or call prep from the assistant.</p>}
-            </CardContent>
-          </Card>
-        </main>
-
-        <aside className="space-y-6">
-          <Card>
-            <CardContent className="pt-6">
-              <ResearchBriefLauncher
-                defaultSubject={deal.account?.name ?? deal.title}
-                subjectType={deal.account ? "company" : "unknown"}
-                objective={deal.account ? "map-opportunity" : "verify-identity"}
-                depth="standard"
-                workspace={deal.workspace}
-                accountId={deal.accountId}
-                dealId={deal.id}
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Building2 className="h-4 w-4 text-primary" />
+            <CardContent className="pt-5">
+              <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <Building2 className="h-4 w-4" />
                 Account
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
+              </p>
               {deal.account ? (
-                <Link href={`/accounts/${deal.account.id}`} className="font-medium hover:text-primary hover:underline">
-                  {deal.account.name}
+                <Link
+                  href={"/accounts/" + deal.account.id}
+                  className="text-sm font-medium text-primary"
+                >
+                  {deal.account.name} →
                 </Link>
               ) : (
-                <p className="text-muted-foreground">No account linked.</p>
+                <p className="text-sm text-muted-foreground">
+                  No linked account
+                </p>
               )}
-              {deal.url && (
-                <a href={deal.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-primary hover:underline">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Source
-                </a>
-              )}
+              <p className="mt-3 text-xs text-muted-foreground">
+                {deal.workspace === "DK" ? "Denmark" : "International"} ·{" "}
+                {deal.lane?.name || "Added manually"}
+              </p>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">People</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {deal.people.map((link) => (
-                <div key={link.personId} className="rounded-md border border-border bg-surface/40 p-2 text-sm">
-                  <p className="font-medium">{link.person.name || link.person.email || "Unnamed person"}</p>
-                  <p className="text-xs text-muted-foreground">{[link.role || link.person.role, link.person.email].filter(Boolean).join(" · ") || "No details"}</p>
-                </div>
-              ))}
-              {deal.people.length === 0 && <p className="text-sm text-muted-foreground">No people yet.</p>}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">Touchpoints</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {deal.touchpoints.map((touchpoint) => (
-                <div key={touchpoint.id} className="rounded-md border border-border bg-surface/40 p-2 text-sm">
-                  <p className="font-medium">{touchpoint.summary}</p>
-                  <p className="text-xs text-muted-foreground">{touchpoint.kind} · {formatDate(touchpoint.occurredAt)}</p>
-                </div>
-              ))}
-              {deal.touchpoints.length === 0 && <p className="text-sm text-muted-foreground">No touchpoints yet.</p>}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <ListChecks className="h-4 w-4 text-primary" />
-                Tasks
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {deal.tasks.map((task) => (
-                <div key={task.id} className="rounded-md border border-border bg-surface/40 p-2 text-sm">
-                  <p className="font-medium">{task.title}</p>
-                  <p className="text-xs text-muted-foreground">{task.status} · {formatDate(task.dueAt)}</p>
-                </div>
-              ))}
-              {deal.tasks.length === 0 && <p className="text-sm text-muted-foreground">No tasks yet.</p>}
-            </CardContent>
-          </Card>
-
-          <DealActions dealId={deal.id} accountId={deal.accountId} status={deal.status} />
-          <DealAiPanel dealId={deal.id} />
+          <DealActions
+            dealId={deal.id}
+            accountId={deal.accountId}
+            status={deal.status}
+          />
         </aside>
       </div>
-    </div>
-  );
-}
-
-function Meta({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border bg-surface/40 px-3 py-2">
-      <p className="text-[10px] font-semibold uppercase text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium">{value}</p>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Deal, Opportunity } from "@prisma/client";
+import type { Deal, Opportunity, Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { dedupeHash } from "@/lib/ingestion/dedupe";
@@ -46,7 +46,8 @@ export async function ensureDealForOpportunity(
   const existing = await db.deal.findUnique({
     where: { legacyOpportunityId: opportunity.id },
   });
-  if (existing && existing.ownerId !== ownerId) throw new Error("Opportunity not found");
+  if (existing && existing.ownerId !== ownerId)
+    throw new Error("Opportunity not found");
 
   const { confidence, pursuit } = scoresFor(opportunity);
   const mappedStatus = dealStatusFromOpportunity(opportunity.status);
@@ -63,7 +64,8 @@ export async function ensureDealForOpportunity(
         valueMax: opportunity.budgetMax ?? existing.valueMax,
         currency: opportunity.currency ?? existing.currency,
         url: existing.url || opportunity.url,
-        summary: existing.summary || opportunity.aiSummary || opportunity.description,
+        summary:
+          existing.summary || opportunity.aiSummary || opportunity.description,
         nextAction: existing.nextAction || opportunity.nextAction,
         ...(options.syncStatus ? { status: mappedStatus } : {}),
       },
@@ -110,13 +112,18 @@ export async function ensureDealForOpportunity(
       matchScore: opportunity.matchScore,
       confidenceScore: confidence,
       pursuitScore: pursuit,
-      nextAction: opportunity.nextAction || "Review this lead and decide the next step.",
+      nextAction:
+        opportunity.nextAction || "Review this lead and decide the next step.",
     },
   });
 }
 
 /** Keep the linked opportunity status aligned when a deal moves. */
-export async function syncLinkedOpportunityStatus(ownerId: string, dealId: string, status: DealStatus) {
+export async function syncLinkedOpportunityStatus(
+  ownerId: string,
+  dealId: string,
+  status: DealStatus,
+) {
   const deal = await db.deal.findFirst({
     where: { id: dealId, ownerId },
     select: { legacyOpportunityId: true },
@@ -132,8 +139,12 @@ export async function syncLinkedOpportunityStatus(ownerId: string, dealId: strin
  * Manual deals still need a scored, deduped opportunity row so learning and
  * ingest can see them. Links the deal when the row already exists.
  */
-export async function linkOpportunityForDeal(ownerId: string, dealId: string): Promise<Deal> {
-  const deal = await db.deal.findFirst({
+export async function linkOpportunityForDeal(
+  ownerId: string,
+  dealId: string,
+  client: Prisma.TransactionClient = db,
+): Promise<Deal> {
+  const deal = await client.deal.findFirst({
     where: { id: dealId, ownerId },
     include: { account: true },
   });
@@ -146,19 +157,24 @@ export async function linkOpportunityForDeal(ownerId: string, dealId: string): P
     url: deal.url ?? undefined,
     organization: organization ?? undefined,
   });
-  let existing = await db.opportunity.findUnique({ where: { dedupeHash: hash } });
+  let existing = await client.opportunity.findUnique({
+    where: { dedupeHash: hash },
+  });
   if (existing) {
-    const taken = await db.deal.findFirst({
+    const taken = await client.deal.findFirst({
       where: { legacyOpportunityId: existing.id, NOT: { id: deal.id } },
       select: { id: true },
     });
     if (existing.ownerId !== ownerId || taken) {
-      hash = dedupeHash({ title: `${deal.title} ${deal.id}`, organization: deal.id });
+      hash = dedupeHash({
+        title: `${deal.title} ${deal.id}`,
+        organization: deal.id,
+      });
       existing = null;
     }
   }
 
-  const owner = await db.user.findUnique({
+  const owner = await client.user.findUnique({
     where: { id: ownerId },
     select: { scoringWeights: true, budgetMaxDkk: true },
   });
@@ -186,7 +202,7 @@ export async function linkOpportunityForDeal(ownerId: string, dealId: string): P
   const opportunityId = existing
     ? existing.id
     : (
-        await db.opportunity.create({
+        await client.opportunity.create({
           data: {
             ownerId,
             sourceId: deal.sourceId,
@@ -215,18 +231,19 @@ export async function linkOpportunityForDeal(ownerId: string, dealId: string): P
       ).id;
 
   if (existing) {
-    await db.opportunity.update({
+    await client.opportunity.update({
       where: { id: existing.id },
       data: {
         status,
         matchScore: deal.matchScore ?? existing.matchScore ?? breakdown.total,
-        scoreBreakdown: (existing.scoreBreakdown as object) ?? (breakdown as object),
+        scoreBreakdown:
+          (existing.scoreBreakdown as object) ?? (breakdown as object),
         nextAction: existing.nextAction || deal.nextAction,
       },
     });
   }
 
-  return db.deal.update({
+  return client.deal.update({
     where: { id: deal.id },
     data: {
       legacyOpportunityId: opportunityId,

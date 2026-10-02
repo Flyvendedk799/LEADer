@@ -3,18 +3,24 @@ import { expect, test } from "@playwright/test";
 // Smoke flow: the V2 client-acquisition cockpit works end-to-end against seeded data.
 // The `setup` project (auth.setup.ts) signs in first; these tests run authed.
 
-test("unauthenticated visitors are redirected to login", async ({ browser }) => {
-  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+test("unauthenticated visitors are redirected to login", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+  });
   const page = await context.newPage();
   await page.goto("/deals");
   await expect(page).toHaveURL(/\/login/);
-  await expect(page.getByRole("heading", { name: /welcome back/i })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /welcome back/i }),
+  ).toBeVisible();
   await context.close();
 });
 
 test("client cockpit loads and shows acquisition stats", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /client cockpit/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /your day/i })).toBeVisible();
   await expect(page.getByText(/open deals/i)).toBeVisible();
 });
 
@@ -29,7 +35,9 @@ test("deals list links to deal detail", async ({ page }) => {
 
 test("accounts list links to account detail", async ({ page }) => {
   await page.goto("/accounts");
-  await expect(page.getByRole("heading", { name: /^accounts$/i })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /^accounts$/i }),
+  ).toBeVisible();
   const firstLink = page.locator('a[href^="/accounts/"]').first();
   await firstLink.click();
   await expect(page).toHaveURL(/\/accounts\/.+/);
@@ -38,25 +46,33 @@ test("accounts list links to account detail", async ({ page }) => {
 
 test("discover shows lane mission control", async ({ page }) => {
   await page.goto("/discover");
-  await expect(page.getByRole("heading", { name: /discovery mission control/i })).toBeVisible();
-  await expect(page.getByText(/lane playbook/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: /run lane/i })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /discover your next opportunity/i }),
+  ).toBeVisible();
+  await expect(page.getByText(/type of work/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: /find leads/i })).toBeVisible();
 });
 
 test("platform agent can read CRM data and create a task", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /open leader agent/i }).click();
   const agent = page.getByRole("dialog", { name: /leader agent/i });
-  await expect(agent.getByRole("heading", { name: /leader agent/i })).toBeVisible();
+  await expect(
+    agent.getByRole("heading", { name: /leader agent/i }),
+  ).toBeVisible();
 
   const prompt = agent.getByPlaceholder(/ask about the crm/i);
   await prompt.fill("What needs my attention today?");
   await agent.getByRole("button", { name: /^send$/i }).click();
-  await expect(agent.getByText(/Client cockpit|open deals|hot candidates/i).first()).toBeVisible();
+  await expect(
+    agent.getByText(/Client cockpit|open deals|hot candidates/i).first(),
+  ).toBeVisible();
 
   await prompt.fill(`Create a task called E2E agent follow-up ${Date.now()}`);
   await agent.getByRole("button", { name: /^send$/i }).click();
-  await expect(agent.getByText(/Task created|Created task/i).first()).toBeVisible();
+  await expect(
+    agent.getByText(/Task created|Created task/i).first(),
+  ).toBeVisible();
 });
 
 test("legacy opportunities route redirects to deals", async ({ page }) => {
@@ -68,7 +84,9 @@ test("mobile users can navigate via the hamburger drawer", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
-  const menuButton = page.getByRole("button", { name: /open navigation menu/i });
+  const menuButton = page.getByRole("button", {
+    name: /open navigation menu/i,
+  });
   await expect(menuButton).toBeVisible();
 
   await menuButton.click();
@@ -77,11 +95,23 @@ test("mobile users can navigate via the hamburger drawer", async ({ page }) => {
 
   await dealsLink.click();
   await expect(page).toHaveURL(/\/deals/);
-  await expect(page.getByRole("link", { name: "Community import" })).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Community import" }),
+  ).toHaveCount(0);
 });
 
-test("command palette opens with ctrl+k and jumps to a deal", async ({ page }) => {
+test("command palette opens with ctrl+k and jumps to a deal", async ({
+  page,
+}) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "Open command palette" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Command palette" }),
+  ).toBeVisible();
+  await page.keyboard.press("Control+k");
+  await expect(
+    page.getByRole("dialog", { name: "Command palette" }),
+  ).not.toBeVisible();
   await page.keyboard.press("Control+k");
 
   const dialog = page.getByRole("dialog");
@@ -89,7 +119,9 @@ test("command palette opens with ctrl+k and jumps to a deal", async ({ page }) =
   await expect(input).toBeVisible();
 
   await input.fill("SaaS");
-  const hit = dialog.getByRole("button", { name: /SaaS/i }).first();
+  const hit = dialog
+    .getByRole("button", { name: /^MVP-udvikling til SaaS-startup/i })
+    .first();
   await expect(hit).toBeVisible();
   await hit.click();
   await expect(page).toHaveURL(/\/deals\/.+/);

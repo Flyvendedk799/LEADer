@@ -1,11 +1,22 @@
+import { linkOpportunityForDeal } from "@/lib/crm/promote";
+import { taskWorkspaceWhere } from "@/lib/tasks/scope";
+import { dealQuery } from "@/lib/crm/deal-query";
 import type { Prisma } from "@prisma/client";
 
 import { HttpError } from "@/lib/api";
 import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
-import { runDiscoverySearch, type DiscoveryCandidateDto } from "@/lib/discovery";
+import {
+  runDiscoverySearch,
+  type DiscoveryCandidateDto,
+} from "@/lib/discovery";
 import { discoveryCandidateDedupeKey } from "@/lib/crm/candidate-dedupe";
-import { discoveryCountLabel, discoveryLogEntry, discoveryPhaseTimingSummary, formatDiscoveryElapsed } from "@/lib/crm/discovery-logging";
+import {
+  discoveryCountLabel,
+  discoveryLogEntry,
+  discoveryPhaseTimingSummary,
+  formatDiscoveryElapsed,
+} from "@/lib/crm/discovery-logging";
 import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
 import {
   ensureDefaultDiscoveryLanes,
@@ -17,7 +28,13 @@ import {
   type LaneFitResult,
 } from "@/lib/crm/lanes";
 import { confidenceScore, pursuitScore } from "@/lib/crm/scoring";
-import type { AccountType, DealStatus, DiscoveryAiSearchPlan, DiscoverySearchMode, Workspace } from "@/lib/types";
+import type {
+  AccountType,
+  DealStatus,
+  DiscoveryAiSearchPlan,
+  DiscoverySearchMode,
+  Workspace,
+} from "@/lib/types";
 
 const OPEN_DEAL_STATUSES: DealStatus[] = [
   "DISCOVERED",
@@ -64,19 +81,27 @@ export const DEAL_INCLUDE = {
   account: true,
   lane: true,
   evidence: { orderBy: { createdAt: "desc" as const }, take: 5 },
-  tasks: { orderBy: [{ status: "asc" as const }, { dueAt: "asc" as const }], take: 8 },
+  tasks: {
+    orderBy: [{ status: "asc" as const }, { dueAt: "asc" as const }],
+    take: 8,
+  },
   conversionAssets: { orderBy: { createdAt: "desc" as const }, take: 5 },
   touchpoints: { orderBy: { occurredAt: "desc" as const }, take: 8 },
   people: { include: { person: true } },
 } satisfies Prisma.DealInclude;
 
-export type DealWithRelations = Prisma.DealGetPayload<{ include: typeof DEAL_INCLUDE }>;
+export type DealWithRelations = Prisma.DealGetPayload<{
+  include: typeof DEAL_INCLUDE;
+}>;
 
 const DISCOVERY_MISSION_INCLUDE = {
   lane: true,
   candidates: {
     include: { evidence: true, deal: true, account: true },
-    orderBy: [{ pursuitScore: "desc" as const }, { createdAt: "desc" as const }],
+    orderBy: [
+      { pursuitScore: "desc" as const },
+      { createdAt: "desc" as const },
+    ],
   },
 } satisfies Prisma.DiscoveryMissionInclude;
 
@@ -103,11 +128,14 @@ function clean(value?: string | null, fallback = "Unknown account") {
   return value?.replace(/\s+/g, " ").trim() || fallback;
 }
 
-function missionSurfaces(input: Pick<DiscoveryMissionInput, "includeWeb" | "includeSources">) {
-  return [
-    input.includeWeb ? "web" : "",
-    input.includeSources ? "sources" : "",
-  ].filter(Boolean).join(" + ") || "none";
+function missionSurfaces(
+  input: Pick<DiscoveryMissionInput, "includeWeb" | "includeSources">,
+) {
+  return (
+    [input.includeWeb ? "web" : "", input.includeSources ? "sources" : ""]
+      .filter(Boolean)
+      .join(" + ") || "none"
+  );
 }
 
 function isOfficialOnlyTenderInput(
@@ -126,7 +154,10 @@ function missionStartMessage(
   status: string,
   lane: Pick<MissionLane, "slug">,
   workspace: Workspace,
-  input: Pick<DiscoveryMissionInput, "includeWeb" | "includeSources" | "provider" | "searchMode">,
+  input: Pick<
+    DiscoveryMissionInput,
+    "includeWeb" | "includeSources" | "provider" | "searchMode"
+  >,
 ) {
   const verb = status === "RUNNING" ? "Started" : "Queued";
   const mode = input.searchMode ?? "balanced";
@@ -145,11 +176,32 @@ function host(url?: string | null) {
   }
 }
 
-function accountTypeFrom(input: { organization?: string | null; category?: string | null; sourceKind?: string | null; laneSlug?: string | null }): AccountType {
-  const text = `${input.organization ?? ""} ${input.category ?? ""} ${input.laneSlug ?? ""}`.toLowerCase();
-  if (input.sourceKind === "community" || text.includes("community") || text.includes("facebook")) return "COMMUNITY";
-  if (text.includes("tender") || text.includes("procurement") || text.includes("udbud")) return "PUBLIC_BUYER";
-  if (text.includes("startup") || text.includes("mvp") || text.includes("accelerator")) return "STARTUP";
+function accountTypeFrom(input: {
+  organization?: string | null;
+  category?: string | null;
+  sourceKind?: string | null;
+  laneSlug?: string | null;
+}): AccountType {
+  const text =
+    `${input.organization ?? ""} ${input.category ?? ""} ${input.laneSlug ?? ""}`.toLowerCase();
+  if (
+    input.sourceKind === "community" ||
+    text.includes("community") ||
+    text.includes("facebook")
+  )
+    return "COMMUNITY";
+  if (
+    text.includes("tender") ||
+    text.includes("procurement") ||
+    text.includes("udbud")
+  )
+    return "PUBLIC_BUYER";
+  if (
+    text.includes("startup") ||
+    text.includes("mvp") ||
+    text.includes("accelerator")
+  )
+    return "STARTUP";
   return "COMPANY";
 }
 
@@ -178,7 +230,9 @@ function cleanTerms(values: string[] = [], limit = 12, maxLength = 80) {
 }
 
 function dayRange(date: Date) {
-  const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const start = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
   return { gte: start, lt: new Date(start.getTime() + 86400000) };
 }
 
@@ -193,7 +247,12 @@ function discoveryCandidateDedupeWhere(
   const title = cleanTerm(candidate.title, 220);
   const organization = cleanTerm(candidate.organization, 180);
 
-  if (lane.slug === "tenders-procurement" && title && organization && deadline) {
+  if (
+    lane.slug === "tenders-procurement" &&
+    title &&
+    organization &&
+    deadline
+  ) {
     alternatives.push({
       laneId: lane.id,
       title: { equals: title, mode: "insensitive" },
@@ -204,12 +263,14 @@ function discoveryCandidateDedupeWhere(
 
   return {
     ownerId,
-    status: { notIn: ["SAVED", "DISMISSED"] },
     OR: alternatives,
   };
 }
 
-function queryLimitForMode(mode: DiscoverySearchMode = "balanced", explicit?: number) {
+function queryLimitForMode(
+  mode: DiscoverySearchMode = "balanced",
+  explicit?: number,
+) {
   if (explicit) return explicit;
   if (mode === "focused") return 3;
   if (mode === "wide") return 7;
@@ -235,11 +296,15 @@ function positiveQueryIncludesTerm(query: string, term: string) {
   if (!cleanTermValue) return false;
   const positiveQuery = stripNegativeQueryModifiers(query);
 
-  if (cleanTermValue === "linkedin") return /(?:^|[^\w])linkedin(?:[^\w]|$)|linkedin\.com/.test(positiveQuery);
-  if (cleanTermValue === "the hub") return /the\s*hub|thehub\.io/.test(positiveQuery);
+  if (cleanTermValue === "linkedin")
+    return /(?:^|[^\w])linkedin(?:[^\w]|$)|linkedin\.com/.test(positiveQuery);
+  if (cleanTermValue === "the hub")
+    return /the\s*hub|thehub\.io/.test(positiveQuery);
   if (cleanTermValue === "udbud.co") return /udbud\.co/.test(positiveQuery);
-  if (cleanTermValue === "archive") return /(?:^|[^\w])archive(?:[^\w]|$)|\/archive\b/.test(positiveQuery);
-  if (cleanTermValue === "arkiv") return /(?:^|[^\w])arkiv(?:[^\w]|$)|\/arkiv\b/.test(positiveQuery);
+  if (cleanTermValue === "archive")
+    return /(?:^|[^\w])archive(?:[^\w]|$)|\/archive\b/.test(positiveQuery);
+  if (cleanTermValue === "arkiv")
+    return /(?:^|[^\w])arkiv(?:[^\w]|$)|\/arkiv\b/.test(positiveQuery);
   if (cleanTermValue === "job" || cleanTermValue === "jobs") {
     return /(?:^|[^\w])jobs?(?:[^\w]|$)|\/jobs?\b|careers?\b|stillinger?\b|jobopslag\b|thehub\.io/.test(
       positiveQuery,
@@ -247,9 +312,10 @@ function positiveQueryIncludesTerm(query: string, term: string) {
   }
 
   if (cleanTermValue.length <= 3) {
-    return new RegExp(`(^|[^a-z0-9æøå])${escapedRegExp(cleanTermValue)}([^a-z0-9æøå]|$)`, "i").test(
-      positiveQuery,
-    );
+    return new RegExp(
+      `(^|[^a-z0-9æøå])${escapedRegExp(cleanTermValue)}([^a-z0-9æøå]|$)`,
+      "i",
+    ).test(positiveQuery);
   }
   return positiveQuery.includes(cleanTermValue);
 }
@@ -258,12 +324,23 @@ function blockedProbeReason(
   lane: Pick<MissionLane, "negativeKeywords">,
   query: string,
 ) {
-  const priority = ["linkedin", "the hub", "udbud.co", "archive", "arkiv", "job", "jobs"];
+  const priority = [
+    "linkedin",
+    "the hub",
+    "udbud.co",
+    "archive",
+    "arkiv",
+    "job",
+    "jobs",
+  ];
   const blocker = cleanTerms(lane.negativeKeywords ?? [], 24)
     .sort((a, b) => {
       const aIndex = priority.indexOf(a.toLowerCase());
       const bIndex = priority.indexOf(b.toLowerCase());
-      return (aIndex === -1 ? priority.length : aIndex) - (bIndex === -1 ? priority.length : bIndex);
+      return (
+        (aIndex === -1 ? priority.length : aIndex) -
+        (bIndex === -1 ? priority.length : bIndex)
+      );
     })
     .find((term) => positiveQueryIncludesTerm(query, term));
   return blocker ? `blocked term: ${blocker}` : null;
@@ -271,7 +348,8 @@ function blockedProbeReason(
 
 function countReasons(reasons: string[]) {
   const counts = new Map<string, number>();
-  for (const reason of reasons) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  for (const reason of reasons)
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([reason, count]) => `${count} ${reason}`);
@@ -305,17 +383,29 @@ function profileString(user: {
   bio?: string | null;
   preferredProjectTypes?: string[];
 }) {
-  return [
-    user.headline,
-    user.bio,
-    user.preferredProjectTypes?.length ? `Preferred project types: ${user.preferredProjectTypes.join(", ")}.` : "",
-  ]
-    .filter(Boolean)
-    .join("\n") || undefined;
+  return (
+    [
+      user.headline,
+      user.bio,
+      user.preferredProjectTypes?.length
+        ? `Preferred project types: ${user.preferredProjectTypes.join(", ")}.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n") || undefined
+  );
 }
 
 function filterCandidatesForLane(
-  lane: Pick<MissionLane, "slug" | "name" | "queryTemplates" | "positiveKeywords" | "negativeKeywords" | "evidenceRequirements">,
+  lane: Pick<
+    MissionLane,
+    | "slug"
+    | "name"
+    | "queryTemplates"
+    | "positiveKeywords"
+    | "negativeKeywords"
+    | "evidenceRequirements"
+  >,
   candidates: DiscoveryCandidateDto[],
 ): LaneFilteredDiscoveryCandidates {
   const reasonCounts = new Map<string, number>();
@@ -346,19 +436,31 @@ function parsePlanData(data: unknown): DiscoveryAiSearchPlan | undefined {
   if (!data || typeof data !== "object") return undefined;
   const record = data as Record<string, unknown>;
   const arrayOfStrings = (value: unknown, limit: number) =>
-    Array.isArray(value) ? cleanTerms(value.filter((item): item is string => typeof item === "string"), limit) : [];
+    Array.isArray(value)
+      ? cleanTerms(
+          value.filter((item): item is string => typeof item === "string"),
+          limit,
+        )
+      : [];
 
   const queries = arrayOfStrings(record.queries, 8);
   if (!queries.length) return undefined;
-  const confidence = typeof record.confidence === "number" ? clampScore(record.confidence) : 50;
+  const confidence =
+    typeof record.confidence === "number" ? clampScore(record.confidence) : 50;
   return {
-    summary: typeof record.summary === "string" ? cleanTerm(record.summary, 320) : "AI generated discovery plan",
+    summary:
+      typeof record.summary === "string"
+        ? cleanTerm(record.summary, 320)
+        : "AI generated discovery plan",
     queries,
     requiredTerms: arrayOfStrings(record.requiredTerms, 8),
     excludedTerms: arrayOfStrings(record.excludedTerms, 8),
     positiveKeywords: arrayOfStrings(record.positiveKeywords, 10),
     evidenceRequirements: arrayOfStrings(record.evidenceRequirements, 6),
-    suggestedLaneSlug: typeof record.suggestedLaneSlug === "string" ? cleanTerm(record.suggestedLaneSlug, 80) : undefined,
+    suggestedLaneSlug:
+      typeof record.suggestedLaneSlug === "string"
+        ? cleanTerm(record.suggestedLaneSlug, 80)
+        : undefined,
     confidence,
     notes: arrayOfStrings(record.notes, 5),
   };
@@ -399,9 +501,15 @@ async function planDiscoverySearch(
     `Lane positive keywords: ${lane.positiveKeywords.join(", ")}`,
     `Lane negative keywords: ${lane.negativeKeywords.join(", ")}`,
     `Lane evidence requirements: ${lane.evidenceRequirements.join(", ")}`,
-    input.requiredTerms?.length ? `User must include terms: ${input.requiredTerms.join(", ")}` : "",
-    input.excludedTerms?.length ? `User excluded terms: ${input.excludedTerms.join(", ")}` : "",
-  ].filter(Boolean).join("\n\n");
+    input.requiredTerms?.length
+      ? `User must include terms: ${input.requiredTerms.join(", ")}`
+      : "",
+    input.excludedTerms?.length
+      ? `User excluded terms: ${input.excludedTerms.join(", ")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   const result = await runAi({
     action: "planDiscoverySearch",
@@ -410,40 +518,38 @@ async function planDiscoverySearch(
     aiKeys: user?.aiKeys,
     accountId: ownerId,
   });
+  if (result.mocked) return undefined;
   const plan = parsePlanData(result.data);
   if (!plan) return undefined;
   return {
     ...plan,
     notes: [
       ...plan.notes,
-      result.mocked ? "AI planner used deterministic mock output." : `AI planner used ${result.model}.`,
+      result.mocked
+        ? "AI planner used deterministic mock output."
+        : `AI planner used ${result.model}.`,
     ].slice(0, 6),
   };
 }
 
-export async function ensureAccount(ownerId: string, input: {
-  name?: string | null;
-  website?: string | null;
-  country?: string | null;
-  region?: string | null;
-  workspace?: Workspace;
-  type?: AccountType;
-  source?: string | null;
-  fitScore?: number | null;
-}) {
+export async function ensureAccount(
+  ownerId: string,
+  input: {
+    name?: string | null;
+    website?: string | null;
+    country?: string | null;
+    region?: string | null;
+    workspace?: Workspace;
+    type?: AccountType;
+    source?: string | null;
+    fitScore?: number | null;
+  },
+  client: Prisma.TransactionClient = db,
+) {
   const name = clean(input.name || host(input.website), "Unknown account");
-  return db.account.upsert({
+  return client.account.upsert({
     where: { ownerId_name: { ownerId, name } },
-    update: {
-      website: input.website || undefined,
-      domain: host(input.website),
-      country: input.country || undefined,
-      region: input.region || undefined,
-      workspace: input.workspace ?? "DK",
-      type: input.type ?? "UNKNOWN",
-      source: input.source || undefined,
-      fitScore: input.fitScore ?? undefined,
-    },
+    update: {},
     create: {
       ownerId,
       name,
@@ -460,29 +566,13 @@ export async function ensureAccount(ownerId: string, input: {
 }
 
 export async function listDeals(ownerId: string, params: URLSearchParams) {
-  const workspace = params.get("workspace") === "GLOBAL" ? "GLOBAL" : params.get("workspace") === "DK" ? "DK" : undefined;
-  const status = params.getAll("status").flatMap((v) => v.split(",")).filter(Boolean) as DealStatus[];
-  const q = params.get("q")?.trim();
-  const page = Math.max(1, Number(params.get("page") || 1));
-  const pageSize = Math.min(100, Math.max(1, Number(params.get("pageSize") || 25)));
-
-  const where: Prisma.DealWhereInput = { ownerId };
-  if (workspace) where.workspace = workspace;
-  if (status.length) where.status = { in: status as Prisma.EnumDealStatusFilter["in"] };
-  if (q) {
-    where.OR = [
-      { title: { contains: q, mode: "insensitive" } },
-      { summary: { contains: q, mode: "insensitive" } },
-      { account: { name: { contains: q, mode: "insensitive" } } },
-      { category: { contains: q, mode: "insensitive" } },
-    ];
-  }
+  const { where, orderBy, page, pageSize } = dealQuery(ownerId, params);
 
   const [items, total] = await Promise.all([
     db.deal.findMany({
       where,
       include: DEAL_INCLUDE,
-      orderBy: [{ pursuitScore: "desc" }, { deadline: "asc" }],
+      orderBy,
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -508,17 +598,27 @@ export async function getCockpit(ownerId: string, workspace: Workspace = "DK") {
     pipelineValue,
     statusGroups,
   ] = await Promise.all([
-    db.deal.count({ where: { ownerId, workspace, status: { in: OPEN_DEAL_STATUSES } } }),
+    db.deal.count({
+      where: { ownerId, workspace, status: { in: OPEN_DEAL_STATUSES } },
+    }),
     db.deal.count({ where: { ownerId, workspace, status: "WON" } }),
     db.deal.count({ where: { ownerId, workspace, status: "LOST" } }),
     db.discoveryCandidate.findMany({
       where: { ownerId, workspace, status: "NEW", pursuitScore: { gte: 70 } },
-      include: { lane: true, evidence: { take: 1, orderBy: { createdAt: "desc" } } },
+      include: {
+        lane: true,
+        evidence: { take: 1, orderBy: { createdAt: "desc" } },
+      },
       orderBy: { pursuitScore: "desc" },
       take: 24,
     }),
     db.task.findMany({
-      where: { ownerId, status: "OPEN", dueAt: { lt: now }, deal: { workspace } },
+      where: {
+        ownerId,
+        status: "OPEN",
+        dueAt: { lt: now },
+        ...taskWorkspaceWhere(workspace),
+      },
       include: { deal: { include: { account: true } } },
       orderBy: { dueAt: "asc" },
       take: 8,
@@ -528,20 +628,30 @@ export async function getCockpit(ownerId: string, workspace: Workspace = "DK") {
         ownerId,
         status: "OPEN",
         dueAt: { gte: now, lte: new Date(now.getTime() + 7 * 86400000) },
-        deal: { workspace },
+        ...taskWorkspaceWhere(workspace),
       },
       include: { deal: { include: { account: true } } },
       orderBy: { dueAt: "asc" },
       take: 8,
     }),
     db.deal.findMany({
-      where: { ownerId, workspace, status: { in: OPEN_DEAL_STATUSES }, deadline: { gte: now } },
+      where: {
+        ownerId,
+        workspace,
+        status: { in: OPEN_DEAL_STATUSES },
+        deadline: { gte: now },
+      },
       include: { account: true },
       orderBy: { deadline: "asc" },
       take: 8,
     }),
     db.deal.findMany({
-      where: { ownerId, workspace, status: { in: OPEN_DEAL_STATUSES }, updatedAt: { lt: staleCutoff } },
+      where: {
+        ownerId,
+        workspace,
+        status: { in: OPEN_DEAL_STATUSES },
+        updatedAt: { lt: staleCutoff },
+      },
       include: { account: true },
       orderBy: { updatedAt: "asc" },
       take: 8,
@@ -566,8 +676,12 @@ export async function getCockpit(ownerId: string, workspace: Workspace = "DK") {
     dueTasks,
     upcomingDeadlines,
     staleDeals,
-    pipelineValue: pipelineValue._sum.valueMax ?? pipelineValue._sum.valueMin ?? 0,
-    byStatus: statusGroups.map((group) => ({ status: group.status as DealStatus, count: group._count._all })),
+    pipelineValue:
+      pipelineValue._sum.valueMax ?? pipelineValue._sum.valueMin ?? 0,
+    byStatus: statusGroups.map((group) => ({
+      status: group.status as DealStatus,
+      count: group._count._all,
+    })),
   };
 }
 
@@ -576,7 +690,9 @@ async function prepareDiscoveryMission(
   input: DiscoveryMissionInput,
 ): Promise<PreparedDiscoveryMission> {
   await ensureDefaultDiscoveryLanes(ownerId);
-  const lane = await db.discoveryLane.findFirst({ where: { id: input.laneId, ownerId } });
+  const lane = await db.discoveryLane.findFirst({
+    where: { id: input.laneId, ownerId },
+  });
   if (!lane) throw new Error("Discovery lane not found");
 
   const workspace = input.workspace ?? (lane.workspace as Workspace);
@@ -587,13 +703,19 @@ async function prepareDiscoveryMission(
   const focus = cleanTerm(input.query || input.freeformBrief, 500);
   const laneQueries = laneMissionQueries(lane, focus, queryCount);
   const planQueries = plan?.queries ?? [];
-  const querySeeds = lane.slug === "tenders-procurement"
-    ? [...laneQueries, ...planQueries]
-    : [...planQueries, ...laneQueries];
-  const sanitizedQuerySeeds = sanitizeDiscoveryMissionQueries(lane as MissionLane, [
-    ...querySeeds,
-    ...(focus ? [`${focus} ${lane.positiveKeywords.slice(0, 5).join(" ")}`] : []),
-  ]);
+  const querySeeds =
+    lane.slug === "tenders-procurement"
+      ? [...laneQueries, ...planQueries]
+      : [...planQueries, ...laneQueries];
+  const sanitizedQuerySeeds = sanitizeDiscoveryMissionQueries(
+    lane as MissionLane,
+    [
+      ...querySeeds,
+      ...(focus
+        ? [`${focus} ${lane.positiveKeywords.slice(0, 5).join(" ")}`]
+        : []),
+    ],
+  );
   const queries = cleanTerms(sanitizedQuerySeeds.queries, queryCount, 360);
   const query = queries[0] || missionQuery(lane, input.query);
   const requiredTerms = cleanTerms(input.requiredTerms, 12);
@@ -607,9 +729,22 @@ async function prepareDiscoveryMission(
   );
   const scoringLane: MissionLane = {
     ...(lane as MissionLane),
-    positiveKeywords: cleanTerms([...(lane.positiveKeywords ?? []), ...(plan?.positiveKeywords ?? [])], 24),
-    negativeKeywords: cleanTerms([...(lane.negativeKeywords ?? []), ...excludedTerms], 24),
-    evidenceRequirements: cleanTerms([...(lane.evidenceRequirements ?? []), ...(plan?.evidenceRequirements ?? [])], 12, 140),
+    positiveKeywords: cleanTerms(
+      [...(lane.positiveKeywords ?? []), ...(plan?.positiveKeywords ?? [])],
+      24,
+    ),
+    negativeKeywords: cleanTerms(
+      [...(lane.negativeKeywords ?? []), ...excludedTerms],
+      24,
+    ),
+    evidenceRequirements: cleanTerms(
+      [
+        ...(lane.evidenceRequirements ?? []),
+        ...(plan?.evidenceRequirements ?? []),
+      ],
+      12,
+      140,
+    ),
   };
 
   return {
@@ -632,16 +767,24 @@ export async function createDiscoveryMission(
   status = "QUEUED",
 ) {
   await ensureDefaultDiscoveryLanes(ownerId);
-  const lane = await db.discoveryLane.findFirst({ where: { id: input.laneId, ownerId } });
+  const lane = await db.discoveryLane.findFirst({
+    where: { id: input.laneId, ownerId },
+  });
   if (!lane) throw new Error("Discovery lane not found");
 
   const workspace = input.workspace ?? (lane.workspace as Workspace);
   const queryCount = queryLimitForMode(input.searchMode, input.queryCount);
   const focus = cleanTerm(input.query || input.freeformBrief, 500);
-  const queries = cleanTerms([
-    ...laneMissionQueries(lane, focus, queryCount),
-    ...(focus ? [`${focus} ${lane.positiveKeywords.slice(0, 5).join(" ")}`] : []),
-  ], queryCount, 360);
+  const queries = cleanTerms(
+    [
+      ...laneMissionQueries(lane, focus, queryCount),
+      ...(focus
+        ? [`${focus} ${lane.positiveKeywords.slice(0, 5).join(" ")}`]
+        : []),
+    ],
+    queryCount,
+    360,
+  );
 
   return db.discoveryMission.create({
     data: {
@@ -653,8 +796,12 @@ export async function createDiscoveryMission(
       provider: input.provider,
       status,
       log: [
-        discoveryLogEntry(missionStartMessage(status, lane as MissionLane, workspace, input)),
-        ...(input.useAiPlanner ? [discoveryLogEntry("AI query planner requested.")] : []),
+        discoveryLogEntry(
+          missionStartMessage(status, lane as MissionLane, workspace, input),
+        ),
+        ...(input.useAiPlanner
+          ? [discoveryLogEntry("AI query planner requested.")]
+          : []),
       ],
     },
     include: DISCOVERY_MISSION_INCLUDE,
@@ -680,16 +827,23 @@ export async function executeDiscoveryMission(
       where: missionWhere,
       include: DISCOVERY_MISSION_INCLUDE,
     });
-  const appendLog = async (message: string, options: { allowCanceled?: boolean } = {}) => {
+  const appendLog = async (
+    message: string,
+    options: { allowCanceled?: boolean } = {},
+  ) => {
     const data = { log: { push: discoveryLogEntry(message) } };
     if (options.allowCanceled) {
-      await db.discoveryMission.update({ where: { id: missionId }, data }).catch(() => {});
+      await db.discoveryMission
+        .update({ where: { id: missionId }, data })
+        .catch(() => {});
       return;
     }
-    await db.discoveryMission.updateMany({
-      where: { ...missionWhere, status: { not: "CANCELED" } },
-      data,
-    }).catch(() => {});
+    await db.discoveryMission
+      .updateMany({
+        where: { ...missionWhere, status: { not: "CANCELED" } },
+        data,
+      })
+      .catch(() => {});
   };
 
   try {
@@ -701,11 +855,18 @@ export async function executeDiscoveryMission(
         warnings: [],
         sourceScanCount: 0,
         provider: input.provider,
-        log: { push: discoveryLogEntry("Worker started mission and is preparing probes.") },
+        log: {
+          push: discoveryLogEntry(
+            "Worker started mission and is preparing probes.",
+          ),
+        },
       },
     });
     if (started.count === 0) {
-      await appendLog("Worker skipped mission because it was canceled before start.", { allowCanceled: true });
+      await appendLog(
+        "Worker skipped mission because it was canceled before start.",
+        { allowCanceled: true },
+      );
       const canceled = await canceledMission();
       return { mission: canceled, candidates: [] };
     }
@@ -735,7 +896,10 @@ export async function executeDiscoveryMission(
       },
     });
     if (preparedUpdate.count === 0) {
-      await appendLog("Mission stopped after cancellation during probe preparation.", { allowCanceled: true });
+      await appendLog(
+        "Mission stopped after cancellation during probe preparation.",
+        { allowCanceled: true },
+      );
       const canceled = await canceledMission();
       return { mission: canceled, candidates: [] };
     }
@@ -746,9 +910,15 @@ export async function executeDiscoveryMission(
     }
 
     const phaseStartedAt = Date.now();
-    const officialOnlyTenderMode = isOfficialOnlyTenderInput(prepared.lane, prepared.workspace, input);
+    const officialOnlyTenderMode = isOfficialOnlyTenderInput(
+      prepared.lane,
+      prepared.workspace,
+      input,
+    );
     const broadWebProvider = officialOnlyTenderMode ? "none" : input.provider;
-    const includeSources = officialOnlyTenderMode ? false : input.includeSources;
+    const includeSources = officialOnlyTenderMode
+      ? false
+      : input.includeSources;
     if (officialOnlyTenderMode) {
       await appendLog(
         "Tender lane using official udbud.dk active notices only; choose an explicit provider for broad web and source expansion.",
@@ -756,7 +926,8 @@ export async function executeDiscoveryMission(
     }
 
     const result = await runDiscoverySearch(ownerId, {
-      query: cleanTerm(input.query || input.freeformBrief, 500) || prepared.query,
+      query:
+        cleanTerm(input.query || input.freeformBrief, 500) || prepared.query,
       queryVariants: prepared.queries,
       requiredTerms: prepared.requiredTerms,
       excludedTerms: prepared.excludedTerms,
@@ -765,11 +936,14 @@ export async function executeDiscoveryMission(
       includeWeb: input.includeWeb,
       includeSources,
       provider: broadWebProvider,
-      resultKind: prepared.lane.slug === "tenders-procurement" ? "opportunities" : undefined,
+      resultKind: "opportunities",
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
       onProgress: appendLog,
     });
-    const laneFiltered = filterCandidatesForLane(prepared.scoringLane, result.candidates);
+    const laneFiltered = filterCandidatesForLane(
+      prepared.scoringLane,
+      result.candidates,
+    );
     const searchMs = Date.now() - phaseStartedAt;
     if (laneFiltered.removed > 0) {
       await appendLog(
@@ -800,11 +974,16 @@ export async function executeDiscoveryMission(
         : []),
     ];
     if (searchMs > 90_000) {
-      warnings.push(`Discovery network phase took ${Math.round(searchMs / 1000)}s.`);
+      warnings.push(
+        `Discovery network phase took ${Math.round(searchMs / 1000)}s.`,
+      );
     }
 
     if (await isCanceled()) {
-      await appendLog("Mission finished after cancellation; search results were discarded.", { allowCanceled: true });
+      await appendLog(
+        "Mission finished after cancellation; search results were discarded.",
+        { allowCanceled: true },
+      );
       const canceled = await canceledMission();
       return {
         mission: canceled,
@@ -817,7 +996,9 @@ export async function executeDiscoveryMission(
 
     const candidates = [];
     const persistStartedAt = Date.now();
-    await appendLog(`Saving ${discoveryCountLabel(laneFiltered.candidates.length, "reviewable candidate")} to the review queue.`);
+    await appendLog(
+      `Saving ${discoveryCountLabel(laneFiltered.candidates.length, "reviewable candidate")} to the review queue.`,
+    );
     for (const candidate of laneFiltered.candidates) {
       if (await isCanceled()) {
         await appendLog(
@@ -833,7 +1014,15 @@ export async function executeDiscoveryMission(
           candidates,
         };
       }
-      candidates.push(await persistCandidate(ownerId, missionId, prepared.scoringLane, candidate));
+      candidates.push(
+        await persistCandidate(
+          ownerId,
+          missionId,
+          prepared.scoringLane,
+          candidate,
+          prepared.workspace,
+        ),
+      );
     }
     const persistMs = Date.now() - persistStartedAt;
     const totalMs = Date.now() - workerStartedAt;
@@ -854,7 +1043,10 @@ export async function executeDiscoveryMission(
       },
     });
     if (finished.count === 0) {
-      await appendLog("Mission stopped after cancellation before completion was recorded.", { allowCanceled: true });
+      await appendLog(
+        "Mission stopped after cancellation before completion was recorded.",
+        { allowCanceled: true },
+      );
       const canceled = await canceledMission();
       return {
         mission: canceled,
@@ -879,28 +1071,37 @@ export async function executeDiscoveryMission(
     };
   } catch (error) {
     if (await isCanceled()) {
-      await appendLog("Mission stopped after cancellation.", { allowCanceled: true });
+      await appendLog("Mission stopped after cancellation.", {
+        allowCanceled: true,
+      });
       const canceled = await canceledMission();
       return { mission: canceled, candidates: [] };
     }
-    await db.discoveryMission.updateMany({
-      where: { ...missionWhere, status: { not: "CANCELED" } },
-      data: {
-        status: "ERROR",
-        finishedAt: new Date(),
-        warnings: [error instanceof Error ? error.message : "Discovery failed"],
-        log: {
-          push: discoveryLogEntry(
-            `Mission failed after ${formatDiscoveryElapsed(Date.now() - workerStartedAt)}: ${error instanceof Error ? error.message : "Discovery failed"}`,
-          ),
+    await db.discoveryMission
+      .updateMany({
+        where: { ...missionWhere, status: { not: "CANCELED" } },
+        data: {
+          status: "ERROR",
+          finishedAt: new Date(),
+          warnings: [
+            error instanceof Error ? error.message : "Discovery failed",
+          ],
+          log: {
+            push: discoveryLogEntry(
+              `Mission failed after ${formatDiscoveryElapsed(Date.now() - workerStartedAt)}: ${error instanceof Error ? error.message : "Discovery failed"}`,
+            ),
+          },
         },
-      },
-    }).catch(() => {});
+      })
+      .catch(() => {});
     throw error;
   }
 }
 
-export async function runDiscoveryMission(ownerId: string, input: DiscoveryMissionInput) {
+export async function runDiscoveryMission(
+  ownerId: string,
+  input: DiscoveryMissionInput,
+) {
   const mission = await createDiscoveryMission(ownerId, input, "RUNNING");
   return executeDiscoveryMission(ownerId, mission.id, input);
 }
@@ -930,17 +1131,25 @@ async function persistCandidate(
     evidenceRequirements: string[];
   },
   candidate: DiscoveryCandidateDto,
+  workspace: Workspace,
 ) {
   const fit = laneFit(lane, candidate);
   const matchScore = clampScore((candidate.matchScore ?? 50) + fit.delta);
-  const confidence = clampScore(confidenceScore({
-    hasUrl: Boolean(candidate.url),
-    hasDeadline: Boolean(candidate.deadline),
-    hasBudget: candidate.budgetMin != null || candidate.budgetMax != null,
-    hasOrganization: Boolean(candidate.organization),
-    evidenceCount: 1 + fit.evidenceMatches.length,
-    sourceKind: candidate.sourceKind,
-  }) + fit.confidenceBonus - (fit.blockedKeywords.length ? 8 : 0));
+  const confidence = clampScore(
+    confidenceScore({
+      hasUrl: Boolean(candidate.url),
+      hasDeadline: Boolean(candidate.deadline),
+      hasBudget: candidate.budgetMin != null || candidate.budgetMax != null,
+      hasOrganization: Boolean(candidate.organization),
+      evidenceCount:
+        candidate.provenance?.status === "read"
+          ? 1 + fit.evidenceMatches.length
+          : 0,
+      sourceKind: candidate.sourceKind,
+    }) +
+      fit.confidenceBonus -
+      (fit.blockedKeywords.length ? 8 : 0),
+  );
   const pursuit = pursuitScore({
     matchScore,
     confidenceScore: confidence,
@@ -955,10 +1164,22 @@ async function persistCandidate(
     originalTotal: candidate.matchScore,
     laneFit: laneFitMetadata(fit),
   };
-  const reasons = [...new Set([...fit.reasons, ...candidate.reasons])].slice(0, 8);
-  const signals = [...new Set([...candidate.signals, ...fit.signals])].slice(0, 12);
+  const reasons = [...new Set([...fit.reasons, ...candidate.reasons])].slice(
+    0,
+    8,
+  );
+  const signals = [...new Set([...candidate.signals, ...fit.signals])].slice(
+    0,
+    12,
+  );
   const existing = await db.discoveryCandidate.findFirst({
-    where: discoveryCandidateDedupeWhere(ownerId, lane, candidate, deadline, dedupeKey),
+    where: discoveryCandidateDedupeWhere(
+      ownerId,
+      lane,
+      candidate,
+      deadline,
+      dedupeKey,
+    ),
     include: { evidence: true, lane: true },
   });
 
@@ -970,7 +1191,7 @@ async function persistCandidate(
     rawContent: candidate.rawContent,
     url: candidate.url || undefined,
     organization: candidate.organization,
-    workspace: candidate.country === "DK" ? "DK" as const : candidate.country ? "GLOBAL" as const : undefined,
+    workspace,
     sourceName: candidate.sourceName,
     sourceKind: candidate.sourceKind,
     provider: candidate.provider,
@@ -991,19 +1212,29 @@ async function persistCandidate(
   };
 
   const sameMission = existing?.missionId === missionId;
-  const saved = existing && sameMission
-    ? await db.discoveryCandidate.update({ where: { id: existing.id }, data, include: { evidence: true, lane: true } })
-    : await db.discoveryCandidate.create({
-        data: {
-          ownerId,
-          ...data,
-          status: existing ? "DUPLICATE" : "NEW",
-          reasons: existing
-            ? [...new Set(["Rediscovered in this mission; matching candidate already exists.", ...reasons])].slice(0, 8)
-            : reasons,
-        },
-        include: { evidence: true, lane: true },
-      });
+  const saved =
+    existing && sameMission
+      ? await db.discoveryCandidate.update({
+          where: { id: existing.id },
+          data,
+          include: { evidence: true, lane: true },
+        })
+      : await db.discoveryCandidate.create({
+          data: {
+            ownerId,
+            ...data,
+            status: existing ? "DUPLICATE" : "NEW",
+            reasons: existing
+              ? [
+                  ...new Set([
+                    "Rediscovered in this mission; matching candidate already exists.",
+                    ...reasons,
+                  ]),
+                ].slice(0, 8)
+              : reasons,
+          },
+          include: { evidence: true, lane: true },
+        });
 
   if (saved.evidence.length === 0) {
     await db.evidence.create({
@@ -1013,11 +1244,21 @@ async function persistCandidate(
         kind: candidate.url ? "WEB_RESULT" : "SOURCE_SNIPPET",
         url: candidate.url || undefined,
         title: candidate.title,
-        snippet: (candidate.rawContent || candidate.description || candidate.title).slice(0, 2000),
+        snippet: (
+          candidate.rawContent ||
+          candidate.description ||
+          candidate.title
+        ).slice(0, 2000),
         sourceName: candidate.sourceName,
         provider: candidate.provider,
         confidence,
         metadata: {
+          provenance: candidate.provenance ?? {
+            status: "snippet",
+            retrievedAt: new Date().toISOString(),
+          },
+          contacts: candidate.contacts,
+          attachments: candidate.attachments,
           sourceKind: candidate.sourceKind,
           query: candidate.query,
           laneSlug: lane.slug,
@@ -1032,7 +1273,10 @@ async function persistCandidate(
   return saved;
 }
 
-export async function saveCandidateAsDeal(ownerId: string, candidateId: string) {
+export async function saveCandidateAsDeal(
+  ownerId: string,
+  candidateId: string,
+) {
   const candidate = await db.discoveryCandidate.findFirst({
     where: { id: candidateId, ownerId },
     include: { lane: true, evidence: true, deal: true },
@@ -1049,84 +1293,165 @@ export async function saveCandidateAsDeal(ownerId: string, candidateId: string) 
     }
   }
 
-  const account = await ensureAccount(ownerId, {
-    name: candidate.organization || candidate.sourceName || host(candidate.url) || candidate.title,
-    website: candidate.url,
-    workspace: candidate.workspace as Workspace,
-    type: accountTypeFrom({
-      organization: candidate.organization,
-      category: candidate.category,
-      sourceKind: candidate.sourceKind,
-      laneSlug: candidate.lane?.slug,
-    }),
-    source: candidate.sourceName,
-    fitScore: candidate.pursuitScore ?? candidate.matchScore,
-  });
-
-  const deal = await db.deal.create({
-    data: {
-      ownerId,
-      accountId: account.id,
-      laneId: candidate.laneId,
-      title: candidate.title,
-      summary: candidate.description,
-      rawContent: candidate.rawContent,
-      valueMin: candidate.budgetMin,
-      valueMax: candidate.budgetMax,
-      currency: candidate.currency ?? "DKK",
-      deadline: candidate.deadline,
-      status: "QUALIFYING",
-      workspace: candidate.workspace,
-      category: candidate.category,
-      applicationRoute: candidate.applicationRoute,
-      url: candidate.url,
-      matchScore: candidate.matchScore,
-      confidenceScore: candidate.confidenceScore,
-      pursuitScore: candidate.pursuitScore,
-      qualification: {
-        candidateId: candidate.id,
-        reasons: candidate.reasons,
-        signals: candidate.signals,
-        lane: candidate.lane?.slug,
-      },
-      nextAction: "Qualify buyer, budget and decision process.",
-    },
-  });
-
-  await db.discoveryCandidate.update({
-    where: { id: candidate.id },
-    data: { status: "SAVED", accountId: account.id, dealId: deal.id },
-  });
-
-  for (const evidence of candidate.evidence) {
-    await db.evidence.create({
-      data: {
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${ownerId}))`;
+      const current = await tx.discoveryCandidate.findFirst({
+        where: { id: candidateId, ownerId },
+        include: { deal: true },
+      });
+      if (!current) throw new HttpError(404, "Candidate not found");
+      if (current.deal) return { deal: current.deal, created: false };
+      if (current.status === "DISMISSED" || current.status === "DUPLICATE")
+        throw new HttpError(409, "Only active review candidates can be saved.");
+      const existingDeal = candidate.url
+        ? await tx.deal.findFirst({ where: { ownerId, url: candidate.url } })
+        : null;
+      if (existingDeal) {
+        await tx.discoveryCandidate.update({
+          where: { id: candidateId },
+          data: {
+            status: "SAVED",
+            dealId: existingDeal.id,
+            accountId: existingDeal.accountId,
+          },
+        });
+        return { deal: existingDeal, created: false };
+      }
+      const account = await ensureAccount(
         ownerId,
-        accountId: account.id,
-        dealId: deal.id,
-        kind: evidence.kind,
-        url: evidence.url,
-        title: evidence.title,
-        snippet: evidence.snippet,
-        sourceName: evidence.sourceName,
-        provider: evidence.provider,
-        confidence: evidence.confidence,
-        metadata: evidence.metadata as Prisma.InputJsonValue,
-      },
-    });
-  }
+        {
+          name:
+            candidate.organization ||
+            candidate.sourceName ||
+            host(candidate.url) ||
+            candidate.title,
+          website: candidate.url,
+          workspace: candidate.workspace as Workspace,
+          type: accountTypeFrom({
+            organization: candidate.organization,
+            category: candidate.category,
+            sourceKind: candidate.sourceKind,
+            laneSlug: candidate.lane?.slug,
+          }),
+          source: candidate.sourceName,
+          fitScore: candidate.pursuitScore ?? candidate.matchScore,
+        },
+        tx,
+      );
 
-  await db.task.create({
-    data: {
-      ownerId,
-      accountId: account.id,
-      dealId: deal.id,
-      title: "Qualify buyer, budget and next step",
-      description: candidate.lane?.conversionGuidance,
-      dueAt: candidate.deadline ? new Date(Math.min(candidate.deadline.getTime(), Date.now() + 3 * 86400000)) : undefined,
-      priority: (candidate.pursuitScore ?? 0) >= 80 ? "HIGH" : "MEDIUM",
+      const deal = await tx.deal.create({
+        data: {
+          ownerId,
+          accountId: account.id,
+          laneId: candidate.laneId,
+          title: candidate.title,
+          summary: candidate.description,
+          rawContent: candidate.rawContent,
+          valueMin: candidate.budgetMin,
+          valueMax: candidate.budgetMax,
+          currency: candidate.currency ?? "DKK",
+          deadline: candidate.deadline,
+          status: "QUALIFYING",
+          workspace: candidate.workspace,
+          category: candidate.category,
+          applicationRoute: candidate.applicationRoute,
+          url: candidate.url,
+          matchScore: candidate.matchScore,
+          confidenceScore: candidate.confidenceScore,
+          pursuitScore: candidate.pursuitScore,
+          qualification: {
+            candidateId: candidate.id,
+            reasons: candidate.reasons,
+            signals: candidate.signals,
+            lane: candidate.lane?.slug,
+          },
+          nextAction: "Qualify buyer, budget and decision process.",
+        },
+      });
+
+      await tx.discoveryCandidate.update({
+        where: { id: candidate.id },
+        data: { status: "SAVED", accountId: account.id, dealId: deal.id },
+      });
+
+      for (const evidence of candidate.evidence) {
+        await tx.evidence.create({
+          data: {
+            ownerId,
+            accountId: account.id,
+            dealId: deal.id,
+            kind: evidence.kind,
+            url: evidence.url,
+            title: evidence.title,
+            snippet: evidence.snippet,
+            sourceName: evidence.sourceName,
+            provider: evidence.provider,
+            confidence: evidence.confidence,
+            metadata: evidence.metadata as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      await tx.task.create({
+        data: {
+          ownerId,
+          accountId: account.id,
+          dealId: deal.id,
+          title: "Qualify buyer, budget and next step",
+          description: candidate.lane?.conversionGuidance,
+          dueAt: candidate.deadline
+            ? new Date(
+                Math.min(
+                  candidate.deadline.getTime(),
+                  Date.now() + 3 * 86400000,
+                ),
+              )
+            : new Date(Date.now() + 3 * 86400000),
+          priority: (candidate.pursuitScore ?? 0) >= 80 ? "HIGH" : "MEDIUM",
+        },
+      });
+
+      for (const evidence of candidate.evidence) {
+        const metadata = evidence.metadata as {
+          contacts?: { name?: string; email?: string; role?: string }[];
+        } | null;
+        for (const contact of metadata?.contacts ?? []) {
+          if (
+            !contact.email ||
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)
+          )
+            continue;
+          const existing = await tx.person.findFirst({
+            where: { ownerId, accountId: account.id, email: contact.email },
+          });
+          const person =
+            existing ??
+            (await tx.person.create({
+              data: {
+                ownerId,
+                accountId: account.id,
+                name: contact.name,
+                email: contact.email,
+                role: contact.role,
+              },
+            }));
+          await tx.dealPerson.upsert({
+            where: {
+              dealId_personId: { dealId: deal.id, personId: person.id },
+            },
+            update: {},
+            create: {
+              dealId: deal.id,
+              personId: person.id,
+              role: contact.role,
+            },
+          });
+        }
+      }
+      const linkedDeal = await linkOpportunityForDeal(ownerId, deal.id, tx);
+      return { deal: linkedDeal, account, created: true };
     },
-  });
-
-  return { deal, account, created: true };
+    { timeout: 15000 },
+  );
 }
