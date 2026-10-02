@@ -7,7 +7,7 @@ import { DealStatusBadge } from "@/components/crm/deal-status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatBudget } from "@/lib/utils";
-import { BriefcaseBusiness } from "lucide-react";
+import { BriefcaseBusiness, ChevronRight } from "lucide-react";
 
 type DealRow = Prisma.DealGetPayload<{ include: { account: true; lane: true } }>;
 
@@ -34,13 +34,14 @@ export function DealTable({ deals }: { deals: DealRow[] }) {
             <TableHead>Deadline</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Pursuit</TableHead>
+            <TableHead className="w-10"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {deals.map((deal) => (
-            <TableRow key={deal.id}>
+            <TableRow key={deal.id} className="group relative">
               <TableCell className="max-w-md">
-                <Link href={`/deals/${deal.id}`} className="font-medium hover:text-primary hover:underline">
+                <Link href={`/deals/${deal.id}`} className="font-medium hover:text-primary before:absolute before:inset-0">
                   {deal.title}
                 </Link>
                 {deal.nextAction && (
@@ -51,7 +52,7 @@ export function DealTable({ deals }: { deals: DealRow[] }) {
               </TableCell>
               <TableCell>
                 {deal.account ? (
-                  <Link href={`/accounts/${deal.account.id}`} className="text-sm hover:text-primary hover:underline">
+                  <Link href={`/accounts/${deal.account.id}`} className="relative z-10 text-sm hover:text-primary hover:underline">
                     {deal.account.name}
                   </Link>
                 ) : (
@@ -68,6 +69,9 @@ export function DealTable({ deals }: { deals: DealRow[] }) {
                 <div className="flex justify-end">
                   <ScoreBadge score={deal.pursuitScore} size="sm" />
                 </div>
+              </TableCell>
+              <TableCell>
+                <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
               </TableCell>
             </TableRow>
           ))}

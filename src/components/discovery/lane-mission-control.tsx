@@ -9,6 +9,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpToLine,
+  BriefcaseBusiness,
   CheckCircle2,
   Clock3,
   Link2,
@@ -416,6 +417,7 @@ export function LaneMissionControl({
   const [activeMissionId, setActiveMissionId] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<MissionResult | null>(null);
   const [showHiddenCandidates, setShowHiddenCandidates] = React.useState(false);
+  const [showAdvancedOptions, setShowAdvancedOptions] = React.useState(false);
   const [busyMissionAction, setBusyMissionAction] = React.useState<string | null>(null);
   const selectedLane = lanes.find((lane) => lane.id === laneId);
   const officialTenderMode =
@@ -884,110 +886,122 @@ export function LaneMissionControl({
             </div>
 
             <div className="space-y-3 rounded-md border border-border bg-surface/40 p-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-                Scan controls
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Provider</Label>
-                  <Select value={provider} onValueChange={(value) => setProvider(value as Provider)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="auto">Auto</SelectItem>
-                      <SelectItem value="tavily">Tavily</SelectItem>
-                      <SelectItem value="brave">Brave</SelectItem>
-                      <SelectItem value="serper">Serper</SelectItem>
-                      <SelectItem value="none">Sources only</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                className="flex w-full items-center justify-between gap-2 text-sm font-medium hover:text-primary transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+                  Scan controls
+                </span>
+                {showAdvancedOptions ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+              </button>
+
+              {showAdvancedOptions && (
+                <div className="space-y-3 pt-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Provider</Label>
+                      <Select value={provider} onValueChange={(value) => setProvider(value as Provider)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Auto</SelectItem>
+                          <SelectItem value="tavily">Tavily</SelectItem>
+                          <SelectItem value="brave">Brave</SelectItem>
+                          <SelectItem value="serper">Serper</SelectItem>
+                          <SelectItem value="none">Sources only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Workspace</Label>
+                      <Select value={workspace} onValueChange={(value) => setWorkspace(value as Workspace)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="DK">Denmark</SelectItem>
+                          <SelectItem value="GLOBAL">International</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="mission-max">Results</Label>
+                      <Input
+                        id="mission-max"
+                        type="number"
+                        min={4}
+                        max={30}
+                        value={maxResults}
+                        onChange={(e) => setMaxResults(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Search style</Label>
+                      <Select value={searchMode} onValueChange={(value) => setSearchMode(value as SearchMode)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="focused">Focused</SelectItem>
+                          <SelectItem value="balanced">Balanced</SelectItem>
+                          <SelectItem value="wide">Wide</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/40 px-3 py-2">
+                    <Label htmlFor="mission-ai" className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      AI freeform planner
+                    </Label>
+                    <Switch id="mission-ai" checked={useAiPlanner} onCheckedChange={setUseAiPlanner} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="mission-required">Must include</Label>
+                    <Input
+                      id="mission-required"
+                      value={requiredTerms}
+                      onChange={(e) => setRequiredTerms(e.target.value)}
+                      placeholder="Comma separated"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="mission-excluded">Exclude</Label>
+                    <Input
+                      id="mission-excluded"
+                      value={excludedTerms}
+                      onChange={(e) => setExcludedTerms(e.target.value)}
+                      placeholder="jobs, courses, webinars"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="mission-web" className="flex items-center gap-2">
+                      <Globe2 className="h-4 w-4" />
+                      Web
+                    </Label>
+                    <Switch id="mission-web" checked={includeWeb} onCheckedChange={setIncludeWeb} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="mission-sources" className="flex items-center gap-2">
+                      <Database className="h-4 w-4" />
+                      Sources
+                    </Label>
+                    <Switch
+                      id="mission-sources"
+                      checked={effectiveIncludeSources}
+                      disabled={officialTenderMode}
+                      onCheckedChange={setIncludeSources}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Workspace</Label>
-                  <Select value={workspace} onValueChange={(value) => setWorkspace(value as Workspace)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="DK">Denmark</SelectItem>
-                      <SelectItem value="GLOBAL">International</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="mission-max">Results</Label>
-                  <Input
-                    id="mission-max"
-                    type="number"
-                    min={4}
-                    max={30}
-                    value={maxResults}
-                    onChange={(e) => setMaxResults(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Search style</Label>
-                  <Select value={searchMode} onValueChange={(value) => setSearchMode(value as SearchMode)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="focused">Focused</SelectItem>
-                      <SelectItem value="balanced">Balanced</SelectItem>
-                      <SelectItem value="wide">Wide</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/40 px-3 py-2">
-                <Label htmlFor="mission-ai" className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  AI freeform planner
-                </Label>
-                <Switch id="mission-ai" checked={useAiPlanner} onCheckedChange={setUseAiPlanner} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="mission-required">Must include</Label>
-                <Input
-                  id="mission-required"
-                  value={requiredTerms}
-                  onChange={(e) => setRequiredTerms(e.target.value)}
-                  placeholder="Comma separated"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="mission-excluded">Exclude</Label>
-                <Input
-                  id="mission-excluded"
-                  value={excludedTerms}
-                  onChange={(e) => setExcludedTerms(e.target.value)}
-                  placeholder="jobs, courses, webinars"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="mission-web" className="flex items-center gap-2">
-                  <Globe2 className="h-4 w-4" />
-                  Web
-                </Label>
-                <Switch id="mission-web" checked={includeWeb} onCheckedChange={setIncludeWeb} />
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="mission-sources" className="flex items-center gap-2">
-                  <Database className="h-4 w-4" />
-                  Sources
-                </Label>
-                <Switch
-                  id="mission-sources"
-                  checked={effectiveIncludeSources}
-                  disabled={officialTenderMode}
-                  onCheckedChange={setIncludeSources}
-                />
-              </div>
-              <Button type="submit" disabled={loading || !laneId || (!includeWeb && !effectiveIncludeSources)} className="w-full">
+              )}
+              <Button type="submit" disabled={loading || !laneId || (!includeWeb && !effectiveIncludeSources)} className="w-full mt-2">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                 Queue lane
               </Button>
@@ -1607,29 +1621,29 @@ function CandidateCard({
       {!hidden ? (
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
           {saved ? (
-            <Button asChild size="sm">
+            <Button asChild size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white">
               <Link href={`/deals/${candidate.deal!.id}`}>
-                <CheckCircle2 className="h-4 w-4" />
-                Open deal
+                <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                Deal saved — View
               </Link>
             </Button>
           ) : closed ? (
-            <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "review")}>
-              <CheckCircle2 className="h-4 w-4" />
-              Review
+            <Button variant="secondary" size="sm" onClick={() => onAction(candidate.id, "review")}>
+              <RotateCw className="h-4 w-4 mr-1.5" />
+              Re-evaluate
             </Button>
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "dismiss")}>
-                <XCircle className="h-4 w-4" />
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => onAction(candidate.id, "dismiss")}>
+                <XCircle className="h-4 w-4 mr-1.5" />
                 Dismiss
               </Button>
-              <Button variant="outline" size="sm" onClick={() => onAction(candidate.id, "duplicate")}>
-                <CopyX className="h-4 w-4" />
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => onAction(candidate.id, "duplicate")}>
+                <CopyX className="h-4 w-4 mr-1.5" />
                 Duplicate
               </Button>
               <Button size="sm" onClick={() => onAction(candidate.id, "save")}>
-                <CheckCircle2 className="h-4 w-4" />
+                <BriefcaseBusiness className="h-4 w-4 mr-1.5" />
                 Save as deal
               </Button>
             </>
