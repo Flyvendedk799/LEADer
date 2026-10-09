@@ -83,7 +83,7 @@ export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
+    <div className="flex gap-4 overflow-x-auto h-full pb-4 scrollbar-thin">
       {COLUMNS.map((status) => {
         const cards = byStatus.get(status) ?? [];
         const meta = DEAL_STATUS_META[status];
@@ -104,7 +104,7 @@ export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
             }}
             onDrop={() => moveTo(status)}
             className={cn(
-              "flex w-72 shrink-0 flex-col rounded-xl border bg-surface/40 transition-colors",
+              "flex w-72 shrink-0 flex-col rounded-xl border bg-surface/40 transition-colors h-full",
               isOver ? "border-primary/60 bg-primary/5" : "border-border",
             )}
           >
@@ -118,7 +118,7 @@ export function PipelineBoard({ initial }: { initial: BoardDeal[] }) {
               </span>
             </div>
 
-            <div className="flex min-h-24 flex-1 flex-col gap-2 p-2">
+            <div className="flex flex-1 flex-col gap-2 p-2 overflow-y-auto scrollbar-thin min-h-0">
               {cards.length === 0 ? (
                 <div
                   className={cn(

@@ -61,9 +61,10 @@ export function DealTable({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card">
-      <Table>
-        <TableHeader>
+    <div className="flex h-full flex-col min-h-0 rounded-lg border border-border bg-card">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+        <Table>
+          <TableHeader>
           <TableRow>
             <TableHead>Deal</TableHead>
             <TableHead className="hidden md:table-cell">Account</TableHead>
@@ -140,6 +141,7 @@ export function DealTable({
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }

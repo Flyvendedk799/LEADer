@@ -74,7 +74,7 @@ export default async function TodayPage(props: {
   const tasks = [...cockpit.overdueTasks, ...cockpit.dueTasks];
   const firstName = user?.name?.split(" ")[0];
   return (
-    <div className="space-y-7">
+    <div className="space-y-7 overflow-y-auto scrollbar-thin flex-1 min-h-0 pr-2 pb-12">
       <div>
         <p className="mb-3 text-xs font-medium uppercase tracking-[.14em] text-muted-foreground">
           {new Intl.DateTimeFormat("en-GB", {

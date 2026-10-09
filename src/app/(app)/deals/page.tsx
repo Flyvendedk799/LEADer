@@ -35,39 +35,43 @@ export default async function DealsPage(props: {
   };
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Deals"
-        description={`${pluralize(total, "deal")} in view. Turn promising leads into your next project.`}
-      >
+    <div className="flex h-full flex-col space-y-5">
+      <div className="shrink-0 space-y-5">
+        <PageHeader
+          title="Deals"
+          description={`${pluralize(total, "deal")} in view. Turn promising leads into your next project.`}
+        >
+          <Suspense>
+            <DealSavedSearch />
+            <NewDealDialog />
+          </Suspense>
+          <Button asChild variant="outline">
+            <Link href={`/discover?workspace=${params.get("workspace")}`}>
+              <Search className="h-4 w-4" />
+              Find leads
+            </Link>
+          </Button>
+        </PageHeader>
         <Suspense>
-          <DealSavedSearch />
-          <NewDealDialog />
+          <DealFilters />
         </Suspense>
-        <Button asChild variant="outline">
-          <Link href={`/discover?workspace=${params.get("workspace")}`}>
-            <Search className="h-4 w-4" />
-            Find leads
-          </Link>
-        </Button>
-      </PageHeader>
-      <Suspense>
-        <DealFilters />
-      </Suspense>
-      <DealTable
-        deals={items}
-        searchQuery={
-          query ||
-          (params.get("status") || params.get("attention")
-            ? "these filters"
-            : "")
-        }
-        workspace={params.get("workspace") || "DK"}
-      />
+      </div>
+      <div className="min-h-0 flex-1">
+        <DealTable
+          deals={items}
+          searchQuery={
+            query ||
+            (params.get("status") || params.get("attention")
+              ? "these filters"
+              : "")
+          }
+          workspace={params.get("workspace") || "DK"}
+        />
+      </div>
       {pageCount > 1 && (
         <nav
           aria-label="Deals pagination"
-          className="flex items-center justify-between gap-3 text-sm text-muted-foreground"
+          className="shrink-0 flex items-center justify-between gap-3 text-sm text-muted-foreground"
         >
           <span className="tnum">
             {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of{" "}

@@ -41,37 +41,39 @@ export default async function TasksPage(props: {
     }),
   ]);
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Tasks"
-        description="Keep your promises. Every follow-up, next step, and personal reminder in one place."
-      />
-      <NewTask deals={deals} />
-      <div className="flex gap-1 border-b pb-3">
-        {[
-          ["open", "Open tasks"],
-          ["overdue", "Overdue"],
-          ["done", "Completed"],
-        ].map(([value, label]) => (
-          <Link
-            key={value}
-            href={`/tasks?workspace=${workspace}&view=${value}`}
-            className={cn(
-              "rounded-lg px-4 py-2 text-sm font-medium",
-              view === value
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            {label}
-          </Link>
-        ))}
+    <div className="flex h-full flex-col space-y-6">
+      <div className="shrink-0 space-y-6">
+        <PageHeader
+          title="Tasks"
+          description="Keep your promises. Every follow-up, next step, and personal reminder in one place."
+        />
+        <NewTask deals={deals} />
+        <div className="flex gap-1 border-b pb-3">
+          {[
+            ["open", "Open tasks"],
+            ["overdue", "Overdue"],
+            ["done", "Completed"],
+          ].map(([value, label]) => (
+            <Link
+              key={value}
+              href={`/tasks?workspace=${workspace}&view=${value}`}
+              className={cn(
+                "rounded-lg px-4 py-2 text-sm font-medium",
+                view === value
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted",
+              )}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
       </div>
-      <div className="rounded-xl border bg-card px-5">
+      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin rounded-xl border bg-card px-5">
         <TaskList tasks={tasks} />
       </div>
       {tasks.length === 200 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="shrink-0 text-xs text-muted-foreground">
           Showing the first 200 tasks. Complete older tasks to keep this list
           manageable.
         </p>

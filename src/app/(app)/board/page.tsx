@@ -45,19 +45,21 @@ export default async function BoardPage(props: {
   );
 
   return (
-    <div>
-      <PageHeader
-        title="Pipeline board"
-        description="Drag deals between stages to update their status."
-      >
-        <div className="flex items-center gap-1 rounded-md border border-border bg-surface p-0.5">
-          {tab("DK", "🇩🇰 Denmark")}
-          {tab("GLOBAL", "🌍 International")}
-        </div>
-        <Button asChild variant="outline">
-          <Link href={`/deals?workspace=${workspace}`}>Table view</Link>
-        </Button>
-      </PageHeader>
+    <div className="flex h-full flex-col space-y-6">
+      <div className="shrink-0">
+        <PageHeader
+          title="Pipeline board"
+          description="Drag deals between stages to update their status."
+        >
+          <div className="flex items-center gap-1 rounded-md border border-border bg-surface p-0.5">
+            {tab("DK", "🇩🇰 Denmark")}
+            {tab("GLOBAL", "🌍 International")}
+          </div>
+          <Button asChild variant="outline">
+            <Link href={`/deals?workspace=${workspace}`}>Table view</Link>
+          </Button>
+        </PageHeader>
+      </div>
 
       {items.length === 0 ? (
         <EmptyState
@@ -74,19 +76,21 @@ export default async function BoardPage(props: {
           </Button>
         </EmptyState>
       ) : (
-        <PipelineBoard
-          initial={items.map((deal) => ({
-            id: deal.id,
-            title: deal.title,
-            status: deal.status as DealStatus,
-            valueMin: deal.valueMin,
-            valueMax: deal.valueMax,
-            currency: deal.currency,
-            deadline: deal.deadline,
-            pursuitScore: deal.pursuitScore,
-            account: deal.account,
-          }))}
-        />
+        <div className="min-h-0 flex-1">
+          <PipelineBoard
+            initial={items.map((deal) => ({
+              id: deal.id,
+              title: deal.title,
+              status: deal.status as DealStatus,
+              valueMin: deal.valueMin,
+              valueMax: deal.valueMax,
+              currency: deal.currency,
+              deadline: deal.deadline,
+              pursuitScore: deal.pursuitScore,
+              account: deal.account,
+            }))}
+          />
+        </div>
       )}
     </div>
   );
