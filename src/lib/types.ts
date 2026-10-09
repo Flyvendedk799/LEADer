@@ -268,7 +268,7 @@ export interface DashboardMetrics {
   newLeads: number;
   activeLeads: number;
   upcomingDeadlines: { id: string; title: string; deadline: string; matchScore: number | null }[];
-  bestMatches: { id: string; title: string; matchScore: number | null }[];
+  bestMatches: { id: string; title: string; matchScore: number | null; type?: "deal" | "candidate" }[];
   watchlistCount: number;
   appliedCount: number;
   wonCount: number;

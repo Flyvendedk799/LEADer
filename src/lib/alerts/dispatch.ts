@@ -151,11 +151,11 @@ export async function generateDigest(ownerId: string, workspace: Workspace = "DK
       take: 5,
       select: { id: true, title: true, deadline: true, matchScore: true, pursuitScore: true },
     }),
-    db.deal.findMany({
+    db.discoveryCandidate.findMany({
       where: {
         ownerId,
         workspace,
-        status: { in: [...OPEN_DEAL_STATUSES] },
+        status: "NEW",
         OR: [{ matchScore: { gte: 80 } }, { pursuitScore: { gte: 80 } }],
       },
       orderBy: { pursuitScore: "desc" },
@@ -180,6 +180,7 @@ export async function generateDigest(ownerId: string, workspace: Workspace = "DK
         id: deal.id,
         title: deal.title,
         matchScore: deal.pursuitScore ?? deal.matchScore,
+        type: "candidate" as const,
       })),
     },
     workspace,

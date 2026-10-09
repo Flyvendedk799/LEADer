@@ -34,12 +34,14 @@ export function renderDigest(metrics: DashboardMetrics, workspace: string): Rend
   const dl = metrics.upcomingDeadlines.slice(0, 5);
   const best = metrics.bestMatches.slice(0, 5);
 
-  const list = <T extends { id: string; title: string }>(items: T[], suffix?: (i: T) => string) =>
+  const list = <T extends { id: string; title: string; type?: "deal" | "candidate" }>(items: T[], suffix?: (i: T) => string) =>
     items.length
       ? `<ul style="padding-left:18px;margin:8px 0;">${items
           .map(
-            (i) =>
-              `<li style="margin:4px 0;"><a href="${appUrl()}/deals/${i.id}" style="color:#e6edf3;">${esc(i.title)}</a>${suffix ? ` <span style="color:#8b949e;">${suffix(i)}</span>` : ""}</li>`,
+            (i) => {
+              const url = i.type === "candidate" ? `/inbox?workspace=${workspace}&candidate=${i.id}` : `/deals/${i.id}`;
+              return `<li style="margin:4px 0;"><a href="${appUrl()}${url}" style="color:#e6edf3;">${esc(i.title)}</a>${suffix ? ` <span style="color:#8b949e;">${suffix(i)}</span>` : ""}</li>`;
+            }
           )
           .join("")}</ul>`
       : `<p style="color:#8b949e;margin:8px 0;">None.</p>`;
