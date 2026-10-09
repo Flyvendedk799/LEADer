@@ -41,3 +41,9 @@ yarn-error.log*
 # generated exports
 /tmp
 /exports
+
+# scratch and logs
+error.log
+test-*.sh
+fix-*.sh
+*.log
