@@ -62,7 +62,7 @@ export function DealTable({
 
   return (
     <div className="flex h-full flex-col min-h-0 rounded-lg border border-border bg-card">
-      <div className="overflow-y-auto scrollbar-thin">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
         <Table>
           <TableHeader>
           <TableRow>
