@@ -46,7 +46,34 @@ export function ReviewInbox({
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
   const [removed, setRemoved] = useState<string[]>([]);
-  async function act(id: string, action: "save" | "dismiss") {
+  async function promote(id: string) {
+    setPending(id);
+    try {
+      const res = await fetch(`/api/candidates/${id}/promote`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === "string" ? data.error : "Please try again.",
+        );
+      }
+      setRemoved((ids) => [...ids, id]);
+      toast.success("Candidate promoted to deal");
+
+      if (data.deal?.id) {
+        router.push(`/deals/${data.deal.id}`);
+      } else {
+        router.refresh();
+      }
+    } catch (error) {
+      toast.error("Couldn't promote candidate", (error as Error).message);
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function act(id: string, action: "dismiss") {
     setPending(id);
     try {
       const res = await fetch(`/api/discovery/candidates/${id}`, {
@@ -60,9 +87,7 @@ export function ReviewInbox({
           typeof data.error === "string" ? data.error : "Please try again.",
         );
       setRemoved((ids) => [...ids, id]);
-      toast.success(
-        action === "save" ? "Added to your pipeline" : "Lead dismissed",
-      );
+      toast.success("Lead dismissed");
       router.refresh();
     } catch (error) {
       toast.error("Couldn't update lead", (error as Error).message);
@@ -151,14 +176,14 @@ export function ReviewInbox({
             <Button
               size="sm"
               disabled={pending !== null}
-              onClick={() => act(lead.id, "save")}
+              onClick={() => promote(lead.id)}
             >
               {pending === lead.id ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Check className="h-4 w-4" />
               )}
-              Add to deals
+              Promote to Deal
             </Button>
             <Button
               variant="ghost"

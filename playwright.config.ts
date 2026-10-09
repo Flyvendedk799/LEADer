@@ -12,7 +12,7 @@ export default defineConfig({
   retries: 0,
   reporter: "list",
   use: {
-    baseURL: process.env.BASE_URL || "http://localhost:3000",
+    baseURL: process.env.BASE_URL || "http://127.0.0.1:3000",
     trace: "on-first-retry",
   },
   projects: [
@@ -23,6 +23,5 @@ export default defineConfig({
       dependencies: ["setup"],
     },
   ],
-  // Uncomment to let Playwright boot the server itself (needs a seeded DB):
-  // webServer: { command: "npm run start", url: "http://localhost:3000", reuseExistingServer: true },
+  // Uncomment to let Playwright boot the app server itself (needs a seeded DB):
 });
