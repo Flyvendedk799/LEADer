@@ -1398,16 +1398,16 @@ export async function saveCandidateAsDeal(
           ownerId,
           accountId: account.id,
           dealId: deal.id,
-          title: "Qualify buyer, budget and next step",
+          title: "Qualification",
           description: candidate.lane?.conversionGuidance,
           dueAt: candidate.deadline
             ? new Date(
                 Math.min(
                   candidate.deadline.getTime(),
-                  Date.now() + 3 * 86400000,
+                  Date.now() + 2 * 86400000,
                 ),
               )
-            : new Date(Date.now() + 3 * 86400000),
+            : new Date(Date.now() + 2 * 86400000),
           priority: (candidate.pursuitScore ?? 0) >= 80 ? "HIGH" : "MEDIUM",
         },
       });
