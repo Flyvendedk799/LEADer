@@ -1,12 +1,22 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { createSession } from "@/lib/auth/session";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
 
-  if (!code) {
+  const cookieStore = await cookies();
+  const savedState = cookieStore.get("oauth_state")?.value;
+  const nextPath = cookieStore.get("oauth_next")?.value || "/";
+
+  // Clean up cookies
+  cookieStore.delete("oauth_state");
+  cookieStore.delete("oauth_next");
+
+  if (!code || !state || state !== savedState) {
     return NextResponse.redirect(new URL("/login?error=oauth_error", url.origin));
   }
 
@@ -65,7 +75,7 @@ export async function GET(req: Request) {
       ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     });
 
-    return NextResponse.redirect(new URL("/", url.origin));
+    return NextResponse.redirect(new URL(nextPath, url.origin));
   } catch (err) {
     console.error("Google OAuth error:", err);
     return NextResponse.redirect(new URL("/login?error=oauth_internal_error", url.origin));

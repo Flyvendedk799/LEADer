@@ -39,7 +39,7 @@ export function renderDigest(metrics: DashboardMetrics, workspace: string): Rend
       ? `<ul style="padding-left:18px;margin:8px 0;">${items
           .map(
             (i) => {
-              const url = i.type === "candidate" ? `/inbox` : `/deals/${i.id}`;
+              const url = i.type === "candidate" ? `/inbox?workspace=${workspace}&candidate=${i.id}` : `/deals/${i.id}`;
               return `<li style="margin:4px 0;"><a href="${appUrl()}${url}" style="color:#e6edf3;">${esc(i.title)}</a>${suffix ? ` <span style="color:#8b949e;">${suffix(i)}</span>` : ""}</li>`;
             }
           )
