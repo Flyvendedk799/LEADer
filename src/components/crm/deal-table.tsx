@@ -49,11 +49,11 @@ export function DealTable({
       <EmptyState
         icon={BriefcaseBusiness}
         title="No deals yet"
-        description="Add a deal manually, or find leads and save the promising ones from your review inbox."
+        description="Track your pipeline and manage active deals."
       >
         <Button asChild>
           <Link href={`/deals?workspace=${workspace}&new=1`}>
-            Create your first deal
+            Add deal
           </Link>
         </Button>
       </EmptyState>

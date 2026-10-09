@@ -6,6 +6,7 @@ import { Check, Circle, Loader2, RotateCcw, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatDate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { EmptyState } from "@/components/shared/empty-state";
 
 export type TaskItem = {
   id: string;
@@ -50,13 +51,15 @@ export function TaskList({
   }
   if (!tasks.length)
     return (
-      <div className="rounded-xl border border-dashed p-8 text-center">
-        <Check className="mx-auto mb-3 h-7 w-7 text-primary" />
-        <p className="text-sm font-medium">You’re all caught up</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Your next follow-up will appear here.
-        </p>
-      </div>
+      <EmptyState
+        icon={Check}
+        title="You’re all caught up"
+        description="Keep track of follow-ups, next steps, and personal reminders."
+      >
+        <Button onClick={() => document.querySelector<HTMLInputElement>('input[name="title"]')?.focus()}>
+          Add task
+        </Button>
+      </EmptyState>
     );
   return (
     <div className="divide-y divide-border" aria-label="Task list">

@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowRight,
   ExternalLink,
   Inbox,
   Loader2,
@@ -15,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { formatBudget, formatDate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { EmptyState } from "@/components/shared/empty-state";
 
 type Lead = {
   id: string;
@@ -73,19 +73,17 @@ export function ReviewInbox({
   const visible = leads.filter((lead) => !removed.includes(lead.id));
   if (!visible.length)
     return (
-      <div className="rounded-xl border bg-card p-12 text-center">
-        <Inbox className="mx-auto mb-5 h-10 w-10 text-primary" />
-        <h2 className="text-lg font-semibold">A clear inbox. A fresh start.</h2>
-        <p className="mx-auto mb-6 mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-          New discoveries collect here until you decide. Find leads, check the
-          evidence, then add the ones worth pursuing to your deals.
-        </p>
+      <EmptyState
+        icon={Inbox}
+        title="Inbox zero"
+        description="Review new leads here and add the promising ones to your pipeline."
+      >
         <Button asChild>
           <Link href={`/discover?workspace=${workspace}`}>
-            Find your next lead <ArrowRight className="h-4 w-4" />
+            Find leads
           </Link>
         </Button>
-      </div>
+      </EmptyState>
     );
   return (
     <div className="space-y-4">
