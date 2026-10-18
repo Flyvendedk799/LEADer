@@ -19,55 +19,32 @@ import {
   TOOLS_NAV,
   SETTINGS_NAV,
 } from "./nav";
-
-type NavCounts = {
-  unreviewedLeads: number;
-  openTasks: number;
-  overdueTasks: number;
-};
+import { useNavCounts, type NavCounts } from "./use-nav-counts";
 
 /**
  * Mobile navigation drawer. The desktop sidebar is hidden below `md`, so this
  * hamburger + slide-in Sheet is the only way to move between sections on phones.
  * Mirrors the sidebar's nav (shared config in ./nav) and closes on navigation.
  */
-export function MobileNav() {
+export interface MobileNavProps {
+  initialCounts?: NavCounts | null;
+  defaultOpen?: boolean;
+}
+
+export const MobileNav: React.FC<MobileNavProps> = function MobileNav({
+  initialCounts,
+  defaultOpen = false,
+} = {}) {
   const pathname = usePathname();
   const params = useSearchParams();
   const workspace = workspaceFromRoute(pathname, params);
-  const [open, setOpen] = useState(false);
-  const [counts, setCounts] = useState<NavCounts | null>(null);
+  const [open, setOpen] = useState(defaultOpen);
+  const counts = useNavCounts(workspace, initialCounts);
 
   // Close the drawer after the route changes (i.e. once a link has been tapped).
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
-
-  useEffect(() => {
-    let active = true;
-
-    function fetchCounts() {
-      fetch(`/api/nav/counts?workspace=${encodeURIComponent(workspace)}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: NavCounts | null) => {
-          if (active && data) {
-            setCounts(data);
-          }
-        })
-        .catch(() => {});
-    }
-
-    fetchCounts();
-
-    window.addEventListener("leader:counts-refresh", fetchCounts);
-    window.addEventListener("focus", fetchCounts);
-
-    return () => {
-      active = false;
-      window.removeEventListener("leader:counts-refresh", fetchCounts);
-      window.removeEventListener("focus", fetchCounts);
-    };
-  }, [workspace]);
 
   const linkClass = (href: string, accent = false) =>
     cn(

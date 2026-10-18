@@ -1,50 +1,24 @@
 "use client";
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Target, Plus } from "lucide-react";
 import { workspaceFromRoute } from "@/lib/workspace-context";
 import { cn } from "@/lib/utils";
 import { isNavActive, PRIMARY_NAV, TOOLS_NAV, SETTINGS_NAV } from "./nav";
+import { useNavCounts, type NavCounts } from "./use-nav-counts";
 
-type NavCounts = {
-  unreviewedLeads: number;
-  openTasks: number;
-  overdueTasks: number;
-};
+export interface SidebarProps {
+  initialCounts?: NavCounts | null;
+}
 
-export function Sidebar() {
+export const Sidebar: React.FC<SidebarProps> = function Sidebar({
+  initialCounts,
+} = {}) {
   const pathname = usePathname();
   const params = useSearchParams();
   const workspace = workspaceFromRoute(pathname, params);
   const isActive = (href: string) => isNavActive(pathname, href);
-  const [counts, setCounts] = useState<NavCounts | null>(null);
-
-  useEffect(() => {
-    let active = true;
-
-    function fetchCounts() {
-      fetch(`/api/nav/counts?workspace=${encodeURIComponent(workspace)}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: NavCounts | null) => {
-          if (active && data) {
-            setCounts(data);
-          }
-        })
-        .catch(() => {});
-    }
-
-    fetchCounts();
-
-    window.addEventListener("leader:counts-refresh", fetchCounts);
-    window.addEventListener("focus", fetchCounts);
-
-    return () => {
-      active = false;
-      window.removeEventListener("leader:counts-refresh", fetchCounts);
-      window.removeEventListener("focus", fetchCounts);
-    };
-  }, [workspace]);
+  const counts = useNavCounts(workspace, initialCounts);
 
   return (
     <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-card px-4 py-6 md:flex">

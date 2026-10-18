@@ -160,6 +160,13 @@ describe("GET /api/nav/counts", () => {
     });
 
     const expectedGlobalTaskWhere = taskWorkspaceWhere("GLOBAL");
+    expect(expectedGlobalTaskWhere).toEqual({
+      OR: [
+        { deal: { workspace: "GLOBAL" } },
+        { dealId: null, account: { workspace: "GLOBAL" } },
+        { dealId: null, accountId: null },
+      ],
+    });
     expect(mocks.db.task.count).toHaveBeenNthCalledWith(1, {
       where: {
         ownerId: "owner-1",

@@ -670,3 +670,236 @@ test("pipeline board computes per-currency pipeline totals and updates live on s
     await db.$disconnect();
   }
 });
+
+test("navigation badges update dynamically on mutations, window events, and workspace switch", async ({
+  page,
+  request,
+}) => {
+  const db = new PrismaClient();
+  const { user } = await (await request.get("/api/auth/me")).json();
+  const idPrefix = Date.now();
+  const candidateTitle = `E2E Badge Lead ${idPrefix}`;
+  const overdueTaskTitle = `E2E Overdue Task ${idPrefix}`;
+  const inlineCreatedTaskTitle = `E2E New Task Entry ${idPrefix}`;
+  const focusTaskTitle = `E2E Focus Fixture Task ${idPrefix}`;
+
+  // 1. Capture DK baseline counts from API
+  const baselineRes = await request.get("/api/nav/counts?workspace=DK");
+  const baseline = await baselineRes.json();
+  const initialLeads: number = baseline.unreviewedLeads;
+  const initialTasks: number = baseline.openTasks;
+  const initialOverdue: number = baseline.overdueTasks;
+
+  // 2. Create an unreviewed lead and an overdue task in DK
+  const [candidate, overdueTask] = await Promise.all([
+    db.discoveryCandidate.create({
+      data: {
+        ownerId: user.id,
+        title: candidateTitle,
+        description: "Candidate for badge verification",
+        workspace: "DK",
+        status: "NEW",
+        pursuitScore: 80,
+      },
+    }),
+    db.task.create({
+      data: {
+        ownerId: user.id,
+        title: overdueTaskTitle,
+        status: "OPEN",
+        dueAt: new Date(Date.now() - 86400000), // yesterday (overdue)
+      },
+    }),
+  ]);
+
+  let releaseGlobalGate: () => void = () => {};
+  const globalGate = new Promise<void>((resolve) => {
+    releaseGlobalGate = resolve;
+  });
+
+  try {
+    await page.goto("/inbox?workspace=DK");
+
+    // 3. Verify exact numeric badge values and overdue indication in desktop sidebar
+    const mainNav = page.getByRole("navigation", { name: "Main navigation" });
+    const leadsBadge = mainNav.locator("span[aria-label*='unreviewed leads']");
+    const tasksBadge = mainNav.locator("span[aria-label*='open tasks']");
+
+    await expect(leadsBadge).toBeVisible();
+    await expect(leadsBadge).toHaveText(String(initialLeads + 1));
+
+    await expect(tasksBadge).toBeVisible();
+    await expect(tasksBadge).toHaveText(String(initialTasks + 1));
+    await expect(tasksBadge).toHaveAttribute(
+      "aria-label",
+      new RegExp(`${initialOverdue + 1} overdue`),
+    );
+
+    // 4. Save candidate via inbox card action:
+    // Scope precisely to the article container to click the correct Add to deals button
+    const candidateCard = page
+      .locator("article")
+      .filter({ has: page.getByRole("heading", { name: candidateTitle, exact: true }) });
+    await candidateCard.getByRole("button", { name: "Add to deals", exact: true }).click();
+
+    // After save, leader:counts-refresh fires and unreviewedLeads decrements back to initialLeads
+    if (initialLeads === 0) {
+      await expect(leadsBadge).toHaveCount(0);
+    } else {
+      await expect(leadsBadge).toHaveText(String(initialLeads));
+    }
+
+    // Capture post-save API baseline (saveCandidateAsDeal creates an automatic linked follow-up task)
+    const postSaveRes = await request.get("/api/nav/counts?workspace=DK");
+    const postSave = await postSaveRes.json();
+    const postSaveTasks: number = postSave.openTasks;
+    await expect(tasksBadge).toHaveText(String(postSaveTasks));
+
+    // 5. Navigate to /tasks?workspace=DK to test task creation and completion increments/decrements
+    await page.goto("/tasks?workspace=DK");
+    await page.getByLabel("Task title", { exact: true }).fill(inlineCreatedTaskTitle);
+    await page.getByRole("button", { name: "Add task", exact: true }).click();
+
+    // Badge increments after task creation
+    await expect(tasksBadge).toHaveText(String(postSaveTasks + 1));
+
+    // Complete the newly created task -> badge decrements back
+    await page
+      .getByRole("button", { name: `Complete ${inlineCreatedTaskTitle}`, exact: true })
+      .click();
+    await expect(tasksBadge).toHaveText(String(postSaveTasks));
+
+    // 6. DB fixture mutation followed by window focus event
+    await db.task.create({
+      data: {
+        ownerId: user.id,
+        title: focusTaskTitle,
+        status: "OPEN",
+      },
+    });
+    // Dispatch focus event and verify reactive refresh reflects the new DB task
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(tasksBadge).toHaveText(String(postSaveTasks + 1));
+
+    // 7. Client-side workspace switch via Topbar link (preserves React state to test stale display neutralization)
+    let globalRequestsCount = 0;
+    let allGlobalStartedResolve: () => void = () => {};
+    const allGlobalStarted = new Promise<void>((resolve) => {
+      allGlobalStartedResolve = resolve;
+    });
+
+    // Both Sidebar and MobileNav are mounted, so both fire a fetch for workspace=GLOBAL.
+    // Use ONE shared globalGate promise so all requests await the same gate without overwriting callbacks.
+    await page.route("**/api/nav/counts?workspace=GLOBAL", async (route) => {
+      globalRequestsCount++;
+      if (globalRequestsCount >= 2) {
+        allGlobalStartedResolve();
+      }
+      await globalGate;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ unreviewedLeads: 0, openTasks: 0, overdueTasks: 0 }),
+      });
+    });
+
+    // Click Topbar client-side workspace link
+    await page.getByRole("link", { name: /International/ }).click();
+    await expect(page).toHaveURL(/workspace=GLOBAL/);
+
+    // Wait until both requests have started and are waiting at globalGate
+    await allGlobalStarted;
+
+    // While GLOBAL fetch is pending, verify stale DK counts are neutralized (null/hidden)
+    await expect(tasksBadge).toHaveCount(0);
+    await expect(leadsBadge).toHaveCount(0);
+
+    // Release globalGate for all waiting requests
+    releaseGlobalGate();
+
+    // After resolution, verify the page reflects new workspace values (badges stay 0/hidden)
+    await expect(tasksBadge).toHaveCount(0);
+    await expect(leadsBadge).toHaveCount(0);
+
+    await page.unroute("**/api/nav/counts?workspace=GLOBAL");
+  } finally {
+    releaseGlobalGate();
+    await db.task.deleteMany({
+      where: {
+        OR: [
+          {
+            ownerId: user.id,
+            title: { in: [overdueTaskTitle, inlineCreatedTaskTitle, focusTaskTitle] },
+          },
+          { deal: { title: candidateTitle } },
+        ],
+      },
+    });
+    await db.deal.deleteMany({
+      where: { ownerId: user.id, title: candidateTitle },
+    });
+    await db.discoveryCandidate.deleteMany({
+      where: { id: candidate.id },
+    });
+    await db.$disconnect();
+  }
+});
+
+test("mobile drawer navigation meets 44px touch targets, keyboard navigation, and 390px non-overflow", async ({
+  page,
+  request,
+}) => {
+  // Query baseline to assert numeric values inside mobile drawer
+  const countsRes = await request.get("/api/nav/counts?workspace=DK");
+  const counts = await countsRes.json();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/?workspace=DK");
+
+  // Hamburger button meets 44px touch target contract
+  const menuButton = page.getByRole("button", {
+    name: "Open navigation menu",
+    exact: true,
+  });
+  await expect(menuButton).toBeVisible();
+  const buttonBox = await menuButton.boundingBox();
+  expect(buttonBox).not.toBeNull();
+  expect(buttonBox!.width).toBeGreaterThanOrEqual(44);
+  expect(buttonBox!.height).toBeGreaterThanOrEqual(44);
+
+  // Keyboard accessibility: focus hamburger and press Enter to open drawer
+  await menuButton.focus();
+  await page.keyboard.press("Enter");
+
+  // Drawer dialog is visible
+  const sheetNav = page.getByRole("dialog");
+  await expect(sheetNav).toBeVisible();
+
+  // If counts exist, assert exact numeric values inside mobile drawer
+  if (counts.unreviewedLeads > 0) {
+    const mobileLeadsBadge = sheetNav.locator("span[aria-label*='unreviewed leads']");
+    await expect(mobileLeadsBadge).toHaveText(String(counts.unreviewedLeads));
+  }
+  if (counts.openTasks > 0) {
+    const mobileTasksBadge = sheetNav.locator("span[aria-label*='open tasks']");
+    await expect(mobileTasksBadge).toHaveText(String(counts.openTasks));
+  }
+
+  // Navigation links meet 44px touch target height
+  const inboxLink = sheetNav.getByRole("link", { name: "Review leads" });
+  await expect(inboxLink).toBeVisible();
+  const linkBox = await inboxLink.boundingBox();
+  expect(linkBox).not.toBeNull();
+  expect(linkBox!.height).toBeGreaterThanOrEqual(44);
+
+  // Verify page and drawer do not horizontally overflow at 390px viewport
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(overflow).toBe(false);
+
+  // Keyboard accessibility: press Escape to close drawer
+  await page.keyboard.press("Escape");
+  await expect(sheetNav).not.toBeVisible();
+});
+
