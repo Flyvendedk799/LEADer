@@ -32,4 +32,41 @@ describe("deal queries", () => {
     expect(where.OR).toHaveLength(4);
     expect(where.AND).toBeDefined();
   });
+  it("supports sort keys score, recent, deadline, value and defaults to score", () => {
+    const defaultQuery = dealQuery("me", new URLSearchParams());
+    expect(defaultQuery.orderBy).toEqual([
+      { pursuitScore: { sort: "desc", nulls: "last" } },
+      { id: "asc" },
+    ]);
+
+    const scoreQuery = dealQuery("me", new URLSearchParams("sort=score"));
+    expect(scoreQuery.orderBy).toEqual([
+      { pursuitScore: { sort: "desc", nulls: "last" } },
+      { id: "asc" },
+    ]);
+
+    const recentQuery = dealQuery("me", new URLSearchParams("sort=recent"));
+    expect(recentQuery.orderBy).toEqual([
+      { updatedAt: "desc" },
+      { id: "asc" },
+    ]);
+
+    const deadlineQuery = dealQuery("me", new URLSearchParams("sort=deadline"));
+    expect(deadlineQuery.orderBy).toEqual([
+      { deadline: { sort: "asc", nulls: "last" } },
+      { id: "asc" },
+    ]);
+
+    const valueQuery = dealQuery("me", new URLSearchParams("sort=value"));
+    expect(valueQuery.orderBy).toEqual([
+      { valueMax: { sort: "desc", nulls: "last" } },
+      { id: "asc" },
+    ]);
+
+    const fallbackQuery = dealQuery("me", new URLSearchParams("sort=unsupported_key"));
+    expect(fallbackQuery.orderBy).toEqual([
+      { pursuitScore: { sort: "desc", nulls: "last" } },
+      { id: "asc" },
+    ]);
+  });
 });
