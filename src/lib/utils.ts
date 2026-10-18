@@ -56,6 +56,25 @@ export function formatDate(d?: Date | string | null): string {
   }).format(new Date(d));
 }
 
+/** Formats a Date object to YYYY-MM-DD in local time. */
+export function toLocalDateString(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Returns YYYY-MM-DD for local calendar quick presets (today, tomorrow, next-week). */
+export function getQuickDate(preset: "today" | "tomorrow" | "next-week"): string {
+  const d = new Date();
+  if (preset === "tomorrow") {
+    d.setDate(d.getDate() + 1);
+  } else if (preset === "next-week") {
+    d.setDate(d.getDate() + 7);
+  }
+  return toLocalDateString(d);
+}
+
 /** "in 3 days" / "2 days ago" / "today". */
 export function relativeDeadline(deadline?: Date | string | null): string {
   const d = daysUntil(deadline);

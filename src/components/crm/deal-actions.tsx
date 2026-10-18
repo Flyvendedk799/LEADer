@@ -23,6 +23,17 @@ import {
   type DealStatus,
   type TouchpointKind,
 } from "@/lib/types";
+import { cn, getQuickDate } from "@/lib/utils";
+
+const LIFECYCLE_STAGES: DealStatus[] = [
+  "DISCOVERED",
+  "QUALIFYING",
+  "INTERESTING",
+  "CONTACTED",
+  "PROPOSAL",
+  "NEGOTIATION",
+  "WON",
+];
 
 async function postJson(url: string, body: unknown) {
   const res = await fetch(url, {
@@ -53,6 +64,7 @@ export function DealActions({
   const [busy, setBusy] = React.useState<string | null>(null);
   const [taskTitle, setTaskTitle] = React.useState("");
   const [taskDue, setTaskDue] = React.useState("");
+  const [taskPriority, setTaskPriority] = React.useState("MEDIUM");
   const [personName, setPersonName] = React.useState("");
   const [personEmail, setPersonEmail] = React.useState("");
   const [touchKind, setTouchKind] = React.useState<TouchpointKind>("NOTE");
@@ -61,6 +73,7 @@ export function DealActions({
   React.useEffect(() => setCurrent(status), [status]);
 
   async function changeStatus(next: DealStatus) {
+    if (next === current) return;
     const previous = current;
     setCurrent(next);
     setBusy("status");
@@ -72,6 +85,9 @@ export function DealActions({
       });
       if (!res.ok) throw new Error("Failed to update status");
       toast.success("Status updated", DEAL_STATUS_META[next].label);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("leader:counts-refresh"));
+      }
       router.refresh();
     } catch (err) {
       setCurrent(previous);
@@ -93,13 +109,18 @@ export function DealActions({
         dealId,
         accountId: accountId ?? undefined,
         title: taskTitle.trim(),
+        priority: taskPriority,
         dueAt: taskDue
           ? new Date(`${taskDue}T17:00:00`).toISOString()
           : undefined,
       });
       setTaskTitle("");
       setTaskDue("");
+      setTaskPriority("MEDIUM");
       toast.success("Task added");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("leader:counts-refresh"));
+      }
       router.refresh();
     } catch (err) {
       toast.error(
@@ -164,15 +185,57 @@ export function DealActions({
     <div className="space-y-6">
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Status</CardTitle>
+          <CardTitle className="text-sm">Status & Stage</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {/* Interactive deal stage stepper */}
+          <nav aria-label="Deal lifecycle stages" className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {LIFECYCLE_STAGES.map((stage, idx) => {
+                const isCurrent = current === stage;
+                const isPast =
+                  LIFECYCLE_STAGES.indexOf(current) > idx &&
+                  current !== "LOST" &&
+                  current !== "ARCHIVED";
+                return (
+                  <button
+                    key={stage}
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => changeStatus(stage)}
+                    aria-current={isCurrent ? "step" : undefined}
+                    aria-label={`Set status to ${DEAL_STATUS_META[stage].label}`}
+                    className={cn(
+                      "min-h-11 flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium transition-colors shrink-0",
+                      isCurrent
+                        ? "bg-primary text-primary-foreground font-semibold shadow-sm"
+                        : isPast
+                          ? "bg-primary/10 text-primary hover:bg-primary/20"
+                          : "bg-surface-2 text-muted-foreground hover:bg-surface-3 hover:text-foreground",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        isCurrent
+                          ? "bg-primary-foreground"
+                          : DEAL_STATUS_META[stage].dot,
+                      )}
+                    />
+                    {DEAL_STATUS_META[stage].label}
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+
+          {/* Deal status combobox — preserved exactly */}
           <Select
             value={current}
             onValueChange={(value) => changeStatus(value as DealStatus)}
             disabled={busy !== null}
           >
-            <SelectTrigger aria-label="Deal status">
+            <SelectTrigger aria-label="Deal status" className="h-11">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -183,6 +246,30 @@ export function DealActions({
               ))}
             </SelectContent>
           </Select>
+
+          {/* Terminal state shortcuts */}
+          <div className="flex items-center justify-end gap-3 text-xs text-muted-foreground pt-1">
+            {current !== "LOST" && (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => changeStatus("LOST")}
+                className="min-h-11 px-2 inline-flex items-center hover:text-destructive transition-colors"
+              >
+                Mark lost
+              </button>
+            )}
+            {current !== "ARCHIVED" && (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => changeStatus("ARCHIVED")}
+                className="min-h-11 px-2 inline-flex items-center hover:text-foreground transition-colors"
+              >
+                Archive deal
+              </button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -198,12 +285,50 @@ export function DealActions({
               aria-label="Follow-up task title"
               placeholder="Next step"
             />
-            <Input
-              type="date"
-              value={taskDue}
-              onChange={(e) => setTaskDue(e.target.value)}
-              aria-label="Task due date"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={taskPriority}
+                onChange={(e) => setTaskPriority(e.target.value)}
+                aria-label="Task priority"
+                className="h-11 min-h-11 rounded-md border bg-background px-2 text-xs"
+              >
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+              </select>
+              <Input
+                type="date"
+                value={taskDue}
+                onChange={(e) => setTaskDue(e.target.value)}
+                aria-label="Task due date"
+                className="h-11 min-h-11 text-xs"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground pt-0.5">
+              <span className="font-medium">Quick date:</span>
+              <button
+                type="button"
+                onClick={() => setTaskDue(getQuickDate("today"))}
+                className="min-h-11 min-w-11 px-2.5 inline-flex items-center justify-center rounded border border-border text-xs hover:bg-muted hover:text-foreground transition-colors"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskDue(getQuickDate("tomorrow"))}
+                className="min-h-11 min-w-11 px-2.5 inline-flex items-center justify-center rounded border border-border text-xs hover:bg-muted hover:text-foreground transition-colors"
+              >
+                Tomorrow
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskDue(getQuickDate("next-week"))}
+                className="min-h-11 min-w-11 px-2.5 inline-flex items-center justify-center rounded border border-border text-xs hover:bg-muted hover:text-foreground transition-colors"
+              >
+                Next week
+              </button>
+            </div>
             <Button
               type="submit"
               size="sm"

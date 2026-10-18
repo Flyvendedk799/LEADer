@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, Circle, Loader2, RotateCcw, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cn, formatDate } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -42,6 +43,9 @@ export function TaskList({
             ? "Task reopened"
             : "Task rescheduled",
       );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("leader:counts-refresh"));
+      }
       router.refresh();
     } catch (error) {
       toast.error("Couldn't update task", (error as Error).message);
@@ -107,15 +111,34 @@ export function TaskList({
                 ) : (
                   <span>Personal task</span>
                 )}
-                <span className={cn(overdue && "text-destructive")}>
+                <span className={cn(overdue && "text-destructive font-medium")}>
                   {overdue ? "Overdue · " : ""}
                   {task.dueAt ? formatDate(task.dueAt) : "No due date"}
                 </span>
-                {task.priority === "HIGH" || task.priority === "URGENT" ? (
-                  <span className="text-amber-600">
-                    {task.priority.toLowerCase()} priority
-                  </span>
-                ) : null}
+                {task.priority === "URGENT" && (
+                  <Badge
+                    variant="destructive"
+                    className="px-1.5 py-0 text-[10px] uppercase font-semibold"
+                  >
+                    Urgent
+                  </Badge>
+                )}
+                {task.priority === "HIGH" && (
+                  <Badge
+                    variant="warning"
+                    className="px-1.5 py-0 text-[10px] uppercase font-semibold"
+                  >
+                    High
+                  </Badge>
+                )}
+                {task.priority === "LOW" && (
+                  <Badge
+                    variant="muted"
+                    className="px-1.5 py-0 text-[10px] uppercase font-medium"
+                  >
+                    Low
+                  </Badge>
+                )}
               </div>
             </div>
             {!compact && !done && (
