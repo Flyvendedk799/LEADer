@@ -207,6 +207,9 @@ export function ReviewInbox({
           : "Couldn't dismiss leads",
         (error as Error).message,
       );
+      // Saves commit individually; a failed batch can still have changed leads.
+      window.dispatchEvent(new Event("leader:counts-refresh"));
+      router.refresh();
     } finally {
       setBulkPending(null);
     }

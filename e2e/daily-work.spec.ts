@@ -903,3 +903,83 @@ test("mobile drawer navigation meets 44px touch targets, keyboard navigation, an
   await expect(sheetNav).not.toBeVisible();
 });
 
+test("a partially committed failed batch refreshes cards and navigation counts", async ({ page, request }) => {
+  const db = new PrismaClient();
+  const { user } = await (await request.get("/api/auth/me")).json();
+  const tag = `E2E Partial Batch ${Date.now()}`;
+  const baseline = await (await request.get("/api/nav/counts?workspace=DK")).json();
+  const candidates = await Promise.all(["First", "Second"].map(suffix =>
+    db.discoveryCandidate.create({ data: { ownerId: user.id, workspace: "DK", title: `${tag} ${suffix}`, organization: tag } }),
+  ));
+  try {
+    await page.goto("/inbox?workspace=DK");
+    const badge = page.getByRole("navigation", { name: "Main navigation" }).locator("span[aria-label*='unreviewed leads']");
+    await expect(badge).toHaveText(String(baseline.unreviewedLeads + 2));
+    for (const candidate of candidates) {
+      await page.getByRole("checkbox", { name: `Select ${candidate.title}`, exact: true }).click();
+    }
+    // Reproduce the bulk API's partial-commit contract: one real save succeeds,
+    // then the batch returns an error before processing its remaining candidate.
+    await page.route("**/api/discovery/candidates/bulk", async route => {
+      expect(route.request().postDataJSON().ids.sort()).toEqual(candidates.map(candidate => candidate.id).sort());
+      const saved = await request.patch(`/api/discovery/candidates/${candidates[0].id}`, { data: { action: "save" } });
+      expect(saved.ok()).toBe(true);
+      await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "Batch interrupted after first save" }) });
+    });
+    const toolbar = page.getByRole("complementary", { name: "Bulk actions" });
+    await toolbar.getByRole("button", { name: "Add to deals", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Couldn't add leads to deals" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: candidates[0].title, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: candidates[1].title, exact: true })).toBeVisible();
+    await expect(toolbar).toContainText("1 selected");
+    await expect(badge).toHaveText(String(baseline.unreviewedLeads + 1));
+    expect((await db.discoveryCandidate.findUniqueOrThrow({ where: { id: candidates[0].id } })).status).toBe("SAVED");
+    expect((await db.discoveryCandidate.findUniqueOrThrow({ where: { id: candidates[1].id } })).status).toBe("NEW");
+  } finally {
+    await page.unroute("**/api/discovery/candidates/bulk");
+    await db.task.deleteMany({ where: { ownerId: user.id, deal: { title: { startsWith: tag } } } });
+    await db.deal.deleteMany({ where: { ownerId: user.id, title: { startsWith: tag } } });
+    await db.discoveryCandidate.deleteMany({ where: { id: { in: candidates.map(candidate => candidate.id) } } });
+    await db.account.deleteMany({ where: { ownerId: user.id, name: tag } });
+    await db.$disconnect();
+  }
+});
+
+test("Discovery mission save and dismiss refresh badges without leaving the page", async ({ page, request }) => {
+  const db = new PrismaClient();
+  const { user } = await (await request.get("/api/auth/me")).json();
+  const tag = `E2E Mission Badges ${Date.now()}`;
+  const lane = await db.discoveryLane.findFirstOrThrow({ where: { ownerId: user.id, slug: "direct-startup-mvp" } });
+  const baseline = await (await request.get("/api/nav/counts?workspace=DK")).json();
+  const mission = await db.discoveryMission.create({ data: { ownerId: user.id, laneId: lane.id, workspace: "DK", query: tag, status: "SUCCESS", finishedAt: new Date() } });
+  const candidates = await Promise.all(["First", "Second"].map(suffix =>
+    db.discoveryCandidate.create({ data: {
+      ownerId: user.id, missionId: mission.id, laneId: lane.id, workspace: "DK",
+      title: `Startup founder needs an MVP developer ${tag} ${suffix}`,
+      description: "Pre-seed startup needs a technical partner for a paid product prototype.",
+      organization: tag, url: `https://example.com/mvp/${mission.id}/${suffix}`, budgetMin: 100000, budgetMax: 100000, pursuitScore: 85,
+    } }),
+  ));
+  try {
+    await page.goto(`/discover?workspace=DK&mission=${mission.id}`);
+    const badge = page.getByRole("navigation", { name: "Main navigation" }).locator("span[aria-label*='unreviewed leads']");
+    await expect(badge).toHaveText(String(baseline.unreviewedLeads + 2));
+    const card = (title: string) => page.locator("article").filter({ has: page.getByRole("heading", { name: title, exact: true }) });
+    await card(candidates[0].title).getByRole("button", { name: "Save as deal", exact: true }).click();
+    await expect(badge).toHaveText(String(baseline.unreviewedLeads + 1));
+    const tasksBadge = page.getByRole("navigation", { name: "Main navigation" }).locator("span[aria-label*='open tasks']");
+    await expect(tasksBadge).toHaveText(String(baseline.openTasks + 1));
+    await card(candidates[1].title).getByRole("button", { name: "Dismiss", exact: true }).click();
+    if (baseline.unreviewedLeads === 0) await expect(badge).toHaveCount(0);
+    else await expect(badge).toHaveText(String(baseline.unreviewedLeads));
+    await expect(page).toHaveURL(new RegExp(`/discover\\?.*mission=${mission.id}`));
+  } finally {
+    await db.task.deleteMany({ where: { ownerId: user.id, deal: { title: { contains: tag } } } });
+    await db.deal.deleteMany({ where: { ownerId: user.id, title: { contains: tag } } });
+    await db.discoveryCandidate.deleteMany({ where: { missionId: mission.id } });
+    await db.discoveryMission.delete({ where: { id: mission.id } });
+    await db.account.deleteMany({ where: { ownerId: user.id, name: tag } });
+    await db.$disconnect();
+  }
+});
+

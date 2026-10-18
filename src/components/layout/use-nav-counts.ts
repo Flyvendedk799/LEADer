@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 export interface NavCounts {
   unreviewedLeads: number;
@@ -70,6 +71,7 @@ export function useNavCounts(
   workspace: string,
   initialCounts: NavCounts | null = null,
 ): NavCounts | null {
+  const pathname = usePathname();
   const [state, setState] = useState<{
     workspace: string;
     counts: NavCounts;
@@ -97,7 +99,7 @@ export function useNavCounts(
         window.removeEventListener("focus", handleRefresh);
       }
     };
-  }, [workspace]);
+  }, [workspace, pathname]);
 
   return state && state.workspace === workspace ? state.counts : null;
 }
