@@ -1059,6 +1059,7 @@ export function LaneMissionControl({
             }
           : current,
       );
+      window.dispatchEvent(new Event("leader:counts-refresh"));
       router.refresh();
     } catch (err) {
       toast.error(

@@ -19,17 +19,27 @@ import {
   TOOLS_NAV,
   SETTINGS_NAV,
 } from "./nav";
+import { useNavCounts, type NavCounts } from "./use-nav-counts";
 
 /**
  * Mobile navigation drawer. The desktop sidebar is hidden below `md`, so this
  * hamburger + slide-in Sheet is the only way to move between sections on phones.
  * Mirrors the sidebar's nav (shared config in ./nav) and closes on navigation.
  */
-export function MobileNav() {
+export interface MobileNavProps {
+  initialCounts?: NavCounts | null;
+  defaultOpen?: boolean;
+}
+
+export const MobileNav: React.FC<MobileNavProps> = function MobileNav({
+  initialCounts,
+  defaultOpen = false,
+} = {}) {
   const pathname = usePathname();
   const params = useSearchParams();
   const workspace = workspaceFromRoute(pathname, params);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+  const counts = useNavCounts(workspace, initialCounts);
 
   // Close the drawer after the route changes (i.e. once a link has been tapped).
   useEffect(() => {
@@ -38,7 +48,7 @@ export function MobileNav() {
 
   const linkClass = (href: string, accent = false) =>
     cn(
-      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+      "min-h-11 flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
       isNavActive(pathname, href)
         ? accent
           ? "bg-accent/15 text-accent"
@@ -53,7 +63,7 @@ export function MobileNav() {
           variant="ghost"
           size="icon"
           aria-label="Open navigation menu"
-          className="md:hidden"
+          className="md:hidden min-h-11 min-w-11"
         >
           <Menu className="h-5 w-5" />
         </Button>
@@ -76,6 +86,9 @@ export function MobileNav() {
         <nav className="flex flex-1 flex-col gap-0.5 px-3">
           {[...PRIMARY_NAV, ...TOOLS_NAV].map((item) => {
             const Icon = item.icon;
+            const showLeads = item.href === "/inbox" && counts && counts.unreviewedLeads > 0;
+            const showTasks = item.href === "/tasks" && counts && counts.openTasks > 0;
+
             return (
               <Link
                 key={item.href}
@@ -83,8 +96,33 @@ export function MobileNav() {
                 onClick={() => setOpen(false)}
                 className={linkClass(item.href)}
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1 truncate">{item.label}</span>
+                {showLeads && (
+                  <span
+                    aria-label={`${counts.unreviewedLeads} unreviewed leads`}
+                    className="ml-auto inline-flex items-center justify-center rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary"
+                  >
+                    {counts.unreviewedLeads}
+                  </span>
+                )}
+                {showTasks && (
+                  <span
+                    aria-label={`${counts.openTasks} open tasks${counts.overdueTasks > 0 ? `, ${counts.overdueTasks} overdue` : ""}`}
+                    title={counts.overdueTasks > 0 ? `${counts.overdueTasks} overdue` : undefined}
+                    className={cn(
+                      "ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold",
+                      counts.overdueTasks > 0
+                        ? "bg-destructive/15 text-destructive"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {counts.overdueTasks > 0 && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-destructive animate-pulse" />
+                    )}
+                    {counts.openTasks}
+                  </span>
+                )}
               </Link>
             );
           })}
