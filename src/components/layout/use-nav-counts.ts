@@ -27,7 +27,7 @@ export class NavCountsController {
   ) {
     this.workspace = workspace;
     this.onCounts = onCounts;
-    this.fetchFn = fetchFn;
+    this.fetchFn = fetchFn.bind(globalThis);
   }
 
   fetchCounts(): Promise<void> {

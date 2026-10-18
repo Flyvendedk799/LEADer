@@ -200,6 +200,26 @@ describe("Sidebar and MobileNav badges", () => {
   });
 
   describe("NavCountsController: focus, refresh events, and stale response isolation", () => {
+    it("preserves the browser receiver required by native fetch", async () => {
+      const counts = { unreviewedLeads: 2, openTasks: 4, overdueTasks: 1 };
+      const onCounts = vi.fn();
+      // Chrome rejects fetch called with a controller as its receiver. A plain
+      // vi.fn would accept that invocation and hide the missing badges.
+      const browserFetch = vi.fn(function (this: unknown) {
+        if (this !== globalThis) {
+          return Promise.reject(new TypeError("Illegal invocation"));
+        }
+        return Promise.resolve(new Response(JSON.stringify(counts)));
+      });
+      const controller = new NavCountsController("DK", onCounts, browserFetch);
+      try {
+        await controller.fetchCounts();
+        expect(onCounts).toHaveBeenCalledWith(counts);
+      } finally {
+        controller.destroy();
+      }
+    });
+
     it("fetches counts for the specified workspace", async () => {
       const onCounts = vi.fn();
       const mockFetch = vi.fn().mockResolvedValue({
