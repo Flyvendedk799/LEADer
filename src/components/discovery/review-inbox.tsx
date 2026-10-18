@@ -241,14 +241,14 @@ export function ReviewInbox({
       {/* Search, Lane, and Score Filters */}
       <div className="flex flex-wrap items-center gap-2.5 rounded-lg border bg-card p-3 sm:gap-3">
         <div className="relative min-w-[200px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search leads by title, org, or scope..."
             aria-label="Search leads"
-            className="h-9 w-full rounded-md border border-input bg-surface pl-9 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-11 min-h-11 w-full rounded-md border border-input bg-surface pl-9 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
 
@@ -256,7 +256,7 @@ export function ReviewInbox({
           value={selectedLane}
           onChange={(e) => setSelectedLane(e.target.value)}
           aria-label="Filter by lane"
-          className="h-9 rounded-md border border-input bg-surface px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="h-11 min-h-11 rounded-md border border-input bg-surface px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="ALL">All lanes</option>
           {availableLanes.map((lane) => (
@@ -270,7 +270,7 @@ export function ReviewInbox({
           value={minScore}
           onChange={(e) => setMinScore(e.target.value)}
           aria-label="Filter by score"
-          className="h-9 rounded-md border border-input bg-surface px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="h-11 min-h-11 rounded-md border border-input bg-surface px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="ALL">All scores</option>
           <option value="80">Score 80+ (High)</option>
@@ -283,7 +283,7 @@ export function ReviewInbox({
             variant="ghost"
             size="sm"
             onClick={resetFilters}
-            className="h-9 px-2 text-xs text-muted-foreground hover:text-foreground"
+            className="h-11 min-h-11 px-3 text-xs text-muted-foreground hover:text-foreground"
           >
             Reset
           </Button>
@@ -291,19 +291,21 @@ export function ReviewInbox({
       </div>
 
       {/* Select All and Selection Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
-        <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium">
-          <Checkbox
-            checked={
-              allFilteredSelected
-                ? true
-                : selectedFilteredIds.length > 0
-                  ? "indeterminate"
-                  : false
-            }
-            onCheckedChange={toggleSelectAll}
-            aria-label={allFilteredSelected ? "Deselect all" : "Select all"}
-          />
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-2">
+        <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm font-medium">
+          <div className="flex min-h-11 min-w-11 items-center justify-center -ml-2">
+            <Checkbox
+              checked={
+                allFilteredSelected
+                  ? true
+                  : selectedFilteredIds.length > 0
+                    ? "indeterminate"
+                    : false
+              }
+              onCheckedChange={toggleSelectAll}
+              aria-label={allFilteredSelected ? "Deselect all" : "Select all"}
+            />
+          </div>
           <span>{allFilteredSelected ? "Deselect all" : "Select all"}</span>
           <span className="text-xs text-muted-foreground">
             ({filteredLeads.length})
@@ -402,14 +404,14 @@ export function ReviewInbox({
             selectedIds.includes(lead.id) && "border-primary/50 bg-primary/[0.02]",
           )}
         >
-          <div className="flex items-start gap-3">
-            <div className="pt-1">
+          <div className="flex items-start gap-2">
+            <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center shrink-0 -mt-1 -ml-1.5">
               <Checkbox
                 checked={selectedIds.includes(lead.id)}
                 onCheckedChange={() => toggleSelectLead(lead.id)}
                 aria-label={`Select ${lead.title}`}
               />
-            </div>
+            </label>
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -470,6 +472,7 @@ export function ReviewInbox({
                   size="sm"
                   disabled={pending !== null || bulkPending !== null}
                   onClick={() => act(lead.id, "save")}
+                  className="min-h-11 px-3"
                 >
                   {pending === lead.id ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -483,6 +486,7 @@ export function ReviewInbox({
                   size="sm"
                   disabled={pending !== null || bulkPending !== null}
                   onClick={() => act(lead.id, "dismiss")}
+                  className="min-h-11 px-3"
                 >
                   <X className="h-4 w-4" />
                   Dismiss
@@ -492,7 +496,7 @@ export function ReviewInbox({
                     asChild
                     variant="outline"
                     size="sm"
-                    className="sm:ml-auto"
+                    className="min-h-11 px-3 sm:ml-auto"
                   >
                     <a href={lead.url} target="_blank" rel="noreferrer">
                       Check source <ExternalLink className="h-3.5 w-3.5" />

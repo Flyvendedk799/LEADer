@@ -57,11 +57,12 @@ export function NewTask({ deals }: { deals: { id: string; title: string }[] }) {
           placeholder="What needs to happen next?"
           required
           maxLength={300}
+          className="h-11 min-h-11"
         />
         <select
           name="dealId"
           aria-label="Link task to deal"
-          className="h-10 min-w-0 rounded-md border bg-background px-3 text-sm"
+          className="h-11 min-h-11 min-w-0 rounded-md border bg-background px-3 text-sm"
         >
           <option value="">Personal task</option>
           {deals.map((deal) => (
@@ -74,7 +75,7 @@ export function NewTask({ deals }: { deals: { id: string; title: string }[] }) {
           name="priority"
           aria-label="Task priority"
           defaultValue="MEDIUM"
-          className="h-10 min-w-0 rounded-md border bg-background px-3 text-sm"
+          className="h-11 min-h-11 min-w-0 rounded-md border bg-background px-3 text-sm"
         >
           <option value="LOW">Low priority</option>
           <option value="MEDIUM">Medium priority</option>
@@ -87,8 +88,9 @@ export function NewTask({ deals }: { deals: { id: string; title: string }[] }) {
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
+          className="h-11 min-h-11 text-xs"
         />
-        <Button disabled={busy}>
+        <Button disabled={busy} className="h-11 min-h-11">
           {busy ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (

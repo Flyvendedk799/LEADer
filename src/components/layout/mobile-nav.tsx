@@ -71,7 +71,7 @@ export function MobileNav() {
 
   const linkClass = (href: string, accent = false) =>
     cn(
-      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+      "min-h-11 flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
       isNavActive(pathname, href)
         ? accent
           ? "bg-accent/15 text-accent"
@@ -86,7 +86,7 @@ export function MobileNav() {
           variant="ghost"
           size="icon"
           aria-label="Open navigation menu"
-          className="md:hidden"
+          className="md:hidden min-h-11 min-w-11"
         >
           <Menu className="h-5 w-5" />
         </Button>
