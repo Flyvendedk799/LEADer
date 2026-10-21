@@ -32,9 +32,9 @@ export default async function AppLayout({
         </Suspense>
         <main
           id="main-content"
-          className="min-w-0 flex-1 flex flex-col"
+          className="flex min-w-0 flex-1 flex-col overflow-y-auto scrollbar-thin"
         >
-          <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col min-h-0 px-4 pb-12 pt-7 md:px-8 lg:pt-9">
+          <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col px-4 pb-12 pt-7 md:px-8 lg:pt-9">
             {children}
           </div>
         </main>
