@@ -44,6 +44,7 @@ describe("cleanGroundedText", () => {
       "Innovationsfonden (InnoBooster)",
     );
     expect(cleanGroundedText("**What they offer:** An IT consultancy")).toBe("An IT consultancy");
+    expect(cleanGroundedText("Need: Having launched an MVP")).toBe("Having launched an MVP");
     expect(cleanGroundedText("Listing / Page: Managed Engineering")).toBe("Managed Engineering");
     expect(cleanGroundedText("Platform: Upwork Hvad de søger/tilbyder: Founder søger en udvikler")).toBe(
       "Upwork Founder søger en udvikler",
