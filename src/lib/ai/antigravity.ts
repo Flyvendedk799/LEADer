@@ -1,6 +1,7 @@
 import {
   AntigravityAccountStore,
   antigravityCliOptions,
+  toCodeAssistRequest,
   CLOUD_CODE_DAILY_BASE_URL,
   startAntigravityLogin,
   exchangeAntigravityCode,
@@ -128,4 +129,123 @@ export async function listAntigravityModels(
   });
   if (!res.ok) throw new Error(`fetchAvailableModels ${res.status}`);
   return parseAvailableModels(await res.json());
+}
+
+export interface GroundedWebResult {
+  title: string;
+  url: string;
+  snippet?: string;
+}
+
+type GroundingChunk = { web?: { uri?: string; title?: string } };
+type GroundingSupport = { segment?: { text?: string }; groundingChunkIndices?: number[] };
+
+const GROUNDING_REDIRECT_HOST = "vertexaisearch.cloud.google.com";
+
+/** Grounding links are Google redirects; follow one hop so we store the real page. */
+async function resolveGroundingUrl(uri: string, fetchImpl: typeof fetch): Promise<string> {
+  try {
+    if (new URL(uri).hostname !== GROUNDING_REDIRECT_HOST) return uri;
+    const res = await fetchImpl(uri, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(6000),
+    });
+    const location = res.headers.get("location");
+    return location && /^https?:\/\//i.test(location) ? location : uri;
+  } catch {
+    return uri;
+  }
+}
+
+/** Turn a grounded Gemini reply into one result per cited web page. */
+export function parseGroundedResults(
+  body: unknown,
+  limit: number,
+): { title: string; uri: string; snippet?: string }[] {
+  const root = body as {
+    response?: { candidates?: unknown[] };
+    candidates?: unknown[];
+  } | null;
+  const candidate = (root?.response?.candidates ?? root?.candidates)?.[0] as
+    | {
+        content?: { parts?: { text?: string }[] };
+        groundingMetadata?: {
+          groundingChunks?: GroundingChunk[];
+          groundingSupports?: GroundingSupport[];
+        };
+      }
+    | undefined;
+  const meta = candidate?.groundingMetadata;
+  const answer = candidate?.content?.parts?.map((part) => part.text || "").join("") ?? "";
+  const out: { title: string; uri: string; snippet?: string }[] = [];
+  const seen = new Set<string>();
+  (meta?.groundingChunks ?? []).forEach((chunk, index) => {
+    const uri = chunk.web?.uri;
+    if (!uri || seen.has(uri)) return;
+    seen.add(uri);
+    const supported = [
+      ...new Set(
+        (meta?.groundingSupports ?? [])
+          .filter((support) => support.groundingChunkIndices?.includes(index))
+          .map((support) => support.segment?.text?.replace(/\s+/g, " ").trim())
+          .filter((text): text is string => Boolean(text)),
+      ),
+    ]
+      .join(" ")
+      .slice(0, 500);
+    const domain = chunk.web?.title?.trim() || new URL(uri).hostname;
+    const looksLikeDomain = !/\s/.test(domain);
+    const title =
+      looksLikeDomain && supported
+        ? `${domain} — ${supported.slice(0, 90)}${supported.length > 90 ? "…" : ""}`
+        : domain;
+    out.push({ title, uri, snippet: supported || answer.slice(0, 300) || undefined });
+  });
+  return out.slice(0, limit);
+}
+
+/**
+ * Open-web search through the user's own Antigravity login: Gemini's Google Search
+ * grounding on Cloud Code. No separate search key, billed to their plan.
+ */
+export async function groundedWebSearch(
+  accountId: string,
+  query: string,
+  limit: number,
+  model: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<GroundedWebResult[]> {
+  const store = antigravityAccounts();
+  const status = await store.status(accountId).catch(() => null);
+  if (!status?.connected) throw new Error("No Antigravity subscription connected");
+  const accessToken = await store.token(accountId);
+  const cli = antigravityCliOptions(
+    { accessToken, refreshToken: "", expiresAt: 0, email: null, projectId: status.projectId || null, isDogfood: true } as never,
+    CLOUD_CODE_DAILY_BASE_URL,
+  );
+  const prompt = `Search the web and report concrete, current results for this query. For each distinct result give the organisation or page and, in one or two sentences, what they need or offer. Query: ${query}`;
+  const payload = toCodeAssistRequest(model, [{ role: "user", parts: [{ text: prompt }] }], {
+    projectId: status.projectId || undefined,
+  });
+  (payload.request as Record<string, unknown>).tools = [{ googleSearch: {} }];
+
+  const res = await fetchImpl(`${cli.baseURL}:generateContent`, {
+    method: "POST",
+    headers: cli.defaultHeaders as Record<string, string>,
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => "")).slice(0, 200);
+    throw new Error(`Google search via Antigravity failed (${res.status}) ${detail}`.trim());
+  }
+  const parsed = parseGroundedResults(await res.json(), limit);
+  if (parsed.length === 0) throw new Error("Google search returned no cited pages for this query");
+  return Promise.all(
+    parsed.map(async (item) => ({
+      title: item.title,
+      snippet: item.snippet,
+      url: await resolveGroundingUrl(item.uri, fetchImpl),
+    })),
+  );
 }

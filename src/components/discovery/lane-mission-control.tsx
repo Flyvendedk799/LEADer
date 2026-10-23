@@ -1118,7 +1118,11 @@ export function LaneMissionControl({
             <p className="text-xs text-muted-foreground">
               Web search:{" "}
               <span className={readiness.searchConfigured ? "" : "font-medium text-warning"}>
-                {readiness.searchConfigured ? readiness.searchProvider : "not connected"}
+                {readiness.searchConfigured
+                  ? readiness.searchProvider === "google"
+                    ? "Google (via Antigravity)"
+                    : readiness.searchProvider
+                  : "not connected"}
               </span>
               {" · "}AI: {readiness.aiConfigured ? "connected" : "off"}
               {" · "}

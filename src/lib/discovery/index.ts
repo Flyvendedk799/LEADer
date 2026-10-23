@@ -3,6 +3,8 @@ import type { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
+import { aiConfig } from "@/lib/ai/provider";
+import { groundedWebSearch } from "@/lib/ai/antigravity";
 import {
   getStoredSearchApiKey,
   normalizeStoredAiKeys,
@@ -709,10 +711,10 @@ function searchProviderFromEnv(
   requested: DiscoverySearchInput["provider"] = "auto",
   aiKeys?: unknown,
 ): {
-  provider: SearchProvider | "none";
+  provider: SearchProvider | "google" | "none";
   apiKey: string;
   configured: boolean;
-  source: "user" | "env" | "none";
+  source: "user" | "env" | "subscription" | "none";
 } {
   if (requested === "none") {
     return { provider: "none", apiKey: "", configured: false, source: "none" };
@@ -740,6 +742,12 @@ function searchProviderFromEnv(
   for (const provider of ordered) {
     const apiKey = envKeys[provider]?.trim();
     if (apiKey) return { provider, apiKey, configured: true, source: "env" };
+  }
+
+  // No search key anywhere: an Antigravity plan can still search the open web
+  // through Google grounding, so "auto" falls back to it.
+  if (requested === "auto" && stored?.provider === "gemini-subscription") {
+    return { provider: "google", apiKey: "", configured: true, source: "subscription" };
   }
 
   return {
@@ -1613,6 +1621,29 @@ async function enrichWithDetailPage(
   });
 }
 
+async function googleGroundedSearch(
+  query: string,
+  limit: number,
+  agy?: { accountId: string; model: string },
+): Promise<SearchResult[]> {
+  if (!agy) throw new Error("Google search needs a connected Antigravity account");
+  const results = await groundedWebSearch(agy.accountId, query, limit, agy.model);
+  return results.map((result) => ({
+    title: result.title,
+    url: result.url,
+    snippet: result.snippet,
+    sourceName: (() => {
+      try {
+        return new URL(result.url).hostname.replace(/^www\./, "");
+      } catch {
+        return undefined;
+      }
+    })(),
+    provider: "google",
+    query,
+  }));
+}
+
 async function tavilySearch(
   query: string,
   maxResults: number,
@@ -1759,8 +1790,10 @@ function shouldUseOfficialOnlyTenderSearch(
   workspace: Workspace,
   resultKind: DiscoverySearchInput["resultKind"],
   tenderIntent: boolean,
+  webSearchConfigured = false,
 ) {
   return (
+    !webSearchConfigured &&
     tenderIntent &&
     workspace === "DK" &&
     resultKind !== "sources" &&
@@ -2162,23 +2195,26 @@ async function udbudDkCandidates(
 }
 
 async function runProviderSearch(
-  provider: SearchProvider,
+  provider: SearchProvider | "google",
   apiKey: string,
   queries: string[],
   maxResults: number,
   workspace: Workspace,
   onError?: (query: string, error: unknown) => void,
+  agy?: { accountId: string; model: string },
 ): Promise<SearchResult[]> {
   const perQuery = Math.max(
     3,
     Math.ceil(maxResults / Math.max(1, queries.length)),
   );
-  const searchOne = (query: string, limit: number) =>
-    provider === "tavily"
-      ? tavilySearch(query, limit, apiKey)
-      : provider === "brave"
-        ? braveSearch(query, limit, apiKey, workspace)
-        : serperSearch(query, limit, apiKey, workspace);
+  const searchOne = (query: string, limit: number): Promise<SearchResult[]> =>
+    provider === "google"
+      ? googleGroundedSearch(query, limit, agy)
+      : provider === "tavily"
+        ? tavilySearch(query, limit, apiKey)
+        : provider === "brave"
+          ? braveSearch(query, limit, apiKey, workspace)
+          : serperSearch(query, limit, apiKey, workspace);
 
   return runSearchQueriesWithConcurrency(
     queries,
@@ -2775,6 +2811,7 @@ export async function runDiscoverySearch(
     workspace,
     resultKind,
     tenderIntent,
+    providerState.configured,
   );
   const broadProviderState = officialOnlyTenderSearch
     ? {
@@ -2839,6 +2876,7 @@ export async function runDiscoverySearch(
           warnings.push(
             `Search probe failed (${query}): ${error instanceof Error ? error.message : "provider error"}`,
           ),
+        { accountId: ownerId, model: aiConfig(user.aiKeys, ownerId).model },
       );
       completedSources++;
       const providerMs = Date.now() - providerStartedAt;

@@ -276,6 +276,12 @@ describe("udbud.dk discovery source", () => {
     expect(shouldUseOfficialOnlyTenderSearch(only, "DK", "opportunities", false)).toBe(false);
   });
 
+  it("never narrows to the official index when a web engine is configured", () => {
+    const only = { provider: "auto" as const, includeSources: false };
+    expect(shouldUseOfficialOnlyTenderSearch(only, "DK", "all", true, true)).toBe(false);
+    expect(shouldUseOfficialOnlyTenderSearch(only, "DK", "all", true, false)).toBe(true);
+  });
+
   it("a tender-sounding brief alone never switches web search or sources off", () => {
     expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "all", true)).toBe(false);
     expect(
