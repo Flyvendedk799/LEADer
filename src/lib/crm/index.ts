@@ -12,6 +12,10 @@ import {
 } from "@/lib/discovery";
 import { discoveryCandidateDedupeKey } from "@/lib/crm/candidate-dedupe";
 import {
+  extractPastedLeads,
+  pastedLeadToCandidate,
+} from "@/lib/discovery/paste-import";
+import {
   discoveryCountLabel,
   discoveryLogEntry,
   discoveryPhaseTimingSummary,
@@ -1454,4 +1458,87 @@ export async function saveCandidateAsDeal(
     },
     { timeout: 15000 },
   );
+}
+
+/**
+ * Turn text the owner brought from elsewhere (a ChatGPT answer, a document) into
+ * a finished discovery mission. The leads are scored, deduplicated against
+ * everything already found, and land in the same review queue as search results.
+ * The lane's relevance guard is deliberately skipped: the owner chose these.
+ */
+export async function importPastedDiscovery(
+  ownerId: string,
+  input: { laneId: string; workspace?: Workspace; text: string },
+) {
+  await ensureDefaultDiscoveryLanes(ownerId);
+  const lane = await db.discoveryLane.findFirst({
+    where: { id: input.laneId, ownerId },
+  });
+  if (!lane) throw new HttpError(404, "Discovery lane not found");
+  const user = await db.user.findUnique({
+    where: { id: ownerId },
+    select: { aiKeys: true, budgetMaxDkk: true },
+  });
+  const workspace = input.workspace ?? (lane.workspace as Workspace);
+  const label = "Pasted research";
+
+  const { leads, usedAi } = await extractPastedLeads(input.text, {
+    aiKeys: user?.aiKeys,
+    accountId: ownerId,
+  });
+  if (leads.length === 0) {
+    throw new HttpError(
+      422,
+      "Could not find any leads in that text. Paste a list with one lead per paragraph or bullet.",
+    );
+  }
+
+  const mission = await db.discoveryMission.create({
+    data: {
+      ownerId,
+      laneId: lane.id,
+      query: label,
+      input: { source: "paste", textLength: input.text.length },
+      workspace,
+      provider: "pasted",
+      status: "RUNNING",
+      log: [
+        discoveryLogEntry(
+          `Importing leads from pasted text (${usedAi ? "AI extraction" : "line-based extraction, no AI connected"}).`,
+        ),
+      ],
+    },
+  });
+
+  let created = 0;
+  let duplicates = 0;
+  for (const [index, lead] of leads.entries()) {
+    const saved = await persistCandidate(
+      ownerId,
+      mission.id,
+      lane as MissionLane,
+      pastedLeadToCandidate(lead, index, {
+        workspace,
+        budgetMaxDkk: user?.budgetMaxDkk ?? undefined,
+        label,
+      }),
+      workspace,
+    );
+    if (saved.status === "DUPLICATE") duplicates++;
+    else created++;
+  }
+
+  await db.discoveryMission.update({
+    where: { id: mission.id },
+    data: {
+      status: "SUCCESS",
+      finishedAt: new Date(),
+      log: {
+        push: discoveryLogEntry(
+          `Imported ${discoveryCountLabel(created, "new lead")}${duplicates ? `; ${duplicates} already in your queue` : ""}.`,
+        ),
+      },
+    },
+  });
+  return { missionId: mission.id, found: leads.length, created, duplicates, usedAi };
 }

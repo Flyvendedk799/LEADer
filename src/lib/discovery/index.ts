@@ -1749,8 +1749,13 @@ function isTenderSearchIntent(query: string, queries: string[] = []) {
   );
 }
 
+/**
+ * Official-only is a deliberate narrowing the caller asks for by switching saved
+ * sources off. A tender-sounding brief on its own only adds udbud.dk to the mix:
+ * it must never silently disable web search or the user's sources.
+ */
 function shouldUseOfficialOnlyTenderSearch(
-  input: Pick<DiscoverySearchInput, "provider">,
+  input: Pick<DiscoverySearchInput, "provider" | "includeSources">,
   workspace: Workspace,
   resultKind: DiscoverySearchInput["resultKind"],
   tenderIntent: boolean,
@@ -1759,6 +1764,7 @@ function shouldUseOfficialOnlyTenderSearch(
     tenderIntent &&
     workspace === "DK" &&
     resultKind !== "sources" &&
+    input.includeSources === false &&
     (input.provider ?? "auto") === "auto"
   );
 }

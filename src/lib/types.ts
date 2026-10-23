@@ -186,6 +186,7 @@ export type AiAction =
   | "similar"
   | "nextAction"
   | "searchQueries"
+  | "extractLeads"
   | "qualifyLead"
   | "draftOutreach"
   | "draftProposal"

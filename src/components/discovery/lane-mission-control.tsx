@@ -5,6 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ClipboardPaste,
   AlertCircle,
   Activity,
   ArrowDown,
@@ -496,6 +497,10 @@ export function LaneMissionControl({
   );
   const [result, setResult] = React.useState<MissionResult | null>(null);
   const [showHiddenCandidates, setShowHiddenCandidates] = React.useState(false);
+  const [showDuplicates, setShowDuplicates] = React.useState(false);
+  const [mode, setMode] = React.useState<"search" | "paste">("search");
+  const [pasteText, setPasteText] = React.useState("");
+  const [importing, setImporting] = React.useState(false);
   const [showAdvancedOptions, setShowAdvancedOptions] = React.useState(false);
   const [busyMissionAction, setBusyMissionAction] = React.useState<
     string | null
@@ -506,7 +511,13 @@ export function LaneMissionControl({
     workspace === "DK" &&
     provider === "auto";
   const effectiveIncludeSources = officialTenderMode ? false : includeSources;
-  const candidates = result?.mission.candidates ?? [];
+  const allCandidates = result?.mission.candidates ?? [];
+  const duplicateCount = allCandidates.filter(
+    (candidate) => candidate.status === "DUPLICATE",
+  ).length;
+  const candidates = showDuplicates
+    ? allCandidates
+    : allCandidates.filter((candidate) => candidate.status !== "DUPLICATE");
   const hiddenCandidateCount = result?.hiddenCandidateCount ?? 0;
   const hiddenCandidates = result?.hiddenCandidates ?? [];
   const missionStatus = result?.mission.status ?? "";
@@ -817,6 +828,37 @@ export function LaneMissionControl({
     return () => window.clearInterval(timer);
   }, [liveQueue, loadMissions]);
 
+  async function importPasted(e: React.FormEvent) {
+    e.preventDefault();
+    if (!laneId || importing) return;
+    setImporting(true);
+    try {
+      const res = await fetch("/api/discover/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ laneId, workspace, text: pasteText }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof data?.error === "string" ? data.error : "Could not import that text",
+        );
+      }
+      setPasteText("");
+      setShowDuplicates(false);
+      toast.success(
+        `Added ${data.created} new ${data.created === 1 ? "lead" : "leads"}`,
+        data.duplicates ? `${data.duplicates} were already in your queue` : undefined,
+      );
+      await loadMission(data.missionId);
+      window.dispatchEvent(new Event("leader:counts-refresh"));
+    } catch (err) {
+      toast.error("Import failed", err instanceof Error ? err.message : "Try again");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function runMission(e: React.FormEvent) {
     e.preventDefault();
     if (!laneId) return;
@@ -1072,68 +1114,126 @@ export function LaneMissionControl({
   return (
     <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="min-w-0 space-y-4">
-        <div className="grid gap-3 sm:grid-cols-3" aria-label="Discovery steps">
-          {[
-            [
-              "1",
-              "Define the work",
-              "Choose a lane and describe a concrete buyer need.",
-            ],
-            [
-              "2",
-              "Collect evidence",
-              "Public sources are searched, read and checked for relevance.",
-            ],
-            [
-              "3",
-              "Review & qualify",
-              "You choose what becomes a deal, with evidence and a follow-up.",
-            ],
-          ].map(([step, title, detail]) => (
-            <div key={step} className="rounded-xl border bg-card p-4">
-              <p className="text-sm font-semibold">
-                <span className="mr-2 text-primary">{step}</span>
-                {title}
-              </p>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                {detail}
-              </p>
-            </div>
-          ))}
-        </div>
-        {readiness && (
-          <div className="rounded-xl border bg-card p-4 text-sm">
-            <p className="font-medium">Your discovery connections</p>
-            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-muted-foreground">
-              <span>
-                Web search:{" "}
-                {readiness.searchConfigured
-                  ? readiness.searchProvider
-                  : "not connected"}
-              </span>
-              <span>
-                AI:{" "}
-                {readiness.aiConfigured ? "connected" : "rule-based matching"}
-              </span>
-              <span>
-                {readiness.sourceCount} enabled sources in {initialWorkspace}
-              </span>
-            </div>
-            {!readiness.searchConfigured && (
-              <p className="mt-3 text-sm leading-6">
-                Connect a search provider for broad web discovery. Danish
-                tenders use the public udbud.dk index; source scans use enabled
-                and curated public sources.{" "}
-                <Link
-                  href="/settings?tab=ai"
-                  className="font-medium text-primary underline underline-offset-4"
-                >
-                  Set up connections
-                </Link>
-              </p>
-            )}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div
+            className="inline-flex rounded-lg border border-border bg-card p-1"
+            role="tablist"
+            aria-label="How to add leads"
+          >
+            {(
+              [
+                ["search", "Search for leads"],
+                ["paste", "Paste from ChatGPT or notes"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={mode === value}
+                onClick={() => setMode(value)}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  mode === value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
+          {readiness && (
+            <p className="text-xs text-muted-foreground">
+              Web search:{" "}
+              <span className={readiness.searchConfigured ? "" : "font-medium text-warning"}>
+                {readiness.searchConfigured ? readiness.searchProvider : "not connected"}
+              </span>
+              {" · "}AI: {readiness.aiConfigured ? "connected" : "off"}
+              {" · "}
+              {readiness.sourceCount} sources in {initialWorkspace}
+            </p>
+          )}
+        </div>
+        {readiness && !readiness.searchConfigured && mode === "search" && (
+          <p className="rounded-md border border-border bg-surface/40 p-3 text-sm leading-6">
+            Without a web search key, searches only reach udbud.dk tenders and your saved
+            sources. Add Tavily, Brave or Serper for open-web results, or{" "}
+            <button
+              type="button"
+              className="font-medium text-primary underline underline-offset-4"
+              onClick={() => setMode("paste")}
+            >
+              paste what you found elsewhere
+            </button>
+            .{" "}
+            <Link
+              href="/settings?tab=ai"
+              className="font-medium text-primary underline underline-offset-4"
+            >
+              Set up search
+            </Link>
+          </p>
         )}
+        {mode === "paste" && (
+          <form
+            onSubmit={importPasted}
+            className="space-y-4 rounded-lg border border-border bg-card p-4 shadow-sm"
+          >
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]">
+              <div className="space-y-2">
+                <Label>Type of work</Label>
+                <Select value={laneId} onValueChange={setLaneId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose lane" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lanes.map((lane) => (
+                      <SelectItem key={lane.id} value={lane.id}>
+                        {lane.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Label className="block pt-2">Region</Label>
+                <Select
+                  value={workspace}
+                  onValueChange={(value) => setWorkspace(value as Workspace)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DK">Denmark</SelectItem>
+                    <SelectItem value="GLOBAL">International</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="paste-leads">Paste the answer, list or notes</Label>
+                <Textarea
+                  id="paste-leads"
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder="Paste what ChatGPT (or anything else) gave you: companies, tenders, links. Leader pulls out each lead, scores it, and checks it against what you already have."
+                  className="min-h-48 resize-y"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Links are kept exactly as written and nothing is invented. Check each source
+                  before contacting a buyer.
+                </p>
+              </div>
+            </div>
+            <Button type="submit" disabled={importing || !laneId || pasteText.trim().length < 10}>
+              {importing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ClipboardPaste className="h-4 w-4" />
+              )}
+              Add to review queue
+            </Button>
+          </form>
+        )}
+        {mode === "search" && (
         <form
           onSubmit={runMission}
           className="rounded-lg border border-border bg-card p-4 shadow-sm"
@@ -1393,6 +1493,7 @@ export function LaneMissionControl({
             </div>
           </div>
         </form>
+        )}
 
         {result && (
           <div className="space-y-3">
@@ -1461,6 +1562,19 @@ export function LaneMissionControl({
                     <Link2 className="h-4 w-4" />
                     Copy link
                   </Button>
+                  {duplicateCount > 0 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowDuplicates((value) => !value)}
+                    >
+                      <Eye className="h-4 w-4" />
+                      {showDuplicates
+                        ? "Hide already-found"
+                        : `Already in queue: ${duplicateCount}`}
+                    </Button>
+                  ) : null}
                   {hiddenCandidateCount > 0 ? (
                     <Button
                       type="button"
@@ -1493,6 +1607,8 @@ export function LaneMissionControl({
                   <p>
                     {missionRunning
                       ? "Mission running in background. It stays available in mission history."
+                      : duplicateCount > 0 && !showDuplicates
+                        ? `Nothing new this time: all ${duplicateCount} results were already in your queue. Try a different brief, add a web search key, or paste research from elsewhere.`
                       : hiddenCandidateCount > 0
                         ? `${hiddenCandidateCount} results were filtered out by the lane quality gate.`
                         : (tenderQualitySummary ??

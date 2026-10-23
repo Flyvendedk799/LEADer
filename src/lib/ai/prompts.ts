@@ -100,6 +100,18 @@ risks (string[]), reasons (string[]), nextAction (string). Be strict about evide
       return base("Summarize this account for sales context: what they do, likely pain, open deals, relationship context, and best next move. Use bullets.");
     case "similar":
       return base("Identify the 2–4 most similar opportunities and explain the common thread in one sentence.");
+    case "extractLeads":
+      return base(
+        `The context is text the user pasted from another AI assistant or a document: a list of
+potential leads, buyers, tenders or companies. Extract every distinct lead as strict JSON:
+{ "leads": [ { "title": string, "organization": string | null, "url": string | null,
+"description": string (1-3 sentences, only what the text says), "category": string | null,
+"budgetMin": number | null, "budgetMax": number | null, "currency": string | null,
+"deadline": string | null (ISO date), "reason": string | null (why it fits, if the text says) } ] }.
+Copy URLs exactly as written; never invent a URL, budget, deadline or contact. Skip commentary
+that is not a lead. Return at most 40 leads.`,
+        true,
+      );
     case "searchQueries":
       return base(
         `Create a focused web-discovery search plan for finding real supplier opportunities.

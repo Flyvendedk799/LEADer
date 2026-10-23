@@ -266,13 +266,21 @@ describe("udbud.dk discovery source", () => {
     ).toBe(false);
   });
 
-  it("keeps auto DK tender opportunity searches on the official active-notice index", () => {
-    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "opportunities", true)).toBe(true);
-    expect(shouldUseOfficialOnlyTenderSearch({ provider: "brave" }, "DK", "opportunities", true)).toBe(false);
-    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "all", true)).toBe(true);
-    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "sources", true)).toBe(false);
-    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "GLOBAL", "opportunities", true)).toBe(false);
-    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "opportunities", false)).toBe(false);
+  it("narrows to the official index only when sources are explicitly off", () => {
+    const only = { provider: "auto" as const, includeSources: false };
+    expect(shouldUseOfficialOnlyTenderSearch(only, "DK", "opportunities", true)).toBe(true);
+    expect(shouldUseOfficialOnlyTenderSearch(only, "DK", "all", true)).toBe(true);
+    expect(shouldUseOfficialOnlyTenderSearch({ ...only, provider: "brave" }, "DK", "opportunities", true)).toBe(false);
+    expect(shouldUseOfficialOnlyTenderSearch(only, "DK", "sources", true)).toBe(false);
+    expect(shouldUseOfficialOnlyTenderSearch(only, "GLOBAL", "opportunities", true)).toBe(false);
+    expect(shouldUseOfficialOnlyTenderSearch(only, "DK", "opportunities", false)).toBe(false);
+  });
+
+  it("a tender-sounding brief alone never switches web search or sources off", () => {
+    expect(shouldUseOfficialOnlyTenderSearch({ provider: "auto" }, "DK", "all", true)).toBe(false);
+    expect(
+      shouldUseOfficialOnlyTenderSearch({ provider: "auto", includeSources: true }, "DK", "all", true),
+    ).toBe(false);
   });
 
   it("drops decade-long DIS/catalogue notices from the official source", () => {
