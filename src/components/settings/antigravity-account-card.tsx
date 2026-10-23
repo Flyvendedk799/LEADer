@@ -13,7 +13,7 @@ import {
   removeAntigravityConnection,
 } from "@/lib/antigravity-auth.functions";
 
-export function AntigravityAccountCard() {
+export function AntigravityAccountCard({ onChange }: { onChange?: () => void }) {
   const [status, setStatus] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
   const [pastedUrl, setPastedUrl] = React.useState("");
@@ -48,6 +48,7 @@ export function AntigravityAccountCard() {
       const newStatus = await antigravityConnection();
       setStatus(newStatus);
       setPastedUrl("");
+      onChange?.();
       toast.success("Antigravity connected successfully");
     } catch (err: any) {
       toast.error("Failed to connect Antigravity", err.message);
@@ -61,6 +62,7 @@ export function AntigravityAccountCard() {
     try {
       await removeAntigravityConnection();
       setStatus(null);
+      onChange?.();
       toast.success("Disconnected Antigravity");
     } catch (err) {
       toast.error("Failed to disconnect Antigravity");

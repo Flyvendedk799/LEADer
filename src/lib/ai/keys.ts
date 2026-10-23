@@ -93,7 +93,7 @@ export const AI_PROVIDER_DEFAULTS: Record<
   "gemini-subscription": {
     label: "Antigravity subscription",
     baseUrl: CLOUD_CODE_DAILY_BASE_URL,
-    model: "gemini-3-flash",
+    model: "gemini-3.8-flash-high",
   },
 };
 

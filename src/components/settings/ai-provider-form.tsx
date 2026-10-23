@@ -24,6 +24,7 @@ import {
 } from "./ai-provider-fields";
 import { ClaudeSubscriptionPanel } from "./claude-subscription-panel";
 import { AntigravityAccountCard } from "./antigravity-account-card";
+import { antigravityModels } from "@/lib/antigravity-auth.functions";
 
 export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
   const router = useRouter();
@@ -32,6 +33,26 @@ export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [agyModels, setAgyModels] = React.useState<{ id: string; label: string }[] | null>(null);
+  const agy = state.provider === "gemini-subscription";
+
+  // Which models exist depends on the login, so ask Cloud Code rather than trust a list.
+  // Refetched when the card connects or disconnects, via the refresh key.
+  const [agyRefresh, setAgyRefresh] = React.useState(0);
+  React.useEffect(() => {
+    if (!agy) return;
+    let cancelled = false;
+    antigravityModels()
+      .then((models) => {
+        if (!cancelled) setAgyModels(models);
+      })
+      .catch(() => {
+        if (!cancelled) setAgyModels(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agy, agyRefresh]);
 
   async function save() {
     setSaving(true);
@@ -79,7 +100,7 @@ export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <AiProviderFields state={state} onChange={setState} aiKeys={aiKeys} disabled={saving} />
+        <AiProviderFields state={state} onChange={setState} aiKeys={aiKeys} disabled={saving} liveModels={agyModels} />
         {state.provider === "claude-subscription" && (
           <div className="border-t border-border pt-5">
             <ClaudeSubscriptionPanel />
@@ -87,7 +108,7 @@ export function AiProviderForm({ aiKeys }: { aiKeys: PublicAiKeys }) {
         )}
         {state.provider === "gemini-subscription" && (
           <div className="border-t border-border pt-5">
-            <AntigravityAccountCard />
+            <AntigravityAccountCard onChange={() => setAgyRefresh((n) => n + 1)} />
           </div>
         )}
         <div className="border-t border-border pt-5">

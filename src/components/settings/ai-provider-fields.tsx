@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { TIER_LABELS, modelChoices } from "@/lib/ai/registry";
+import { TIER_LABELS, modelChoices, type ModelTier } from "@/lib/ai/registry";
 
 export type AiProvider = "openai" | "anthropic" | "codex" | "claude-subscription" | "gemini" | "gemini-subscription";
 export type SearchProvider = "tavily" | "brave" | "serper";
@@ -101,7 +101,7 @@ const PROVIDER_DEFAULTS: Record<
     label: "Antigravity subscription",
     description: "Connect your Antigravity (Gemini Advanced) plan below.",
     baseUrl: "https://daily-cloudcode-pa.googleapis.com/v1internal",
-    model: "gemini-3-flash",
+    model: "gemini-3.8-flash-high",
     embeddingModel: "text-embedding-3-small",
     requiresApiKey: false,
   },
@@ -226,6 +226,8 @@ interface AiProviderFieldsProps {
   onChange: (state: AiProviderState) => void;
   aiKeys?: PublicAiKeys;
   disabled?: boolean;
+  /** Models the connected Antigravity login can call, when known. Overrides the static list. */
+  liveModels?: { id: string; label: string }[] | null;
 }
 
 export function AiProviderFields({
@@ -233,6 +235,7 @@ export function AiProviderFields({
   onChange,
   aiKeys,
   disabled,
+  liveModels,
 }: AiProviderFieldsProps) {
   const [showKey, setShowKey] = React.useState(false);
   const currentDefaults = PROVIDER_DEFAULTS[state.provider];
@@ -240,8 +243,15 @@ export function AiProviderFields({
   const isSubscriptionProvider = !currentDefaults.requiresApiKey;
   // The catalogue is a shortcut, not a gate: providers ship models faster than
   // any dependency updates, so a typed-in id stays a first-class answer.
-  const catalogue = React.useMemo(() => modelChoices(state.provider), [state.provider]);
+  const useLive = state.provider === "gemini-subscription" && Boolean(liveModels?.length);
+  const catalogue: { id: string; label: string; tier?: ModelTier; note?: string }[] = React.useMemo(
+    () => (useLive ? liveModels! : modelChoices(state.provider)),
+    [state.provider, useLive, liveModels],
+  );
   const knownModel = catalogue.find((spec) => spec.id === state.model) ?? null;
+  // A saved id the login's own list lacks 404s every call, so say so instead of
+  // quietly showing it as a custom entry.
+  const unavailableModel = useLive && !knownModel && state.model.trim() !== "";
   const hasSavedKey = Boolean(aiKeys?.provider === state.provider && aiKeys?.hasApiKey && !state.clearApiKey);
   const modeSummary = aiProviderModeSummary(state, aiKeys);
   const subscriptionHint =
@@ -348,14 +358,16 @@ export function AiProviderFields({
             <SelectContent>
               {catalogue.map((spec) => (
                 <SelectItem key={spec.id} value={spec.id}>
-                  {spec.label} · {TIER_LABELS[spec.tier]}
+                  {spec.tier ? `${spec.label} · ${TIER_LABELS[spec.tier]}` : spec.label}
                 </SelectItem>
               ))}
               <SelectItem value={CUSTOM_MODEL}>Other (type an id)</SelectItem>
             </SelectContent>
           </Select>
           {knownModel ? (
-            <p className="text-xs leading-5 text-muted-foreground">{knownModel.note}</p>
+            knownModel.note && (
+              <p className="text-xs leading-5 text-muted-foreground">{knownModel.note}</p>
+            )
           ) : (
             <Input
               value={state.model}
@@ -364,6 +376,12 @@ export function AiProviderFields({
               placeholder={currentDefaults.model}
               aria-label="Model id"
             />
+          )}
+          {unavailableModel && (
+            <p className="text-xs leading-5 text-destructive">
+              {state.model} is not on your Antigravity login&apos;s model list, so calls to it
+              will fail. Pick one from the list above.
+            </p>
           )}
           {isSubscriptionProvider && (
             <p className="text-xs leading-5 text-muted-foreground">

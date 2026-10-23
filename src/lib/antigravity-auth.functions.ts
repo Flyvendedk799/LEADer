@@ -6,6 +6,7 @@ import {
   beginAntigravityLogin,
   completeAntigravityLogin,
   disconnectAntigravity,
+  listAntigravityModels,
 } from "./ai/antigravity";
 
 async function requireAuth() {
@@ -34,4 +35,15 @@ export async function finishAntigravityConnection(pastedUrl: string) {
 export async function removeAntigravityConnection() {
   const userId = await requireAuth();
   await disconnectAntigravity(userId);
+}
+
+/** Models this user's Antigravity login can call; empty if unavailable. */
+export async function antigravityModels() {
+  const userId = await requireAuth();
+  try {
+    return await listAntigravityModels(userId);
+  } catch (err) {
+    console.warn(`[antigravity] model list unavailable: ${String(err)}`);
+    return [];
+  }
 }

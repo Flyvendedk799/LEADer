@@ -1,5 +1,7 @@
 import {
   AntigravityAccountStore,
+  antigravityCliOptions,
+  CLOUD_CODE_DAILY_BASE_URL,
   startAntigravityLogin,
   exchangeAntigravityCode,
   AntigravityLoginError,
@@ -73,4 +75,57 @@ export async function completeAntigravityLogin(accountId: string, pasted: string
 export async function disconnectAntigravity(accountId: string) {
   forgetAntigravityLogin(accountId);
   await antigravityAccounts().forget(accountId);
+}
+
+export interface AntigravityModelChoice {
+  id: string;
+  label: string;
+}
+
+/** Ids on the Cloud Code list that are not chat models this app can use. */
+const TIERED_FLASH = "gemini-3.8-flash-tiered";
+const UNUSABLE_MODEL = /image|embedding|-agent$/;
+
+/** Cloud Code's `models` map, reduced to the Gemini chat models the picker should offer. */
+export function parseAvailableModels(data: unknown): AntigravityModelChoice[] {
+  const models = (data as { models?: Record<string, { displayName?: string }> } | null)?.models;
+  const out: AntigravityModelChoice[] = [];
+  for (const [id, info] of Object.entries(models ?? {})) {
+    if (!id.startsWith("gemini-") || UNUSABLE_MODEL.test(id)) continue;
+    if (id === TIERED_FLASH) {
+      // One wire id whose effort is a request setting; ai-auth maps these back onto it.
+      for (const level of ["high", "medium", "low"]) {
+        out.push({ id: `gemini-3.8-flash-${level}`, label: `Gemini 3.8 Flash (${level[0]!.toUpperCase()}${level.slice(1)})` });
+      }
+      continue;
+    }
+    out.push({ id, label: info?.displayName?.trim() || id });
+  }
+  return out;
+}
+
+/**
+ * The models THIS login can actually call, from Cloud Code's own list. A model the
+ * list lacks 404s every request, so the picker is fed from here, not a constant.
+ * Empty when no subscription is connected.
+ */
+export async function listAntigravityModels(
+  accountId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AntigravityModelChoice[]> {
+  const store = antigravityAccounts();
+  const status = await store.status(accountId).catch(() => null);
+  if (!status?.connected) return [];
+  const accessToken = await store.token(accountId);
+  const cli = antigravityCliOptions(
+    { accessToken, refreshToken: "", expiresAt: 0, email: null, projectId: status.projectId || null, isDogfood: true } as never,
+    CLOUD_CODE_DAILY_BASE_URL,
+  );
+  const res = await fetchImpl(`${cli.baseURL}:fetchAvailableModels`, {
+    method: "POST",
+    headers: cli.defaultHeaders as Record<string, string>,
+    body: "{}",
+  });
+  if (!res.ok) throw new Error(`fetchAvailableModels ${res.status}`);
+  return parseAvailableModels(await res.json());
 }

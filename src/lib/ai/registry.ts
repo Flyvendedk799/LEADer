@@ -32,13 +32,12 @@ export function registryProvider(provider: LeaderProvider): ProviderId {
   return provider;
 }
 
-/** The models worth offering for a provider, lightest first. */
+/**
+ * The models worth offering for a provider, lightest first. For the Antigravity
+ * subscription this is only the fallback: which models exist depends on the login,
+ * so the settings picker prefers the live list from Cloud Code.
+ */
 export function modelChoices(provider: LeaderProvider): ModelSpec[] {
-  if (provider === "gemini-subscription") {
-    return modelsFor("gemini-cli").filter((model) =>
-      ["gemini-3-flash", "gemini-3.1-pro"].includes(model.id),
-    );
-  }
   if (provider === "gemini") {
     return [
       { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", wire: "gemini", tier: "light", note: "Fast Gemini API model." },

@@ -146,7 +146,7 @@ describe("AI key storage", () => {
     const switched = buildStoredAiKeys({ provider: "gemini-subscription" }, openAi);
 
     expect(switched.baseUrl).toBe(CLOUD_CODE_DAILY_BASE_URL);
-    expect(switched.model).toBe("gemini-3-flash");
+    expect(switched.model).toBe("gemini-3.8-flash-high");
   });
 });
 
