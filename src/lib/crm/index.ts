@@ -941,6 +941,7 @@ export async function executeDiscoveryMission(
       includeSources,
       provider: broadWebProvider,
       resultKind: "opportunities",
+      tenderLane: prepared.lane.slug === "tenders-procurement",
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
       onProgress: appendLog,
     });

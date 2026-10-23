@@ -56,6 +56,8 @@ export interface DiscoverySearchInput {
   provider?: "auto" | "tavily" | "brave" | "serper" | "none";
   resultKind?: "all" | "opportunities" | "sources";
   useAiPlanner?: boolean;
+  /** The Tenders lane asked for this run; generated probes never imply it. */
+  tenderLane?: boolean;
   onProgress?: (message: string) => Promise<void> | void;
 }
 
@@ -2805,7 +2807,7 @@ export async function runDiscoverySearch(
   const tenderIntent =
     workspace === "DK" &&
     resultKind !== "sources" &&
-    isTenderSearchIntent(input.query, queries);
+    (input.tenderLane === true || isTenderSearchIntent(input.query));
   const officialOnlyTenderSearch = shouldUseOfficialOnlyTenderSearch(
     input,
     workspace,
