@@ -163,7 +163,7 @@ export function cleanGroundedText(text: string): string {
   const label =
     /^(?:organi[sz]ation(?:\s*\/\s*(?:page|platform))?|listing(?:\s*\/\s*page)?|platform|page|result|what they (?:need|offer)(?:\s*\/\s*(?:need|offer))?|they (?:need|offer)|hvad de (?:søger|tilbyder)(?:\s*\/\s*(?:søger|tilbyder))?)\s*:\s*/i;
   while (label.test(out)) out = out.replace(label, "");
-  out = out.replace(/(?:hvad de (?:søger|tilbyder)(?:\s*\/\s*(?:søger|tilbyder))?|what they (?:need|offer))\s*:\s*/gi, "").trim();
+  out = out.replace(/(?<![\p{L}])(?:hvad de (?:søger|tilbyder)(?:\s*\/\s*(?:søger|tilbyder))?|what they (?:need|offer))\s*:\s*/giu, "").trim();
   return /^(?:the\s+)?(?:web\s+)?search\s+(?:returns|results|found)/i.test(out) ? "" : out;
 }
 
