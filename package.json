@@ -28,7 +28,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@flyvendedk799/ai-auth": "github:Flyvendedk799/ai-auth",
+    "@flyvendedk799/ai-auth": "github:Flyvendedk799/ai-auth#4cdd066c7576b3021da91709e219f2b1123963a8",
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-checkbox": "^1.1.2",
     "@radix-ui/react-dialog": "^1.1.2",
