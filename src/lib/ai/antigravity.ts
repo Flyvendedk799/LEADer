@@ -161,8 +161,9 @@ async function resolveGroundingUrl(uri: string, fetchImpl: typeof fetch): Promis
 export function cleanGroundedText(text: string): string {
   let out = text.replace(/[*_`#]+/g, "").replace(/\s+/g, " ").trim();
   const label =
-    /^(?:organi[sz]ation(?:\s*\/\s*page)?|page|result|what they (?:need|offer)|they (?:need|offer))\s*:\s*/i;
+    /^(?:organi[sz]ation(?:\s*\/\s*(?:page|platform))?|listing(?:\s*\/\s*page)?|platform|page|result|what they (?:need|offer)(?:\s*\/\s*(?:need|offer))?|they (?:need|offer)|hvad de (?:søger|tilbyder)(?:\s*\/\s*(?:søger|tilbyder))?)\s*:\s*/i;
   while (label.test(out)) out = out.replace(label, "");
+  out = out.replace(/(?:hvad de (?:søger|tilbyder)(?:\s*\/\s*(?:søger|tilbyder))?|what they (?:need|offer))\s*:\s*/gi, "").trim();
   return /^(?:the\s+)?(?:web\s+)?search\s+(?:returns|results|found)/i.test(out) ? "" : out;
 }
 
@@ -232,7 +233,7 @@ export async function groundedWebSearch(
     { accessToken, refreshToken: "", expiresAt: 0, email: null, projectId: status.projectId || null, isDogfood: true } as never,
     CLOUD_CODE_DAILY_BASE_URL,
   );
-  const prompt = `Search the web and report concrete, current results for this query. For each distinct result give the organisation or page and, in one or two sentences, what they need or offer. Query: ${query}`;
+  const prompt = `Search the web and report concrete, current results for this query. For each distinct result give the organisation or page and, in one or two sentences, what they need or offer. When the query is about finding clients or projects, prefer organisations and postings that are looking to buy or hire over advisers and competitors. Query: ${query}`;
   const payload = toCodeAssistRequest(model, [{ role: "user", parts: [{ text: prompt }] }], {
     projectId: status.projectId || undefined,
   });

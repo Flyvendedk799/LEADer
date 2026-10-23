@@ -44,6 +44,10 @@ describe("cleanGroundedText", () => {
       "Innovationsfonden (InnoBooster)",
     );
     expect(cleanGroundedText("**What they offer:** An IT consultancy")).toBe("An IT consultancy");
+    expect(cleanGroundedText("Listing / Page: Managed Engineering")).toBe("Managed Engineering");
+    expect(cleanGroundedText("Platform: Upwork Hvad de søger/tilbyder: Founder søger en udvikler")).toBe(
+      "Upwork Founder søger en udvikler",
+    );
     expect(cleanGroundedText("The web search returns several relevant results")).toBe("");
   });
 });
