@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseGroundedResults } from "./antigravity";
+import { cleanGroundedText, parseGroundedResults } from "./antigravity";
 
 const body = {
   response: {
@@ -35,5 +35,15 @@ describe("parseGroundedResults", () => {
     expect(parseGroundedResults(body, 1)).toHaveLength(1);
     expect(parseGroundedResults({ response: { candidates: [{}] } }, 5)).toEqual([]);
     expect(parseGroundedResults(null, 5)).toEqual([]);
+  });
+});
+
+describe("cleanGroundedText", () => {
+  it("drops markdown, label prefixes and filler sentences", () => {
+    expect(cleanGroundedText("**Organisation / Page:** Innovationsfonden (*InnoBooster*)")).toBe(
+      "Innovationsfonden (InnoBooster)",
+    );
+    expect(cleanGroundedText("**What they offer:** An IT consultancy")).toBe("An IT consultancy");
+    expect(cleanGroundedText("The web search returns several relevant results")).toBe("");
   });
 });

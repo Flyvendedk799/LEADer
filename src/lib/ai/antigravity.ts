@@ -157,6 +157,15 @@ async function resolveGroundingUrl(uri: string, fetchImpl: typeof fetch): Promis
   }
 }
 
+/** Strip markdown and the "Organisation / Page:" style labels the model likes to add. */
+export function cleanGroundedText(text: string): string {
+  let out = text.replace(/[*_`#]+/g, "").replace(/\s+/g, " ").trim();
+  const label =
+    /^(?:organi[sz]ation(?:\s*\/\s*page)?|page|result|what they (?:need|offer)|they (?:need|offer))\s*:\s*/i;
+  while (label.test(out)) out = out.replace(label, "");
+  return /^(?:the\s+)?(?:web\s+)?search\s+(?:returns|results|found)/i.test(out) ? "" : out;
+}
+
 /** Turn a grounded Gemini reply into one result per cited web page. */
 export function parseGroundedResults(
   body: unknown,
@@ -187,7 +196,7 @@ export function parseGroundedResults(
       ...new Set(
         (meta?.groundingSupports ?? [])
           .filter((support) => support.groundingChunkIndices?.includes(index))
-          .map((support) => support.segment?.text?.replace(/\s+/g, " ").trim())
+          .map((support) => cleanGroundedText(support.segment?.text ?? ""))
           .filter((text): text is string => Boolean(text)),
       ),
     ]
