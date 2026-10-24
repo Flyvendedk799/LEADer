@@ -65,20 +65,47 @@ export const DEFAULT_DISCOVERY_LANES: LaneDefinition[] = [
     slug: "funded-work",
     name: "Funded work",
     description:
-      "Grants, vouchers and procurement-like supplier assignments that can convert into scoped technical projects.",
+      "Work that has already been funded: a buyer won a grant, voucher or public funding and is now putting the delivery out to suppliers. Not grant programmes to apply to.",
     workspace: "DK",
     sourceTypes: ["PUBLIC_WEB", "RSS", "PROCUREMENT", "ACCELERATOR", "NEWSLETTER"],
     queryTemplates: [
-      "funded software MVP AI automation voucher Denmark",
-      "SMV Digital digitalisering rådgiver software AI",
-      "InnoBooster startup technical supplier MVP",
+      "udbud finansieret af tilskud softwareudvikling leverandør",
+      "bevilget støtte projekt søger softwareleverandør udviklingspartner",
+      "projekt støttet af Innovationsfonden EU-midler indkøb it-system tilbud",
+      "funded by grant request for quotation software development supplier Denmark",
     ],
-    positiveKeywords: ["voucher", "tilskud", "grant", "funded", "MVP", "AI", "software", "automation"],
-    negativeKeywords: ["unpaid", "equity only", "masterclass", "training only"],
+    positiveKeywords: [
+      "finansieret af",
+      "bevilget",
+      "støttet af",
+      "modtaget tilskud",
+      "leverandør",
+      "udbud",
+      "tilbud",
+      "EU-midler",
+      "RFP",
+      "software",
+    ],
+    negativeKeywords: [
+      "unpaid",
+      "equity only",
+      "masterclass",
+      "training only",
+      "ansøg",
+      "ansøgning",
+      "ansøgningsfrist",
+      "tilskudsordning",
+      "rådgiver",
+      "apply for funding",
+    ],
     scoringConfig: { budgetFit: 1, deadline: 1, fundingSignal: 1 },
-    evidenceRequirements: ["budget or funding signal", "deadline or active call", "clear buyer or programme"],
+    evidenceRequirements: [
+      "funding already awarded or approved",
+      "buyer is looking for a supplier or developer",
+      "scope, deadline or how to bid",
+    ],
     conversionGuidance:
-      "Emphasize your track record landing funded customers, tight scoping, and low-risk delivery.",
+      "Lead with your track record delivering funded projects, tight scoping and low-risk delivery against the approved budget.",
   },
   {
     slug: "direct-startup-mvp",
@@ -498,6 +525,25 @@ function hasTenderBuyerEvidence(candidate: CandidateLike, text: string) {
   return !genericOrg || /ordregiver|contracting authority|offentlig ordregiver|kommune|municipality|styrelse|ministeriet|ministry|region\b|universitet|university|hospital|agency/.test(text);
 }
 
+/** Pages about a grant scheme or how to get help applying for it. */
+const GRANT_PROGRAMME_CUE =
+  /ansøg|apply for|how to (?:get|apply)|sådan får (?:du|i|man)|guide til|søg (?:om )?tilskud|tilskudsordning|tilskudspulje|\bpuljen\b|call for (?:applications|proposals)|ansøgningsfrist|application deadline|eligib|støtteberettig|rådgiver|rådgivning|ansøgningshjælp|få hjælp til|funding (?:scheme|programme|program)|non-dilutive|voucher(?:s)? (?:of|up to|på)/;
+
+/** Evidence that a buyer is asking suppliers to deliver. */
+const SUPPLIER_SEEKING_CUE =
+  /søger (?:en |et )?(?:ekstern(?:e)? )?(?:leverandør|udvikler|udviklingspartner|partner|softwarehus|it-partner)|leverandør(?:er)? søges|udbud|tender|tilbudsindhentning|indhent(?:er)? tilbud|tilbud skal|request for (?:proposal|quotation|tender)|\brfp\b|\brfq\b|seeking (?:a |an )?(?:supplier|vendor|developer|development partner)|looking for (?:a |an )?(?:supplier|vendor|development partner)|hiring (?:an )?external|external developer|procurement/;
+
+export function fundedWorkGate(text: string): LaneCandidateGateResult {
+  const seeking = SUPPLIER_SEEKING_CUE.test(text);
+  if (GRANT_PROGRAMME_CUE.test(text) && !seeking) {
+    return { allowed: false, reason: "grant programme or application guide, not funded work" };
+  }
+  if (!seeking) {
+    return { allowed: false, reason: "no sign a buyer is asking suppliers to deliver funded work" };
+  }
+  return { allowed: true };
+}
+
 export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): LaneCandidateGateResult {
   const text = candidateText(candidate);
   const evidenceText = candidateEvidenceText(candidate);
@@ -510,6 +556,8 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
   if (lane.slug === "direct-startup-mvp" && !hasStartupOpportunityIntent(candidate, text, host, path)) {
     return { allowed: false, reason: "missing explicit startup opportunity" };
   }
+
+  if (lane.slug === "funded-work") return fundedWorkGate(text);
 
   if (lane.slug !== "tenders-procurement") return { allowed: true };
 

@@ -39,8 +39,8 @@ describe("GET /api/nav/counts", () => {
     mocks.db.discoveryCandidate.findMany.mockResolvedValue([
       {
         id: "cand-1",
-        title: "SMV Digital AI automation voucher",
-        description: "Funded voucher grant for AI workflow",
+        title: "Kommune søger leverandør til AI-workflow",
+        description: "Projektet er finansieret af tilskud; udbud af softwareudvikling",
         lane: {
           slug: "funded-work",
           name: "Funded work",
