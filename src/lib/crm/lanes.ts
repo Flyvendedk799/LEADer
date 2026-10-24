@@ -529,15 +529,28 @@ function hasTenderBuyerEvidence(candidate: CandidateLike, text: string) {
 const GRANT_PROGRAMME_CUE =
   /ansøg|apply for|how to (?:get|apply)|sådan får (?:du|i|man)|guide til|søg (?:om )?tilskud|tilskudsordning|tilskudspulje|\bpuljen\b|call for (?:applications|proposals)|ansøgningsfrist|application deadline|eligib|støtteberettig|rådgiver|rådgivning|ansøgningshjælp|få hjælp til|funding (?:scheme|programme|program)|non-dilutive|voucher(?:s)? (?:of|up to|på)/;
 
-/** Evidence that a buyer is asking suppliers to deliver. */
+/**
+ * Evidence that a buyer is asking suppliers to deliver. Bare words like "udbud" or
+ * "procurement" are not enough: blog posts and legal texts use them too.
+ */
 const SUPPLIER_SEEKING_CUE =
-  /søger (?:en |et )?(?:ekstern(?:e)? )?(?:leverandør|udvikler|udviklingspartner|partner|softwarehus|it-partner)|leverandør(?:er)? søges|udbud|tender|tilbudsindhentning|indhent(?:er)? tilbud|tilbud skal|request for (?:proposal|quotation|tender)|\brfp\b|\brfq\b|seeking (?:a |an )?(?:supplier|vendor|developer|development partner)|looking for (?:a |an )?(?:supplier|vendor|development partner)|hiring (?:an )?external|external developer|procurement/;
+  /søger (?:en |et )?(?:ekstern(?:e)? )?(?:leverandør|udvikler|udviklingspartner|partner|softwarehus|it-partner)|leverandør(?:er)? søges|udbud af (?:kontrakt|opgave|it|software|system|levering|drift|udvikling|rammeaftale)|udbyder(?:\s+\w+){0,3}\s+(?:kontrakt|opgave)|tilbudsindhentning|indhent(?:er)? tilbud|tilbud skal|request for (?:proposal|quotation|tender)|\brfp\b|\brfq\b|invitation to tender|seeking (?:a |an )?(?:supplier|vendor|developer|development partner)|looking for (?:a |an )?(?:supplier|vendor|development partner)|hiring (?:an )?external|external developer|call for tenders?/;
+
+/** A real notice page on a tendering platform counts as asking suppliers on its own. */
+const TENDER_NOTICE_URL =
+  /udbud\.dk\/detaljevisning|ted\.europa\.eu\/[^\s]*notice|mercell\.com\/[^\s]*(?:notice|tender)|eu-supply\.com|udbud\.[a-z]+\.dk\/[^\s]*(?:detalj|notice)/;
+
+const SOCIAL_HOST =
+  /(?:^|[\s/.])(?:instagram|facebook|linkedin|twitter|x|tiktok|youtube)\.com\//;
 
 export function fundedWorkGate(text: string): LaneCandidateGateResult {
-  if (/\.(?:pdf|docx?|xlsx?|pptx?|zip)(?:[?#\s]|$)|\/vedhaeftning\//.test(text)) {
+  if (SOCIAL_HOST.test(text)) {
+    return { allowed: false, reason: "social media post, not an opportunity page" };
+  }
+  if (/\.(?:pdf|docx?|xlsx?|pptx?|zip)(?:[?#\s]|$)|\/vedhaeftning\/|\/api\/pdf\//.test(text)) {
     return { allowed: false, reason: "document attachment, not an opportunity page" };
   }
-  const seeking = SUPPLIER_SEEKING_CUE.test(text);
+  const seeking = SUPPLIER_SEEKING_CUE.test(text) || TENDER_NOTICE_URL.test(text);
   if (GRANT_PROGRAMME_CUE.test(text) && !seeking) {
     return { allowed: false, reason: "grant programme or application guide, not funded work" };
   }

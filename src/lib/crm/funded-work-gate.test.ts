@@ -31,6 +31,26 @@ describe("funded work gate", () => {
     ).toBe(true);
   });
 
+  it("does not treat bare tender words, social posts or law PDFs as funded work", () => {
+    for (const text of [
+      "procureday blog: sådan bruger du offentlige indkøb og udbud i din virksomhed https://www.procureday.com/blog",
+      "puljen on instagram: støttet af pukk https://www.instagram.com/p/abc",
+      "retsinformation: virksomheder der modtager investeringsstøtte skal https://www.retsinformation.dk/api/pdf/243794",
+      "få hjælp og vejledning til at drive virksomhed https://ehhs.dk/content/ydelser/tilskud-og-programforloeb/x",
+    ]) {
+      expect(fundedWorkGate(text).allowed).toBe(false);
+    }
+  });
+
+  it("accepts a notice page on a tendering platform", () => {
+    expect(
+      fundedWorkGate("it-system til kommunen https://udbud.dk/detaljevisning?noticeid=abc").allowed,
+    ).toBe(true);
+    expect(
+      fundedWorkGate("civilstyrelsen: udbud af kontrakt om softwareudvikling og modernisering").allowed,
+    ).toBe(true);
+  });
+
   it("drops document attachments", () => {
     expect(
       fundedWorkGate("udbud analyse af cykelstrømme https://api.udbud.dk/udbud/vedhaeftning/06d7/analyse.pdf").allowed,
