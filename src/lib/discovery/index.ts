@@ -208,11 +208,31 @@ interface UserProfile {
   calibration?: ScoringCalibrationModel | null;
 }
 
-const MAX_PAGE_FETCHES = 10;
+const MAX_PAGE_FETCHES = 12;
 const MAX_TENDER_WEB_PAGE_FETCHES = Math.max(
   0,
   Math.min(MAX_PAGE_FETCHES, Number(process.env.TENDER_WEB_PAGE_FETCHES || 3)),
 );
+const PAGE_READ_CONCURRENCY = 5;
+
+/** Run `task` over `items` with at most `limit` in flight; failures are the task's to handle. */
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+      for (;;) {
+        const index = next++;
+        if (index >= items.length) return;
+        await task(items[index]!);
+      }
+    }),
+  );
+}
+
 const MAX_SCAN_SOURCES = 8;
 const MAX_ATTACHMENTS = 8;
 const SEARCH_PROVIDER_TIMEOUT_MS = Math.max(
@@ -2299,16 +2319,32 @@ async function searchResultsToCandidates(
 ): Promise<DiscoveryCandidateDto[]> {
   const candidates: DiscoveryCandidateDto[] = [];
   const seen = new Set<string>();
-  let pageFetches = 0;
+
+  // Read the pages we will read concurrently: one slow site must not hold up the rest.
+  const toRead: string[] = [];
+  const planned = new Set<string>();
+  for (const result of results) {
+    if (toRead.length >= pageFetchLimit) break;
+    const key = dedupeHash({ title: result.title, url: result.url });
+    if (planned.has(key)) continue;
+    planned.add(key);
+    if (result.url) toRead.push(result.url);
+  }
+  const pages = new Map<string, Awaited<ReturnType<typeof fetchReadablePage>>>();
+  await runWithConcurrency(toRead, PAGE_READ_CONCURRENCY, async (url) => {
+    try {
+      pages.set(url, await fetchReadablePage(url));
+    } catch {
+      // A page that cannot be read falls back to the search excerpt.
+    }
+  });
 
   for (const result of results) {
     if (candidates.length >= maxResults) break;
     const resultKey = dedupeHash({ title: result.title, url: result.url });
     if (seen.has(resultKey)) continue;
     seen.add(resultKey);
-    const shouldFetchPage = Boolean(result.url) && pageFetches < pageFetchLimit;
-    const page = shouldFetchPage ? await fetchReadablePage(result.url) : {};
-    if (shouldFetchPage) pageFetches++;
+    const page = (result.url ? pages.get(result.url) : undefined) ?? {};
 
     const title = cleanText(page.title || result.title, 220);
     if (!title) continue;
@@ -2754,6 +2790,7 @@ function savedCandidateMatch(
 }
 
 export const __discoveryTesting = {
+  runWithConcurrency,
   dedupeCandidates,
   fetchReadablePage,
   searchResultsToCandidates,

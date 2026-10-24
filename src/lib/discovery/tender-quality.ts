@@ -36,6 +36,20 @@ export function hasConcreteSoftwareTenderScope(text: string) {
       /cpv:\s*72000000[^.\n]*?(?=formulartype|bekendtgørelsestype|$)/g,
       "",
     );
+  // A notice classified outside IT (equipment, meters, cameras, vehicles...) is only
+  // software work when it asks for development or a hosted service, not when it
+  // merely mentions software as part of delivering equipment.
+  const mainCpv = text.toLowerCase().match(/cpv:\s*(\d{8})/)?.[1];
+  if (
+    mainCpv &&
+    !/^(?:48|72|64|79)/.test(mainCpv) &&
+    !/udvikling af|software.?udvikling|development of|\bsaas\b|software as a service|applikationsdrift|videreudvikling|custom software|bespoke/.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+
   const hardwareLed =
     /ladestandere|ladeinfrastruktur|kaldeanlæg|nødkald|patientovervågning|medical equipment|charging stations|it-arbejdspladser|servicedesk|enhedsadministration/.test(
       normalized,
