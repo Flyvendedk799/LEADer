@@ -1787,7 +1787,7 @@ async function serperSearch(
 }
 
 function isTenderSearchIntent(query: string, queries: string[] = []) {
-  return /udbud|tender|procurement|tilbudsfrist|udbudsfrist|public rft|eu-supply|mercell|detaljevisning|offentlig/.test(
+  return /udbud|tender|procurement|tilbudsfrist|udbudsfrist|public rft|eu-supply|mercell|detaljevisning/.test(
     [query, ...queries].join(" ").toLowerCase(),
   );
 }
@@ -2817,7 +2817,9 @@ export async function runDiscoverySearch(
   const tenderIntent =
     workspace === "DK" &&
     resultKind !== "sources" &&
-    (input.tenderLane === true || isTenderSearchIntent(input.query));
+    (input.tenderLane === true ||
+      // Lanes that add the official index themselves are not tender searches by wording.
+      (input.includeOfficialTenders !== true && isTenderSearchIntent(input.query)));
   const officialOnlyTenderSearch = shouldUseOfficialOnlyTenderSearch(
     input,
     workspace,
