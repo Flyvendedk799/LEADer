@@ -131,6 +131,24 @@ export async function listAntigravityModels(
   return parseAvailableModels(await res.json());
 }
 
+/** Split `-term` / `-"a phrase"` operators out of a search probe: Gemini reads prose, not operators. */
+export function splitSearchOperators(probe: string): { query: string; avoid: string[] } {
+  const avoid: string[] = [];
+  const query = probe
+    .replace(/(?:^|\s)-"([^"]+)"/g, (_m, phrase: string) => (avoid.push(phrase), " "))
+    .replace(/(?:^|\s)-([^\s"()]+)/g, (_m, term: string) => (avoid.push(term), " "))
+    .replace(/\s+/g, " ")
+    .trim();
+  return { query: query || probe, avoid: [...new Set(avoid)].slice(0, 8) };
+}
+
+/** Search should not pay for deep reasoning: use the light tier of the Flash family. */
+export function searchModelFor(model: string): string {
+  return /^gemini-3\.\d+-flash(?:-(?:low|medium|high))?$/.test(model)
+    ? model.replace(/(?:-(?:low|medium|high))?$/, "-low")
+    : model;
+}
+
 export interface GroundedWebResult {
   title: string;
   url: string;
@@ -165,6 +183,40 @@ export function cleanGroundedText(text: string): string {
   while (label.test(out)) out = out.replace(label, "");
   out = out.replace(/(?<![\p{L}])(?:hvad de (?:søger|tilbyder)(?:\s*\/\s*(?:søger|tilbyder))?|what they (?:need|offer))\s*:\s*/giu, "").trim();
   return /^(?:the\s+)?(?:web\s+)?search\s+(?:returns|results|found)/i.test(out) ? "" : out;
+}
+
+const HTML_ENTITIES: Record<string, string> = {
+  "&amp;": "&", "&quot;": '"', "&#39;": "'", "&apos;": "'", "&nbsp;": " ", "&lt;": "<", "&gt;": ">",
+};
+
+/** The page's own title (og:title, else <title>) from the start of its HTML. */
+export function extractHtmlTitle(html: string): string | undefined {
+  const head = html.slice(0, 80_000);
+  const raw =
+    head.match(/<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1] ??
+    head.match(/<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:title["']/i)?.[1] ??
+    head.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+  if (!raw) return undefined;
+  const title = raw
+    .replace(/&(?:amp|quot|#39|apos|nbsp|lt|gt);/g, (entity) => HTML_ENTITIES[entity] ?? entity)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 140);
+  // A bare site name ("udbud.dk") says nothing about the page; keep the model's title then.
+  return title.length >= 12 && /\s/.test(title) ? title : undefined;
+}
+
+async function fetchPageTitle(url: string, fetchImpl: typeof fetch): Promise<string | undefined> {
+  try {
+    const res = await fetchImpl(url, {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; LEADer/1.0)", accept: "text/html" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok || !/html/i.test(res.headers.get("content-type") ?? "")) return undefined;
+    return extractHtmlTitle(await res.text());
+  } catch {
+    return undefined;
+  }
 }
 
 /** Turn a grounded Gemini reply into one result per cited web page. */
@@ -224,6 +276,7 @@ export async function groundedWebSearch(
   limit: number,
   model: string,
   fetchImpl: typeof fetch = fetch,
+  avoid: string[] = [],
 ): Promise<GroundedWebResult[]> {
   const store = antigravityAccounts();
   const status = await store.status(accountId).catch(() => null);
@@ -233,7 +286,7 @@ export async function groundedWebSearch(
     { accessToken, refreshToken: "", expiresAt: 0, email: null, projectId: status.projectId || null, isDogfood: true } as never,
     CLOUD_CODE_DAILY_BASE_URL,
   );
-  const prompt = `Search the web and report concrete, current results for this query. For each distinct result give the organisation or page and, in one or two sentences, what they need or offer. When the query is about finding clients or projects, prefer organisations and postings that are looking to buy or hire over advisers and competitors. Query: ${query}`;
+  const prompt = `Search the web and report concrete, current results for this query. For each distinct result give the organisation or page and, in one or two sentences, what they need or offer. When the query is about finding clients or projects, prefer organisations and postings that are looking to buy or hire over advisers and competitors. Query: ${query}${avoid.length ? `\nIgnore pages about: ${avoid.join(", ")}.` : ""}`;
   const payload = toCodeAssistRequest(model, [{ role: "user", parts: [{ text: prompt }] }], {
     projectId: status.projectId || undefined,
   });
@@ -252,10 +305,10 @@ export async function groundedWebSearch(
   const parsed = parseGroundedResults(await res.json(), limit);
   if (parsed.length === 0) throw new Error("Google search returned no cited pages for this query");
   return Promise.all(
-    parsed.map(async (item) => ({
-      title: item.title,
-      snippet: item.snippet,
-      url: await resolveGroundingUrl(item.uri, fetchImpl),
-    })),
+    parsed.map(async (item) => {
+      const url = await resolveGroundingUrl(item.uri, fetchImpl);
+      const pageTitle = await fetchPageTitle(url, fetchImpl);
+      return { title: pageTitle ?? item.title, snippet: item.snippet, url };
+    }),
   );
 }

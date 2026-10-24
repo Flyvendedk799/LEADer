@@ -31,6 +31,12 @@ describe("funded work gate", () => {
     ).toBe(true);
   });
 
+  it("drops document attachments", () => {
+    expect(
+      fundedWorkGate("udbud analyse af cykelstrømme https://api.udbud.dk/udbud/vedhaeftning/06d7/analyse.pdf").allowed,
+    ).toBe(false);
+  });
+
   it("drops generic pages with no sign of funded work", () => {
     expect(fundedWorkGate("a copenhagen software studio offering mvp as a service").allowed).toBe(false);
   });

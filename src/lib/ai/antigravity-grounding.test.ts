@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cleanGroundedText, parseGroundedResults } from "./antigravity";
+import {
+  cleanGroundedText,
+  extractHtmlTitle,
+  parseGroundedResults,
+  searchModelFor,
+  splitSearchOperators,
+} from "./antigravity";
 
 const body = {
   response: {
@@ -50,5 +56,31 @@ describe("cleanGroundedText", () => {
       "Upwork Founder søger en udvikler",
     );
     expect(cleanGroundedText("The web search returns several relevant results")).toBe("");
+  });
+});
+
+describe("search helpers", () => {
+  it("moves -term operators into an avoid list", () => {
+    expect(splitSearchOperators('"støttet af" softwareleverandør -ansøgningsfrist -"søg tilskud" -equity')).toEqual({
+      query: '"støttet af" softwareleverandør',
+      avoid: ["søg tilskud", "ansøgningsfrist", "equity"],
+    });
+    expect(splitSearchOperators("ai-automation udvikler")).toEqual({ query: "ai-automation udvikler", avoid: [] });
+  });
+
+  it("searches on the light tier of the Flash family only", () => {
+    expect(searchModelFor("gemini-3.8-flash-high")).toBe("gemini-3.8-flash-low");
+    expect(searchModelFor("gemini-3.8-flash")).toBe("gemini-3.8-flash-low");
+    expect(searchModelFor("gemini-3.1-pro")).toBe("gemini-3.1-pro");
+  });
+
+  it("reads a page's own title and ignores bare site names", () => {
+    expect(extractHtmlTitle("<head><title>Udbud af it-system &amp; drift | Kommunen</title></head>")).toBe(
+      "Udbud af it-system & drift | Kommunen",
+    );
+    expect(extractHtmlTitle('<meta property="og:title" content="Søger leverandør til ny platform">')).toBe(
+      "Søger leverandør til ny platform",
+    );
+    expect(extractHtmlTitle("<title>udbud.dk</title>")).toBeUndefined();
   });
 });

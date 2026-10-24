@@ -534,6 +534,9 @@ const SUPPLIER_SEEKING_CUE =
   /søger (?:en |et )?(?:ekstern(?:e)? )?(?:leverandør|udvikler|udviklingspartner|partner|softwarehus|it-partner)|leverandør(?:er)? søges|udbud|tender|tilbudsindhentning|indhent(?:er)? tilbud|tilbud skal|request for (?:proposal|quotation|tender)|\brfp\b|\brfq\b|seeking (?:a |an )?(?:supplier|vendor|developer|development partner)|looking for (?:a |an )?(?:supplier|vendor|development partner)|hiring (?:an )?external|external developer|procurement/;
 
 export function fundedWorkGate(text: string): LaneCandidateGateResult {
+  if (/\.(?:pdf|docx?|xlsx?|pptx?|zip)(?:[?#\s]|$)|\/vedhaeftning\//.test(text)) {
+    return { allowed: false, reason: "document attachment, not an opportunity page" };
+  }
   const seeking = SUPPLIER_SEEKING_CUE.test(text);
   if (GRANT_PROGRAMME_CUE.test(text) && !seeking) {
     return { allowed: false, reason: "grant programme or application guide, not funded work" };

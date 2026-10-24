@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { runAi } from "@/lib/ai";
 import { aiConfig } from "@/lib/ai/provider";
-import { groundedWebSearch } from "@/lib/ai/antigravity";
+import { groundedWebSearch, searchModelFor, splitSearchOperators } from "@/lib/ai/antigravity";
 import {
   getStoredSearchApiKey,
   normalizeStoredAiKeys,
@@ -1629,7 +1629,15 @@ async function googleGroundedSearch(
   agy?: { accountId: string; model: string },
 ): Promise<SearchResult[]> {
   if (!agy) throw new Error("Google search needs a connected Antigravity account");
-  const results = await groundedWebSearch(agy.accountId, query, limit, agy.model);
+  const split = splitSearchOperators(query);
+  const results = await groundedWebSearch(
+    agy.accountId,
+    split.query,
+    limit,
+    searchModelFor(agy.model),
+    undefined,
+    split.avoid,
+  );
   return results.map((result) => ({
     title: result.title,
     url: result.url,
