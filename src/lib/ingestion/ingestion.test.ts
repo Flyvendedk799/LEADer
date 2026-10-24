@@ -41,6 +41,15 @@ describe("heuristic extraction", () => {
     expect(range.min).toBe(50000);
     expect(range.max).toBe(100000);
   });
+  it("extracts tender values written in millions or grouped digits", () => {
+    expect(extractBudget("Anslået værdi: 4 mio. kr.").max).toBe(4_000_000);
+    expect(extractBudget("Værdi 4,5 millioner DKK ekskl. moms").max).toBe(
+      4_500_000,
+    );
+    expect(extractBudget("Samlet værdi: 4.000.000 DKK").max).toBe(4_000_000);
+    expect(extractBudget("Estimeret værdi: 4 000 000").max).toBe(4_000_000);
+    expect(extractBudget("Pris 4 000 000 kr").max).toBe(4_000_000);
+  });
   it("extracts a deadline", () => {
     expect(extractDeadline("Ansøgningsfrist 2026-09-15")).toBeInstanceOf(Date);
     expect(extractDeadline("frist 15/03/2026")).toBeInstanceOf(Date);

@@ -98,6 +98,39 @@ export function extractBudget(text: string): {
     }
   }
 
+  // Tenders state values as "4 mio. kr.", "4,5 millioner DKK" or "værdi: 4 mio".
+  const scaled = t.match(
+    /(\d+(?:[.,]\d+)?)\s?(mio|mill|millioner|million|mia|mrd|milliard|milliarder)\b\.?/,
+  );
+  if (scaled) {
+    const base = parseFloat(scaled[1].replace(",", "."));
+    const mult = /^(?:mia|mrd|milliard)/.test(scaled[2]) ? 1e9 : 1e6;
+    const v = Math.round(base * mult);
+    const around = t.slice(
+      Math.max(0, (scaled.index ?? 0) - 40),
+      (scaled.index ?? 0) + scaled[0].length + 20,
+    );
+    if (
+      !Number.isNaN(v) &&
+      v >= 1000 &&
+      /\b(?:dkk|eur|usd|kr|kroner|budget|tilskud|værdi|pris|beløb|ramme|estimeret|anslået)\b|[€$]/.test(
+        around,
+      )
+    ) {
+      return { max: v, currency };
+    }
+  }
+
+  // Amount followed by a currency, or after a value label, with grouped digits
+  // ("4.000.000 DKK", "4 000 000 kr", "Anslået værdi: 4.000.000").
+  const grouped = t.match(
+    /(?:(?:værdi|pris|beløb|ramme|estimeret|anslået|omkostning)\w*\s*(?:ekskl\.?[^\d:]{0,20}|inkl\.?[^\d:]{0,20})?[:\s]\s*(?:kr\.?|dkk|eur|€)?\s*)?(\d{1,3}(?:[ . ]\d{3})+)(\s?(?:kr\b|dkk\b|kroner\b|,-|€|eur\b))?/,
+  );
+  if (grouped && (grouped[2] || /[a-zæøå]/.test(grouped[0]))) {
+    const v = parseInt(grouped[1].replace(/[ . ]/g, ""), 10);
+    if (!Number.isNaN(v) && v >= 1000) return { max: v, currency };
+  }
+
   // Single amount near a money cue.
   const single = t.match(
     new RegExp(
