@@ -58,6 +58,8 @@ export interface DiscoverySearchInput {
   useAiPlanner?: boolean;
   /** The Tenders lane asked for this run; generated probes never imply it. */
   tenderLane?: boolean;
+  /** Also search the official udbud.dk index (funded work is often tendered there). */
+  includeOfficialTenders?: boolean;
   onProgress?: (message: string) => Promise<void> | void;
 }
 
@@ -2839,7 +2841,12 @@ export async function runDiscoverySearch(
     );
   }
 
-  if (input.includeWeb !== false && tenderIntent) {
+  if (
+    input.includeWeb !== false &&
+    workspace === "DK" &&
+    resultKind !== "sources" &&
+    (tenderIntent || input.includeOfficialTenders === true)
+  ) {
     const udbudStartedAt = Date.now();
     try {
       await progress(
@@ -2899,11 +2906,16 @@ export async function runDiscoverySearch(
         );
       }
 
+      // The official index already returned udbud.dk notices with real titles and
+      // deadlines; the pages Google cites for the same site are only noise.
+      const withoutOfficialDuplicates = usedOfficialTenderIndex
+        ? webResults.filter((result) => !/(^|\.)udbud\.dk$/.test(searchResultUrlParts(result.url).host))
+        : webResults;
       const filteredWebResults = tenderIntent
-        ? filterTenderSearchResults(webResults, {
+        ? filterTenderSearchResults(withoutOfficialDuplicates, {
             skipOfficialUdbudDk: usedOfficialTenderIndex,
           })
-        : { results: webResults, removed: 0, reasons: [] as string[] };
+        : { results: withoutOfficialDuplicates, removed: 0, reasons: [] as string[] };
       if (filteredWebResults.removed > 0) {
         const message = `Web tender prefilter rejected ${filteredWebResults.removed} raw results: ${filteredWebResults.reasons.slice(0, 3).join("; ")}.`;
         warnings.push(message);

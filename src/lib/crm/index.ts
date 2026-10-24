@@ -942,6 +942,9 @@ export async function executeDiscoveryMission(
       provider: broadWebProvider,
       resultKind: "opportunities",
       tenderLane: prepared.lane.slug === "tenders-procurement",
+      includeOfficialTenders:
+        prepared.lane.slug === "tenders-procurement" ||
+        prepared.lane.slug === "funded-work",
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
       onProgress: appendLog,
     });
