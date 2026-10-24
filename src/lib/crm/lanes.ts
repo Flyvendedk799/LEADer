@@ -445,7 +445,8 @@ function isNewsOrAwardedTenderArticle(text: string, host: string, path: string) 
 
 function isConcreteSupplierOpportunityUrl(host: string, path: string) {
   return (
-    (host.endsWith("ehsys.dk") && /\/indkoeb\/tilbud\/indsend\//.test(path)) ||
+    // A submit-your-offer page, recognised by its shape on whichever portal hosts it.
+    /\/indk(?:oe|ø)b\/tilbud\/(?:indsend\/)?[0-9a-f-]{8,}/.test(path) ||
     /\/opportunit(?:y|ies)\/|\/rfp\/\d+|\/request-for-proposal\//.test(path)
   );
 }

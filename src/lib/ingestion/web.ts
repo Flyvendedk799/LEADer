@@ -80,16 +80,23 @@ export async function fetchWebCandidates(
     if (!next || seenPages.has(next)) continue;
     seenPages.add(next);
 
-    await assertPublicUrl(next);
-    const allowed = await isAllowedByRobots(next);
-    if (!allowed) {
-      if (seenPages.size === 1)
-        throw new Error(`Blocked by robots.txt: ${next}`);
+    const isFirstPage = seenPages.size === 1;
+    // The page the user pointed us at must work. A link we merely followed from it
+    // may be dead (many sites link a home page that 404s); skip it and keep what we have.
+    let html: string;
+    try {
+      await assertPublicUrl(next);
+      const allowed = await isAllowedByRobots(next);
+      if (!allowed) {
+        if (isFirstPage) throw new Error(`Blocked by robots.txt: ${next}`);
+        continue;
+      }
+      await rateLimit(next);
+      html = await loadPageHtml(next, settings);
+    } catch (error) {
+      if (isFirstPage) throw error;
       continue;
     }
-    await rateLimit(next);
-
-    const html = await loadPageHtml(next, settings);
     const $ = cheerio.load(html);
     const siteParser = getParser(opts.parserKey);
     collected.push(

@@ -181,7 +181,7 @@ function mockResult(action: AiAction, context = ""): AiResult {
         data: {
           queries: [
             "software udbud Danmark teknisk sparring MVP prototype tilbudsfrist",
-            "site:ehsys.dk/indkoeb/alle OR site:beyondbeta.ehsys.dk/indkoeb/tilbud/indsend software produkt roadmap",
+            "indkøb tilbud teknisk sparring software produkt roadmap leverandør Danmark",
             "SMV Digital softwareudvikling integration webapp leverandør voucher Danmark",
             "AI automatisering proof of concept fullstack udvikler tilskud Danmark",
           ],

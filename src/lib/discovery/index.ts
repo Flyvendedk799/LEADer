@@ -859,7 +859,7 @@ function deterministicSearchPlan(
     workspace === "DK"
       ? [
           `${q} ${country} tilbudsfrist software udvikling teknisk sparring ${avoidClause}`,
-          `${q} site:beyondbeta.ehsys.dk/indkoeb/tilbud/indsend OR site:ivaerksaetter.ehsys.dk/indkoeb/tilbud/indsend teknisk produkt roadmap software`,
+          `${q} ${country} "indkøb" "tilbud" teknisk sparring produkt roadmap software leverandør ${avoidClause}`,
           `${q} ${country} "indsend tilbud" "tilbudsfrist" software MVP prototype`,
           `${q} ${country} SMV Digital digitalisering software integration leverandør voucher ${avoidClause}`,
           `${q} ${country} AI automatisering proof of concept fullstack udvikler tilskud ${avoidClause}`,
