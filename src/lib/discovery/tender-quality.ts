@@ -26,6 +26,9 @@ export function isResearchPolicyTender(text: string) {
 }
 
 export function hasConcreteSoftwareTenderScope(text: string) {
+  // CPV 48/72 marks an IT notice. The bare 72000000 code is stripped below because
+  // many unrelated notices carry it, so the IT classification is remembered first.
+  const itClassified = /cpv:\s*(?:48|72)\d{6}/.test(text.toLowerCase());
   const normalized = text
     .toLowerCase()
     .replace(/(?:undtagen|except|excluding)\s+(?:programmel|software)/g, "")
@@ -47,6 +50,15 @@ export function hasConcreteSoftwareTenderScope(text: string) {
 
   if (
     /\b48\d{6}\b|\b722\d{5}\b|\b724\d{5}\b|\b725\d{5}\b|\b726\d{5}\b|\b727\d{5}\b|\b728\d{5}\b/.test(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    itClassified &&
+    /\bsystem(?:s|er)?\b|\w{3,}system(?:er)?\b|platform|solution|løsning|loesning|application|portal|værktøj|vaerktoej/.test(
       normalized,
     )
   ) {

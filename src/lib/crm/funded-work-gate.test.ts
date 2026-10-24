@@ -51,6 +51,12 @@ describe("funded work gate", () => {
     ).toBe(true);
   });
 
+  it("recognises a notice page by the shape of its address, on any platform", () => {
+    expect(fundedWorkGate("it-system til kommunen https://nyplatform.eu/tender/12345").allowed).toBe(true);
+    expect(fundedWorkGate("software supplier https://example.org/notice/987?lang=da").allowed).toBe(true);
+    expect(fundedWorkGate("a blog post about software https://example.org/blog/tender-tips-2024").allowed).toBe(false);
+  });
+
   it("drops document attachments", () => {
     expect(
       fundedWorkGate("udbud analyse af cykelstrømme https://api.udbud.dk/udbud/vedhaeftning/06d7/analyse.pdf").allowed,

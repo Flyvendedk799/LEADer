@@ -536,9 +536,12 @@ const GRANT_PROGRAMME_CUE =
 const SUPPLIER_SEEKING_CUE =
   /søger (?:en |et )?(?:ekstern(?:e)? )?(?:leverandør|udvikler|udviklingspartner|partner|softwarehus|it-partner)|leverandør(?:er)? søges|udbud af (?:kontrakt|opgave|it|software|system|levering|drift|udvikling|rammeaftale)|udbyder(?:\s+\w+){0,3}\s+(?:kontrakt|opgave)|tilbudsindhentning|indhent(?:er)? tilbud|tilbud skal|request for (?:proposal|quotation|tender)|\brfp\b|\brfq\b|invitation to tender|seeking (?:a |an )?(?:supplier|vendor|developer|development partner)|looking for (?:a |an )?(?:supplier|vendor|development partner)|hiring (?:an )?external|external developer|call for tenders?/;
 
-/** A real notice page on a tendering platform counts as asking suppliers on its own. */
+/**
+ * A notice page asks suppliers on its own. Recognised by the shape of the address
+ * (detail/notice/tender paths), never by a list of platforms: new ones keep appearing.
+ */
 const TENDER_NOTICE_URL =
-  /udbud\.dk\/detaljevisning|ted\.europa\.eu\/[^\s]*notice|mercell\.com\/[^\s]*(?:notice|tender)|eu-supply\.com|udbud\.[a-z]+\.dk\/[^\s]*(?:detalj|notice)/;
+  /https?:\/\/[^\s]*\/(?:detaljevisning|notices?|tenders?|udbud|ausschreibung|aanbesteding|appel-d-offres|licitaci[oó]n)(?:[/?#\s]|$)/;
 
 const SOCIAL_HOST =
   /(?:^|[\s/.])(?:instagram|facebook|linkedin|twitter|x|tiktok|youtube)\.com\//;

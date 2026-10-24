@@ -2102,9 +2102,27 @@ function udbudDkCandidateVersionScore(candidate: OpportunityCandidate) {
   return postedAt * 10 + deadline;
 }
 
+const UDBUD_DK_PAGE_SIZE = 25;
+const UDBUD_DK_MAX_PER_SEED = 75;
+
+/** Walk the index page by page: one page of earliest deadlines is not "what exists". */
+async function udbudDkSearchAll(
+  query: string,
+  cap = UDBUD_DK_MAX_PER_SEED,
+): Promise<UdbudDkResult[]> {
+  const all: UdbudDkResult[] = [];
+  for (let page = 1; all.length < cap; page++) {
+    const batch = await udbudDkSearch(query, UDBUD_DK_PAGE_SIZE, page);
+    all.push(...batch);
+    if (batch.length < UDBUD_DK_PAGE_SIZE) break;
+  }
+  return all.slice(0, cap);
+}
+
 async function udbudDkSearch(
   query: string,
   maxResults: number,
+  page = 1,
 ): Promise<UdbudDkResult[]> {
   const res = await safeFetch(
     "https://udbud.dk/soegning/public/soegeresultat",
@@ -2118,7 +2136,7 @@ async function udbudDkSearch(
       body: JSON.stringify({
         fritekstQuery: query,
         pagineringDto: {
-          aktuelSide: 1,
+          aktuelSide: page,
           maksElementer: Math.min(Math.max(maxResults, 1), 25),
           sorteringFelt: "TILBUDSFRIST_DATO",
           retning: "Asc",
@@ -2153,16 +2171,12 @@ async function udbudDkCandidates(
     { seed: string; candidate: OpportunityCandidate; score: number }
   >();
   const seeds = udbudDkSearchSeeds(query, queries);
-  const perQuery = Math.min(
-    25,
-    Math.max(10, Math.ceil((maxResults * 2) / Math.max(1, seeds.length))),
-  );
   const seededResults = await runSearchQueriesWithConcurrency(
     seeds,
-    perQuery,
+    UDBUD_DK_MAX_PER_SEED,
     SEARCH_PROVIDER_CONCURRENCY,
     async (seed, limit) => {
-      const results = await udbudDkSearch(seed, limit);
+      const results = await udbudDkSearchAll(seed, limit);
       return results.map((result) => ({ seed, result }));
     },
   );
@@ -2184,7 +2198,8 @@ async function udbudDkCandidates(
         (a.candidate.deadline?.getTime() ?? 0) -
         (b.candidate.deadline?.getTime() ?? 0),
     )
-    .slice(0, maxResults);
+    // Deadline order only decides what gets scored; relevance decides what is returned.
+    .slice(0, Math.max(maxResults, 40));
 
   const candidates: DiscoveryCandidateDto[] = [];
   for (const { seed, candidate } of selectedCandidates) {
@@ -2203,7 +2218,9 @@ async function udbudDkCandidates(
     );
   }
 
-  return candidates;
+  return candidates
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, maxResults);
 }
 
 async function runProviderSearch(
@@ -2910,8 +2927,13 @@ export async function runDiscoverySearch(
 
       // The official index already returned udbud.dk notices with real titles and
       // deadlines; the pages Google cites for the same site are only noise.
+      const officialUrls = candidates.map((candidate) => candidate.url ?? "");
+      const alreadyOfficial = (url?: string) => {
+        const id = url?.match(/noticeId=([0-9a-f-]{8,})/i)?.[1]?.toLowerCase();
+        return Boolean(id && officialUrls.some((official) => official.toLowerCase().includes(id)));
+      };
       const withoutOfficialDuplicates = usedOfficialTenderIndex
-        ? webResults.filter((result) => !/(^|\.)udbud\.dk$/.test(searchResultUrlParts(result.url).host))
+        ? webResults.filter((result) => !alreadyOfficial(result.url))
         : webResults;
       const filteredWebResults = tenderIntent
         ? filterTenderSearchResults(withoutOfficialDuplicates, {
