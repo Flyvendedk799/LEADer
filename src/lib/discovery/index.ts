@@ -2611,16 +2611,32 @@ function dedupeCandidates(
   maxResults: number,
 ): DiscoveryCandidateDto[] {
   const seen = new Set<string>();
-  const unique: DiscoveryCandidateDto[] = [];
+  const byProvider = new Map<string, DiscoveryCandidateDto[]>();
   for (const c of candidates.sort((a, b) => b.matchScore - a.matchScore)) {
     if (c.feedback === "NON_LEAD" || c.feedbackSuppressed) continue;
     const key = dedupeHash({ title: c.title, url: c.url });
     if (seen.has(key)) continue;
     seen.add(key);
-    unique.push(c);
-    if (unique.length >= maxResults) break;
+    const group = byProvider.get(c.provider) ?? [];
+    group.push(c);
+    byProvider.set(c.provider, group);
   }
-  return unique;
+  // Take turns between sources, best first within each, so that one source with high
+  // scores cannot crowd out the rest. No source is special: this works for any provider.
+  const groups = [...byProvider.values()];
+  const unique: DiscoveryCandidateDto[] = [];
+  for (let round = 0; unique.length < maxResults; round++) {
+    let added = false;
+    for (const group of groups) {
+      const next = group[round];
+      if (!next) continue;
+      unique.push(next);
+      added = true;
+      if (unique.length >= maxResults) break;
+    }
+    if (!added) break;
+  }
+  return unique.sort((a, b) => b.matchScore - a.matchScore);
 }
 
 async function markAlreadySaved(
@@ -2738,6 +2754,7 @@ function savedCandidateMatch(
 }
 
 export const __discoveryTesting = {
+  dedupeCandidates,
   fetchReadablePage,
   searchResultsToCandidates,
   buildFeedbackSignalModel,
