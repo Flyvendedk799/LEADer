@@ -1,0 +1,33 @@
+# Runs on ServerHoster (in Docker on the VPS), not GitHub Actions.
+# Replaces .github/workflows/ci.yml: pushes to main and pull requests into main.
+# Both former jobs (check + e2e) run here, one after the other, sharing one
+# install, database and build. The image matches @playwright/test in the lockfile.
+image: mcr.microsoft.com/playwright:v1.60.0-noble
+timeoutMinutes: 30
+memoryMb: 6144
+cpus: 2
+env:
+  DATABASE_URL: postgresql://leader:leader@localhost:5432/leader?schema=public
+steps:
+  # Postgres 16 inside the job (no service containers here).
+  - name: Start Postgres
+    run: .survhub/services.sh postgres=16 pguser=leader pgpassword=leader pgdb=leader
+  - name: Install
+    run: npm ci
+  - name: Generate Prisma client
+    run: npx prisma generate
+  - name: Apply migrations
+    run: npx prisma migrate deploy
+  - name: Seed database
+    run: npm run db:seed
+  - name: Lint
+    run: npm run lint
+  - name: Typecheck
+    run: npm run typecheck
+  - name: Unit tests
+    run: npm run test
+  - name: Build
+    run: BASE_URL=http://localhost:3000 EMAIL_PROVIDER=console npm run build
+  # playwright.config.ts starts `npm run start` itself (webServer).
+  - name: E2E (Playwright)
+    run: BASE_URL=http://localhost:3000 EMAIL_PROVIDER=console npm run test:e2e
