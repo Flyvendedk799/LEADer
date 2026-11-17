@@ -301,7 +301,7 @@ export default async function WorkflowsPage(props: {
       },
     }),
     db.discoveryCandidate.findMany({
-      where: { ownerId, workspace, status: "NEW", pursuitScore: { gte: 70 } },
+      where: { ownerId, workspace, status: "NEW", OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: new Date() } }], pursuitScore: { gte: 70 } },
       include: {
         lane: true,
         evidence: { take: 1, orderBy: { createdAt: "desc" } },

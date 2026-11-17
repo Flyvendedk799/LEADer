@@ -66,6 +66,7 @@ describe("GET /api/nav/counts", () => {
         ownerId: "owner-1",
         workspace: "DK",
         status: { in: ["NEW", "REVIEWED"] },
+        OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: expect.any(Date) } }],
       },
       include: { lane: true },
     });
@@ -155,6 +156,7 @@ describe("GET /api/nav/counts", () => {
         ownerId: "owner-1",
         workspace: "GLOBAL",
         status: { in: ["NEW", "REVIEWED"] },
+        OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: expect.any(Date) } }],
       },
       include: { lane: true },
     });
@@ -198,6 +200,7 @@ describe("GET /api/nav/counts", () => {
         ownerId: "owner-1",
         workspace: "DK",
         status: { in: ["NEW", "REVIEWED"] },
+        OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: expect.any(Date) } }],
       },
       include: { lane: true },
     });

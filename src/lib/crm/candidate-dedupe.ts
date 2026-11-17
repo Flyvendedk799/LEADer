@@ -23,7 +23,15 @@ export function discoveryCandidateDedupeKey(
     return `tender:${organization}:${title}:${deadline.toISOString().slice(0, 10)}`;
   }
 
-  return candidate.url || candidate.id || `${candidate.title}:${candidate.sourceName}`;
+  if (candidate.url) {
+    try {
+      const url = new URL(candidate.url);
+      for (const key of [...url.searchParams.keys()]) if (/^utm_|^(fbclid|gclid)$/i.test(key)) url.searchParams.delete(key);
+      url.searchParams.sort();
+      return url.toString().replace(/\/$/, "");
+    } catch { return candidate.url; }
+  }
+  return `text:${keyText(candidate.organization)}:${keyText(candidate.title, 250)}`;
 }
 
 export const DUPLICATE_CANDIDATE_REASON =

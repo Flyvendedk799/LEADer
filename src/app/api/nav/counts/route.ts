@@ -21,6 +21,7 @@ export async function GET(req: Request) {
           ownerId,
           workspace,
           status: { in: ["NEW", "REVIEWED"] },
+      OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: new Date() } }],
         },
         include: { lane: true },
       }),

@@ -193,12 +193,15 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  companyProfile Json?
+  providerUsage ProviderUsage[]
+
   // Profile / preferences (drives scoring + AI context)
   headline              String? // e.g. "Fullstack dev · AI builder · MVP/product advisor"
   bio                   String?
   preferredProjectTypes String[] @default([])
   excludedCategories    String[] @default([])
-  budgetMaxDkk          Int      @default(100000)
+  budgetMaxDkk          Int      @default(0)
   preferredCurrency     String   @default("DKK")
 
   // JSON blobs (typed in lib/types.ts)
@@ -582,6 +585,7 @@ model Deal {
   nextAction      String? @db.Text
   statusReason    String? @db.Text
   wonLostReason   String? @db.Text
+  closedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -640,7 +644,11 @@ model DiscoveryLane {
 }
 
 model DiscoveryMission {
+  checkpoint Json?
   id              String        @id @default(cuid())
+  leaseToken String?
+  leaseUntil DateTime?
+  attempts Int @default(0)
   ownerId         String
   owner           User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   laneId          String
@@ -663,6 +671,7 @@ model DiscoveryMission {
   @@index([ownerId, startedAt])
   @@index([ownerId, status, queuePriority, startedAt])
   @@index([laneId, startedAt])
+  @@index([status, leaseUntil, queuePriority], map: "DiscoveryMission_worker_claim")
 }
 
 model DiscoveryCandidate {
@@ -703,6 +712,7 @@ model DiscoveryCandidate {
   reasons         String[]                 @default([])
   signals         String[]                 @default([])
   feedback        Json?
+  snoozedUntil DateTime?
   dismissalReason String?
   dedupeKey       String?
   createdAt       DateTime                 @default(now())
@@ -716,10 +726,14 @@ model DiscoveryCandidate {
   @@index([laneId])
   @@index([missionId])
   @@index([pursuitScore])
+  @@index([ownerId, status, snoozedUntil], map: "DiscoveryCandidate_review_snooze")
 }
 
 model WorkflowRun {
   id         String    @id @default(cuid())
+  leaseToken String?
+  leaseUntil DateTime?
+  attempts Int @default(0)
   ownerId    String
   owner      User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   presetId   String?
@@ -744,6 +758,7 @@ model WorkflowRun {
   @@index([ownerId, status, queuePriority, createdAt])
   @@index([ownerId, trigger])
   @@index([presetId])
+  @@index([status, leaseUntil, queuePriority], map: "WorkflowRun_worker_claim")
 }
 
 model WorkflowPreset {
@@ -982,4 +997,27 @@ model AiCredential {
   meta      Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model WorkerHeartbeat {
+  id String @id
+  updatedAt DateTime @updatedAt
+}
+
+model ProviderUsage {
+  id String @id @default(cuid())
+  ownerId String
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  kind String
+  units Int
+  reservedUsd Decimal @default(0) @db.Decimal(14, 6)
+  provider String?
+  model String?
+  inputTokens Int?
+  outputTokens Int?
+  status String @default("RESERVED")
+  actualUsd Decimal? @db.Decimal(14, 6)
+  invoiceReference String?
+  createdAt DateTime @default(now())
+  @@index([ownerId, kind, createdAt], map: "ProviderUsage_owner_kind_created")
 }

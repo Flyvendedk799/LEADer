@@ -333,7 +333,7 @@ export async function runPlatformAgent(input: AgentRunInput): Promise<AgentRunRe
     try {
       plan = await planWithLlm(input.user, message, input.history ?? []);
     } catch (error) {
-      if (!isMissingSubscriptionLoginError(error)) throw error;
+      if (!isMissingSubscriptionLoginError(error) && !/paid .*paused|allowance reached|reserved-spend budget/i.test(error instanceof Error ? error.message : "")) throw error;
       usedLlm = false;
       plan = { answer: undefined, toolCalls: planMockToolCalls(message) };
     }
@@ -363,9 +363,8 @@ export async function runPlatformAgent(input: AgentRunInput): Promise<AgentRunRe
     try {
       answer = await synthesizeWithLlm(input.user, message, toolResults);
     } catch (error) {
-      if (!isMissingSubscriptionLoginError(error)) throw error;
       usedLlm = false;
-      answer = deterministicAnswer(message, toolResults);
+      answer = deterministicAnswer(message, toolResults) + `\n\nAI summary unavailable: ${error instanceof Error ? error.message : "provider failed"}`;
     }
   } else {
     answer = deterministicAnswer(message, toolResults);

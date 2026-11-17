@@ -1,8 +1,8 @@
 # LEADer 🎯
 
-**Personal lead-intelligence platform** — discover, track, evaluate, save and export
-funded startup work, voucher assignments, grant-backed supplier tasks, tender-like
-opportunities and community leads. **Denmark-first, with a separate Global workspace.**
+> Mast3kmedia acquisition changes: see [operations and validation status](docs/ACQUISITION_OPERATIONS.md). Run `npm run worker` alongside the web app; paid discovery requires explicit request allowances in Settings.
+
+**Mast3kmedia client-acquisition workspace** — discover, qualify and pursue software projects, freelance contracts, agency subcontracting, tenders, recurring work and buying signals. **Denmark-first, with a separate international remote workspace.**
 
 Built for one power user (you) but on SaaS-ready foundations. Optimised for someone who
 reviews opportunities every day: clean intelligence-dashboard UI, transparent match
@@ -27,7 +27,7 @@ scoring, compliant ingestion, AI assistance, and one-click exports.
 
 ### Discovery connections and limits
 
-Broad web discovery requires a Tavily, Brave Search or Serper key in **Settings → AI** (or the corresponding environment variable). Danish tender discovery can use the public udbud.dk index without a search key. Source scans use enabled public sources and curated Danish sources. AI planning and summaries require a configured model; without it, deterministic matching remains available and AI draft examples are labeled.
+Broad web discovery requires a Tavily, Brave Search or Serper key in **Settings → AI** (or the corresponding environment variable). Danish tender discovery can use the public udbud.dk index without a search key. Source scans use enabled public sources and curated Danish sources. AI planning and summaries require a configured model; without it, deterministic matching remains available. Mock drafts require explicit `DEMO_MODE=true` and are labeled as examples.
 
 Only public, robots-allowed pages are fetched. Network requests have timeouts, redirect validation and size limits. Discovery caps page reads and source traversal. Search excerpts and PDF links remain explicitly unverified when full content cannot be read. Private conversations belong in **Community import** or a manually added deal. No outreach is sent when you save a lead.
 
@@ -59,22 +59,19 @@ docker compose up -d db
 # Or, without Docker, in a separate terminal:
 npm run db:local
 
-# 4. Apply migrations and seed demo data
+# 4. Apply migrations (demo data is optional)
 npm run db:generate
 npm run db:migrate:deploy
-npm run db:seed
+# Optional only for a demo: npm run db:seed
 
 # 5. Run the app
 npm run dev                   # http://localhost:3000
 ```
 
-Then **sign in at http://localhost:3000/login** with the credentials the seed prints
-(default `owner@leader.local` / `leader-demo-1234`), or register a new account at
-`/register`. Prefer to skip login while hacking locally? Set `AUTH_DEV_BYPASS=true`
-(ignored in production) to run as the seeded user.
+Register your own account at http://localhost:3000/register. Start `npm run worker` in a second terminal for discovery and automations. If you explicitly seeded demo data, the seed prints its development login credentials.
 
-The seed populates example accounts, deals and discovery lanes. CRM use needs no API keys.
-AI draft actions show labeled example output (and local embeddings power similarity) until you
+The optional seed populates example accounts, deals and discovery lanes. CRM use needs no API keys.
+Production AI drafts require a connected provider; example output requires `DEMO_MODE=true`. Connect a provider when you
 choose a local Codex/ChatGPT or Claude Code subscription provider, add an OpenAI/Claude
 API key during onboarding or in **Settings → AI**, or set `LLM_API_KEY`.
 
@@ -218,7 +215,7 @@ a localised change to `register`/`login`.
 
 ## Status & roadmap
 
-A working daily-use tool, not a demo. Real multi-user auth, structured-data + site parsers,
+The code provides a daily acquisition workflow; live discovery quality and the hosted pilot remain release gates. Real multi-user auth, structured-data + site parsers,
 embeddings-backed similarity, email delivery, an alerts inbox, multi-tenant scheduled
 discovery, and CI (lint · typecheck · unit · build · E2E) are all in place. Remaining
 nice-to-haves (OAuth/SSO, OCR for screenshots, browser-extension capture, auto-tuned scoring

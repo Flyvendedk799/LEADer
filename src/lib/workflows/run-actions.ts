@@ -34,6 +34,7 @@ function normalizeJson(value: unknown): unknown {
 function normalizedDailySweepOptions(input: WorkflowRunInput) {
   return {
     includeSources: input.options?.dailySweep?.includeSources !== false,
+    ...(input.options?.dailySweep?.sourceId ? { sourceId: input.options.dailySweep.sourceId } : {}),
     includeAlerts: input.options?.dailySweep?.includeAlerts !== false,
   };
 }

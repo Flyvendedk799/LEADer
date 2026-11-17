@@ -7,10 +7,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: leader
-      POSTGRES_PASSWORD: leader
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-leader}"
       POSTGRES_DB: leader
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - leader-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -26,18 +26,40 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file: .env
     environment:
-      DATABASE_URL: "postgresql://leader:leader@db:5432/leader?schema=public"
-      NEXTAUTH_URL: "http://localhost:3000"
-      AUTH_SECRET: "dev-secret-change-me"
+      DATABASE_URL: "postgresql://leader:${POSTGRES_PASSWORD:-leader}@db:5432/leader?schema=public"
+      NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
+      AUTH_SECRET: "${AUTH_SECRET:?Set AUTH_SECRET}"
+      AI_KEYS_ENCRYPTION_SECRET: "${AI_KEYS_ENCRYPTION_SECRET:?Set AI_KEYS_ENCRYPTION_SECRET}"
       DEV_USER_EMAIL: "owner@leader.local"
-      # AI runs in MOCK mode unless you supply a key here.
-      LLM_API_KEY: ""
-      LLM_BASE_URL: "https://api.openai.com/v1"
-      LLM_MODEL: "gpt-4o-mini"
+      # Missing credentials pause AI; demo output must be explicitly enabled.
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      TAVILY_API_KEY: "${TAVILY_API_KEY:-}"
+      LLM_BASE_URL: "${LLM_BASE_URL:-https://api.openai.com/v1}"
+      LLM_MODEL: "${LLM_MODEL:-gpt-4o-mini}"
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
     profiles: ["full"] # `docker compose --profile full up` to run the app too
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://leader:${POSTGRES_PASSWORD:-leader}@db:5432/leader?schema=public"
+      AUTH_SECRET: "${AUTH_SECRET:?Set AUTH_SECRET}"
+      AI_KEYS_ENCRYPTION_SECRET: "${AI_KEYS_ENCRYPTION_SECRET:?Set AI_KEYS_ENCRYPTION_SECRET}"
+    depends_on:
+      app:
+        condition: service_healthy
+    profiles: ["full"]
 
 volumes:
   leader-db-data:

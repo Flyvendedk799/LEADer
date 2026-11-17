@@ -93,13 +93,13 @@ export function rawSignals(
 /** Compute the raw 0..1 signal for each criterion. */
 function signals(o: ScorableOpportunity, profile: ScoringProfile): Record<ScoreCriterion, { raw: number; note?: string }> {
   const hay = text(o);
-  const budgetMax = profile.budgetMaxDkk ?? 100000;
+  const budgetMax = profile.budgetMaxDkk ?? 0;
   const value = o.budgetMax ?? o.budgetMin ?? null;
 
   // Budget fit: best when present and at/under the preferred max.
   let budgetFit = 0.5;
   let budgetNote = "No budget listed";
-  if (value != null) {
+  if (value != null && budgetMax > 0) {
     if (value <= budgetMax) {
       budgetFit = 1;
       budgetNote = `Within preferred ≤ ${budgetMax.toLocaleString("da-DK")} DKK`;

@@ -13,9 +13,11 @@ import type { Prisma } from "@prisma/client";
 // blob. The API only returns masked key metadata to the browser.
 // ─────────────────────────────────────────────────────────────────────────
 
-function safeUser<T extends { aiKeys?: unknown }>(user: T) {
+function safeUser<T extends { aiKeys?: unknown; passwordHash?: unknown }>(user: T) {
+  const { passwordHash: _passwordHash, ...publicUser } = user;
+  void _passwordHash;
   return {
-    ...user,
+    ...publicUser,
     aiKeys: publicAiKeys(user.aiKeys),
   };
 }
@@ -48,6 +50,7 @@ export async function PATCH(req: Request) {
     // Build a partial update so only provided fields are touched. JSON blobs are
     // cast to Prisma.InputJsonValue; secrets never reach here (see header note).
     const data: Prisma.UserUpdateInput = {};
+    if (d.companyProfile !== undefined) data.companyProfile = d.companyProfile;
     if (d.name !== undefined) data.name = d.name;
     if (d.headline !== undefined) data.headline = d.headline;
     if (d.bio !== undefined) data.bio = d.bio;

@@ -9,6 +9,7 @@ const metadataSchema = z.object({
       reason: z.string().optional(),
     })
     .optional(),
+  fieldCitations: z.array(z.object({ field: z.string(), value: z.string().nullable(), status: z.string(), quote: z.string().optional(), url: z.string().optional(), retrievedAt: z.string() })).optional(),
   attachments: z
     .array(z.object({ url: z.string().url(), label: z.string().optional() }))
     .optional(),
@@ -30,6 +31,7 @@ export function EvidenceProvenance({ metadata }: { metadata?: unknown }) {
             ? "Extracted source facts; confirm scope, budget and eligibility before pursuing."
             : "Only an excerpt is available; the full source has not been verified.")}
       </p>
+      {data?.fieldCitations && <details><summary className="cursor-pointer">Fact sources and unknowns</summary><dl className="mt-2 space-y-2">{data.fieldCitations.map(field => <div key={field.field}><dt className="font-medium">{field.field}: {field.value || "Unknown"} · {field.status === "source" ? "source text" : field.status === "snippet" ? "excerpt only" : field.status}</dt>{field.quote && <dd><q>{field.quote}</q>{field.url && /^https?:\/\//i.test(field.url) && <a className="ml-2 underline" href={field.url} target="_blank" rel="noreferrer">Source</a>}</dd>}</div>)}</dl></details>}
       {data?.attachments
         ?.filter((item) => /^https?:\/\//i.test(item.url))
         .slice(0, 10)

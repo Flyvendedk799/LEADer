@@ -1,3 +1,4 @@
+import { durableJobsEnabled, queueSnapshot, reorderQueue } from "@/lib/jobs/queue";
 import { keepAlive } from "@/lib/background";
 import { db } from "@/lib/db";
 import { executeWorkflowRun } from "./playbooks";
@@ -36,6 +37,7 @@ function drainQueue() {
 }
 
 export function enqueueWorkflowRun(ownerId: string, runId: string, input: WorkflowRunInput) {
+  if (durableJobsEnabled()) return true; // The run row is already the durable queue entry.
   if (isInMemory(runId)) return false;
   queue.push({ ownerId, runId, input });
   drainQueue();
@@ -78,6 +80,10 @@ async function persistOwnerQueueOrder(ownerId: string) {
 }
 
 export async function reorderQueuedWorkflowRun(ownerId: string, runId: string, action: WorkflowQueueMoveAction) {
+  if (durableJobsEnabled()) {
+    const result = await reorderQueue("WorkflowRun", ownerId, runId, action);
+    return { ...result, queue: await visibleWorkflowQueueSnapshotForOwner(ownerId) };
+  }
   const ownerIndexes = queue
     .map((item, index) => (item.ownerId === ownerId ? index : null))
     .filter((index): index is number => index !== null);
@@ -129,6 +135,10 @@ export function filterVisibleWorkflowQueueSnapshot(
 }
 
 export async function visibleWorkflowQueueSnapshotForOwner(ownerId: string) {
+  if (durableJobsEnabled()) {
+    const rows = await queueSnapshot("WorkflowRun", ownerId);
+    return { activeRunId: rows.find(r => r.status === "RUNNING")?.id ?? null, queuedRunIds: rows.filter(r => r.status === "QUEUED").map(r => r.id) };
+  }
   const liveRuns = await db.workflowRun.findMany({
     where: {
       ownerId,
@@ -144,6 +154,7 @@ export async function visibleWorkflowQueueSnapshotForOwner(ownerId: string) {
 }
 
 export async function recoverWorkflowQueue(ownerId: string) {
+  if (durableJobsEnabled()) return visibleWorkflowQueueSnapshotForOwner(ownerId);
   const runs = await db.workflowRun.findMany({
     where: {
       ownerId,
@@ -189,6 +200,7 @@ export async function recoverWorkflowQueue(ownerId: string) {
 
 /** Await queued playbooks from the database. Used by cron so work finishes in the request. */
 export async function drainQueuedWorkflowRuns(ownerId: string, limit = 3) {
+  if (durableJobsEnabled()) return []; // Only the persistent worker claims execution.
   const runs = await db.workflowRun.findMany({
     where: { ownerId, status: "QUEUED", finishedAt: null },
     orderBy: [{ queuePriority: "desc" }, { createdAt: "asc" }],

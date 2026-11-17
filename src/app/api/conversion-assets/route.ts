@@ -1,3 +1,4 @@
+import { assertOwnedLinks } from "@/lib/crm/ownership";
 import { NextResponse } from "next/server";
 
 import { apiError } from "@/lib/api";
@@ -29,6 +30,8 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const parsed = conversionAssetCreateSchema.safeParse(body);
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    await assertOwnedLinks(ownerId, parsed.data);
+    if (parsed.data.candidateId && !await db.discoveryCandidate.count({ where: { id: parsed.data.candidateId, ownerId } })) return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
     const asset = await db.conversionAsset.create({ data: { ownerId, ...parsed.data } });
     return NextResponse.json(asset, { status: 201 });
   } catch (err) {

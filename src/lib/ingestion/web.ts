@@ -99,11 +99,11 @@ export async function fetchWebCandidates(
     }
     const $ = cheerio.load(html);
     const siteParser = getParser(opts.parserKey);
-    collected.push(
-      ...(siteParser ? siteParser($, next) : genericExtract($, next)),
-    );
+    collected.push(...(siteParser ? siteParser($, next) : genericExtract($, next)).map(candidate => ({
+      ...candidate, provenance: { status: "read" as const, retrievedAt: new Date().toISOString(), url: next, reason: "Read the public listing; verify the original notice before pursuing." },
+    })));
 
-    if (settings.playwrightEnabled || seenPages.size >= maxPages) break;
+    if (siteParser || settings.playwrightEnabled || seenPages.size >= maxPages) break;
     const hrefs: string[] = [];
     $("a[href]").each((_, el) => {
       const href = $(el).attr("href");

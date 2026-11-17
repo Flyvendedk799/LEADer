@@ -21,8 +21,13 @@
     "db:studio": "prisma studio",
     "discover": "tsx scripts/run-discovery.ts",
     "embeddings:backfill": "tsx scripts/backfill-embeddings.ts",
-    "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
-    "db:local": "node scripts/local-db.mjs"
+    "setup": "prisma generate && prisma migrate deploy",
+    "db:local": "node scripts/local-db.mjs",
+    "worker": "tsx scripts/worker.ts",
+    "check:acquisition": "tsx scripts/check-acquisition.ts",
+    "evaluate:discovery": "tsx scripts/evaluate-discovery.ts",
+    "check:restore": "tsx scripts/check-restore.ts",
+    "check:browser": "tsx scripts/check-browser.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -58,6 +63,7 @@
     "rss-parser": "^3.13.0",
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7",
+    "unpdf": "^1.4.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

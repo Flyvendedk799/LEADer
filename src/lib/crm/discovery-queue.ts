@@ -1,3 +1,4 @@
+import { durableJobsEnabled, queueSnapshot, reorderQueue } from "@/lib/jobs/queue";
 import { keepAlive } from "@/lib/background";
 import { executeDiscoveryMission, type DiscoveryMissionInput } from "@/lib/crm";
 import { discoveryLogEntry } from "@/lib/crm/discovery-logging";
@@ -36,6 +37,7 @@ function drainQueue() {
 }
 
 export function enqueueDiscoveryMission(ownerId: string, missionId: string, input: DiscoveryMissionInput) {
+  if (durableJobsEnabled()) return true; // The run row is already the durable queue entry.
   if (isInMemory(missionId)) return false;
   queue.push({ ownerId, missionId, input });
   drainQueue();
@@ -78,6 +80,10 @@ async function persistOwnerQueueOrder(ownerId: string) {
 }
 
 export async function reorderQueuedDiscoveryMission(ownerId: string, missionId: string, action: DiscoveryQueueMoveAction) {
+  if (durableJobsEnabled()) {
+    const result = await reorderQueue("DiscoveryMission", ownerId, missionId, action);
+    return { ...result, queue: await visibleDiscoveryQueueSnapshotForOwner(ownerId) };
+  }
   const ownerIndexes = queue
     .map((item, index) => (item.ownerId === ownerId ? index : null))
     .filter((index): index is number => index !== null);
@@ -129,6 +135,10 @@ export function filterVisibleDiscoveryQueueSnapshot(
 }
 
 export async function visibleDiscoveryQueueSnapshotForOwner(ownerId: string) {
+  if (durableJobsEnabled()) {
+    const rows = await queueSnapshot("DiscoveryMission", ownerId);
+    return { activeMissionId: rows.find(r => r.status === "RUNNING")?.id ?? null, queuedMissionIds: rows.filter(r => r.status === "QUEUED").map(r => r.id) };
+  }
   const liveMissions = await db.discoveryMission.findMany({
     where: {
       ownerId,
@@ -144,6 +154,7 @@ export async function visibleDiscoveryQueueSnapshotForOwner(ownerId: string) {
 }
 
 export async function recoverDiscoveryQueue(ownerId: string) {
+  if (durableJobsEnabled()) return visibleDiscoveryQueueSnapshotForOwner(ownerId);
   const missions = await db.discoveryMission.findMany({
     where: {
       ownerId,
@@ -190,6 +201,7 @@ export async function recoverDiscoveryQueue(ownerId: string) {
 
 /** Await queued missions from the database. Used by cron so work finishes in the request. */
 export async function drainQueuedDiscoveryMissions(ownerId: string, limit = 2) {
+  if (durableJobsEnabled()) return []; // Only the persistent worker claims execution.
   const missions = await db.discoveryMission.findMany({
     where: { ownerId, status: "QUEUED", finishedAt: null },
     orderBy: [{ queuePriority: "desc" }, { startedAt: "asc" }],

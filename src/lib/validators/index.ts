@@ -1,3 +1,4 @@
+import { companyProfileSchema } from "@/lib/company-profile";
 import { z } from "zod";
 import type { OpportunityFilter } from "@/lib/types";
 
@@ -410,7 +411,17 @@ export const discoveryRunCreateSchema = z.object({
 });
 
 export const discoveryCandidateActionSchema = z.object({
-  action: z.enum(["review", "save", "dismiss", "duplicate", "feedback"]),
+  changes: z.object({
+    title: z.string().trim().min(2).max(250),
+    deadline: z.string().datetime().nullable().optional(),
+    currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+    applicationRoute: z.enum(["DIRECT", "APPLICATION", "UNKNOWN"]).optional(),
+    organization: z.string().trim().max(200).nullable().optional(),
+    url: z.union([z.literal(""), z.string().url().refine(v => /^https?:/.test(v))]).optional(),
+    budgetMin: z.number().int().nonnegative().nullable().optional(),
+    budgetMax: z.number().int().nonnegative().nullable().optional(),
+  }).refine(v => v.budgetMin == null || v.budgetMax == null || v.budgetMin <= v.budgetMax, "Minimum must not exceed maximum").optional(),
+  action: z.enum(["review", "save", "dismiss", "duplicate", "feedback", "snooze", "restore", "edit"]),
   reason: z.string().optional(),
   feedback: z.record(z.unknown()).optional(),
   status: zDiscoveryCandidateStatus.optional(),
@@ -511,12 +522,13 @@ export const conversionAssetCreateSchema = z.object({
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 export const settingsSchema = z.object({
+  companyProfile: companyProfileSchema.optional(),
   name: z.string().optional(),
   headline: z.string().optional(),
   bio: z.string().optional(),
   preferredProjectTypes: z.array(z.string()).optional(),
   excludedCategories: z.array(z.string()).optional(),
-  budgetMaxDkk: z.number().int().positive().optional(),
+  budgetMaxDkk: z.number().int().nonnegative().optional(),
   preferredCurrency: z.string().optional(),
   scoringWeights: z.record(z.number()).optional(),
   exportPrefs: z.record(z.unknown()).optional(),

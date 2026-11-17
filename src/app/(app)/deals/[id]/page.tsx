@@ -1,3 +1,5 @@
+import { DraftEditor } from "@/components/crm/draft-editor";
+import { RecordOutreach } from "@/components/crm/record-outreach";
 import { EvidenceProvenance } from "@/components/discovery/evidence-provenance";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -70,6 +72,7 @@ export default async function DealDetailPage(props: {
           <ScoreBadge score={deal.pursuitScore} showLabel />
         </div>
       </div>
+      <RecordOutreach dealId={deal.id} />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0">
           <SectionTabs
@@ -265,9 +268,7 @@ export default async function DealDetailPage(props: {
                               {asset.kind.replaceAll("_", " ").toLowerCase()} ·{" "}
                               {formatDate(asset.createdAt)}
                             </summary>
-                            <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">
-                              {asset.content}
-                            </p>
+                            <DraftEditor id={asset.id} content={asset.content} />
                           </details>
                         ))}
                         {!deal.conversionAssets.length && (

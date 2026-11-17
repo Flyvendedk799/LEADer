@@ -238,7 +238,7 @@ function missionStatusVariant(
   status: string,
 ): React.ComponentProps<typeof Badge>["variant"] {
   if (status === "SUCCESS") return "success";
-  if (status === "ERROR") return "warning";
+  if (["ERROR", "PARTIAL", "BUDGET_PAUSED"].includes(status)) return "warning";
   if (status === "RUNNING" || status === "QUEUED") return "secondary";
   return "outline";
 }

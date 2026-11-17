@@ -1,0 +1,73 @@
+import "dotenv/config";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { db } from "../src/lib/db";
+import { claimJob, heartbeatJob } from "../src/lib/jobs/queue";
+import { reserveUsage } from "../src/lib/jobs/usage";
+import { persistCandidate, saveCandidateAsDeal, executeDiscoveryMission } from "../src/lib/crm";
+import { pastedLeadToCandidate } from "../src/lib/discovery/paste-import";
+import { discoveryRunCreateSchema } from "../src/lib/validators";
+import { companyProfile } from "../src/lib/company-profile";
+
+async function main() {
+  const owner = await db.user.create({ data: { email: `integration-${randomUUID()}@example.invalid`, companyProfile: { ...companyProfile({}), dailySearchQueries: 2, monthlySearchQueries: 2, dailyBudgetUsd: 10, monthlyBudgetUsd: 10 } } });
+  const other = await db.user.create({ data: { email: `integration-${randomUUID()}@example.invalid` } });
+  try {
+    const lane = await db.discoveryLane.create({ data: { ownerId: owner.id, slug: "integration", name: "Integration", description: "Test" } });
+    const otherLane = await db.discoveryLane.create({ data: { ownerId: other.id, slug: "integration", name: "Integration", description: "Test" } });
+    const mission = await db.discoveryMission.create({ data: { ownerId: owner.id, laneId: lane.id, query: "test", status: "QUEUED", input: { laneId: lane.id } } });
+    const claims = await Promise.all([claimJob("DiscoveryMission", owner.id), claimJob("DiscoveryMission", owner.id)]);
+    assert.equal(claims.filter(Boolean).length, 1, "a queued run has exactly one worker");
+    const claim = claims.find(Boolean)!;
+    assert.equal(await heartbeatJob("DiscoveryMission", mission.id, "wrong-token"), 0);
+    assert.equal(await heartbeatJob("DiscoveryMission", mission.id, claim.leaseToken), 1);
+    await db.discoveryMission.update({ where: { id: mission.id }, data: { leaseUntil: new Date(0) } });
+    const recovered = await claimJob("DiscoveryMission", owner.id);
+    assert.equal(recovered?.id, mission.id);
+    assert.notEqual(recovered?.leaseToken, claim.leaseToken);
+    assert.equal(await heartbeatJob("DiscoveryMission", mission.id, claim.leaseToken), 0, "old worker is fenced out");
+    await db.discoveryMission.update({ where: { id: mission.id }, data: { status: "CANCELED", finishedAt: new Date() } });
+    assert.equal(await claimJob("DiscoveryMission", owner.id), null);
+    const candidate = pastedLeadToCandidate({ title: "Company needs software developer", organization: "Test buyer", url: "https://example.invalid/project?utm_source=test", description: "Paid software implementation" }, 0, { workspace: "DK", label: "Integration" });
+    const saved = await Promise.all([persistCandidate(owner.id, null, lane, candidate, "DK"), persistCandidate(owner.id, null, lane, candidate, "DK")]);
+    assert.equal(saved[0].id, saved[1].id, "concurrent ingestion deduplicates");
+    assert.equal(await db.discoveryCandidate.count({ where: { ownerId: owner.id } }), 1);
+    assert.equal(await db.deal.count({ where: { ownerId: owner.id } }), 0, "ingestion never creates a deal");
+    const foreign = await persistCandidate(other.id, null, otherLane, candidate, "DK");
+    assert.notEqual(foreign.id, saved[0].id, "owners have independent review decisions");
+    await db.discoveryCandidate.update({ where: { id: saved[0].id }, data: { status: "DISMISSED", dismissalReason: "Test decision" } });
+    const rediscovered = await persistCandidate(owner.id, null, lane, candidate, "DK");
+    assert.equal(rediscovered.status, "DISMISSED");
+    await db.discoveryCandidate.update({ where: { id: saved[0].id }, data: { status: "NEW" } });
+    const deals = await Promise.all([saveCandidateAsDeal(owner.id, saved[0].id), saveCandidateAsDeal(owner.id, saved[0].id)]);
+    assert.equal(deals[0].deal.id, deals[1].deal.id);
+    assert.equal(await db.task.count({ where: { ownerId: owner.id, dealId: deals[0].deal.id } }), 1);
+    const budgets = await Promise.allSettled([reserveUsage(owner.id, "SEARCH"), reserveUsage(owner.id, "SEARCH"), reserveUsage(owner.id, "SEARCH")]);
+    assert.equal(budgets.filter(r => r.status === "fulfilled").length, 2, "concurrent calls cannot exceed the allowance");
+    await assert.rejects(() => reserveUsage(other.id, "SEARCH"), /paused/);
+    await assert.rejects(() => persistCandidate(owner.id, mission.id, lane, candidate, "DK", claim.leaseToken), /lease lost|canceled/);
+    const checkpointCandidate = { ...candidate, url: "https://example.invalid/checkpoint", title: "Checkpointed software assignment" };
+    const prepared = { lane, scoringLane: lane, workspace: "DK", queries: ["checkpoint"], query: "checkpoint", requiredTerms: [], excludedTerms: [], plan: null, discardedProbeCount: 0, discardedProbeReasons: [] };
+    const checkpoint = { version: 1, prepared, result: { candidates: [checkpointCandidate], queries: ["checkpoint"], provider: "none", providerConfigured: false, sourceScanCount: 0, warnings: [] } };
+    const resume = await db.discoveryMission.create({ data: { ownerId: owner.id, laneId: lane.id, query: "checkpoint", status: "QUEUED", checkpoint: JSON.parse(JSON.stringify(checkpoint)), input: { laneId: lane.id } } });
+    const resumedClaim = await claimJob("DiscoveryMission", owner.id);
+    assert.equal(resumedClaim?.id, resume.id);
+    const result = await executeDiscoveryMission(owner.id, resume.id, discoveryRunCreateSchema.parse({ laneId: lane.id }), resumedClaim!.leaseToken);
+    assert.equal(result.mission.status, "SUCCESS", "saved results resume without contacting providers");
+    assert.equal(result.candidates.length, 1);
+    assert.equal(await db.providerUsage.count({ where: { ownerId: owner.id } }), 2, "resume does not repeat paid search");
+    const won = await db.deal.update({ where: { id: deals[0].deal.id }, data: { status: "WON" } });
+    assert.ok(won.closedAt, "outcome timestamp survives any update path");
+    const reopened = await db.deal.update({ where: { id: won.id }, data: { status: "QUALIFYING" } });
+    assert.equal(reopened.closedAt, null);
+    await db.user.update({ where: { id: owner.id }, data: { companyProfile: { ...companyProfile({}), dailySearchQueries: 10, monthlySearchQueries: 10, dailyBudgetUsd: 10, monthlyBudgetUsd: 10 } } });
+    const entry = await db.providerUsage.findFirstOrThrow({ where: { ownerId: owner.id } });
+    await db.providerUsage.update({ where: { id: entry.id }, data: { actualUsd: 11, invoiceReference: "Integration fixture" } });
+    await assert.rejects(() => reserveUsage(owner.id, "SEARCH"), /budget reached/, "reconciled overspend pauses future calls");
+    console.log("PASS: atomic claims, restart recovery, lease fencing, cancellation, ingestion dedupe, owner isolation, manual acceptance, preserved dismissals, idempotent deal/tasks, checkpoints, outcome timestamps, concurrent usage limits, reconciled overspend");
+  } finally {
+    await db.user.deleteMany({ where: { id: { in: [owner.id, other.id] } } });
+    await db.$disconnect();
+  }
+}
+void main().catch(error => { console.error(error); process.exitCode = 1; });

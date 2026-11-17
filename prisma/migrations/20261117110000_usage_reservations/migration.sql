@@ -1,0 +1,1 @@
+ALTER TABLE "ProviderUsage" ADD COLUMN "reservedUsd" DECIMAL(14,6) NOT NULL DEFAULT 0;

@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+tmp
+exports
+coverage
+test-results
+playwright-report
+e2e/.auth
+*.log
+*.pem
+*.tsbuildinfo

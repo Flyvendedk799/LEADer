@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const workflowRunOptionsSchema = z.object({
   dailySweep: z.object({
+    sourceId: z.string().min(1).optional(),
     includeSources: z.boolean().optional(),
     includeAlerts: z.boolean().optional(),
   }).optional(),

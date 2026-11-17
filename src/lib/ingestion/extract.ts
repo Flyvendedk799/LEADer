@@ -1,3 +1,4 @@
+import { copenhagenDate } from "@/lib/dates";
 // Lightweight, deterministic heuristics to enrich candidates without an LLM.
 // (The AI extract action gives richer results when a key is configured.)
 
@@ -28,7 +29,7 @@ const MONTHS_DA: Record<string, number> = {
 };
 
 /**
- * Build an end-of-day local Date, returning null for impossible dates
+ * Build a Copenhagen deadline, returning null for impossible dates
  * (e.g. 31/02) instead of letting JS overflow Feb 31 into March 3.
  */
 function makeDate(
@@ -38,10 +39,10 @@ function makeDate(
   hour = 23,
   minute = 59,
 ): Date | null {
-  if (month < 0 || month > 11 || day < 1) return null;
-  const maxDay = new Date(year, month + 1, 0).getDate();
+  if (month < 0 || month > 11 || day < 1 || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  const maxDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
   if (day > maxDay) return null;
-  return new Date(year, month, day, hour, minute);
+  return copenhagenDate(year, month + 1, day, hour, minute);
 }
 
 /** Pull a budget range (DKK) from free text. Returns {min,max} in whole DKK. */
@@ -71,6 +72,13 @@ export function extractBudget(text: string): {
     if (k) n *= 1000;
     return n;
   };
+
+  // Rates can be below 1,000; retain the rate rather than inventing a project total.
+  const rate = t.match(/(\d[\d.,]*)\s*(?:dkk|eur|usd|kr\.?|€|\$)\s*(?:\/|pr\.?|per)\s*(?:time|hour|hr|dag|day|måned|month)/);
+  if (rate) {
+    const amount = num(rate[1]);
+    if (amount > 0) return { max: amount, currency };
+  }
 
   // Range: "50.000 - 100.000". The (?![a-zæøå]) stops "kr"/"kroner" being read
   // as a thousands "k" suffix (only a standalone "k", e.g. "100k", multiplies).
@@ -168,10 +176,10 @@ export function extractDeadline(text: string): Date | null {
   }
 
   // "15. marts 2026" / "15 marts"
-  const da = t.match(/(\d{1,2})\.?\s+([a-zæøå]+)\s*(20\d{2})?/);
+  const da = t.match(/(\d{1,2})\.?\s+([a-zæøå]+)\s*(20\d{2})?(?:\s+(?:kl\.?\s*)?(\d{1,2})[.:](\d{2}))?/);
   if (da && MONTHS_DA[da[2]] != null) {
     const year = da[3] ? Number(da[3]) : new Date().getFullYear();
-    return makeDate(year, MONTHS_DA[da[2]], Number(da[1]));
+    return makeDate(year, MONTHS_DA[da[2]], Number(da[1]), da[4] ? Number(da[4]) : 23, da[5] ? Number(da[5]) : 59);
   }
   return null;
 }

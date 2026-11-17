@@ -1,3 +1,4 @@
+import { FileImport } from "@/components/import/file-import";
 import { db } from "@/lib/db";
 import { requireOwnerId } from "@/lib/auth";
 import { PageHeader } from "@/components/shared/page-header";
@@ -44,6 +45,7 @@ export default async function ImportPage() {
         title="Community import"
         description="Bring in leads from Facebook groups and communities — compliantly, by hand."
       />
+      <FileImport />
       <CommunityImportForm recentImports={recentImports} />
     </div>
   );

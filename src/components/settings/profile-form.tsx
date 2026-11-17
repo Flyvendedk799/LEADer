@@ -55,7 +55,7 @@ export function ProfileForm({ user }: { user: ProfileUser }) {
   const [excluded, setExcluded] = React.useState(
     (user.excludedCategories ?? []).join(", "),
   );
-  const [budgetMaxDkk, setBudgetMaxDkk] = React.useState(String(user.budgetMaxDkk ?? 100000));
+  const [budgetMaxDkk, setBudgetMaxDkk] = React.useState(String(user.budgetMaxDkk ?? 0));
   const [currency, setCurrency] = React.useState(user.preferredCurrency || "DKK");
 
   const [saving, setSaving] = React.useState(false);
@@ -77,7 +77,7 @@ export function ProfileForm({ user }: { user: ProfileUser }) {
           bio: bio.trim() || undefined,
           preferredProjectTypes: toList(projectTypes),
           excludedCategories: toList(excluded),
-          budgetMaxDkk: Number(budgetMaxDkk) || undefined,
+          budgetMaxDkk: Number(budgetMaxDkk),
           preferredCurrency: currency,
         }),
       });
@@ -166,11 +166,11 @@ export function ProfileForm({ user }: { user: ProfileUser }) {
 
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label htmlFor="budgetMaxDkk">Preferred max budget (DKK)</Label>
+              <Label htmlFor="budgetMaxDkk">Preferred max project budget (DKK; 0 = no ceiling)</Label>
               <Input
                 id="budgetMaxDkk"
                 type="number"
-                min={1}
+                min={0}
                 className="tnum"
                 value={budgetMaxDkk}
                 onChange={(e) => setBudgetMaxDkk(e.target.value)}

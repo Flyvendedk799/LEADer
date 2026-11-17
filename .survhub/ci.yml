@@ -26,6 +26,8 @@ steps:
     run: npm run typecheck
   - name: Unit tests
     run: npm run test
+  - name: Durable acquisition checks
+    run: npm run check:acquisition
   - name: Build
     run: BASE_URL=http://localhost:3000 EMAIL_PROVIDER=console npm run build
   # playwright.config.ts starts `npm run start` itself (webServer).

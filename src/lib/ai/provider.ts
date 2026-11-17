@@ -1,3 +1,4 @@
+import { reserveUsage, finishUsage } from "@/lib/jobs/usage";
 // Provider-aware LLM client.
 //
 // Three ways to pay for a call, behind one `chat()`:
@@ -54,6 +55,7 @@ export interface ChatOptions {
   temperature?: number;
   json?: boolean; // request JSON object output
   maxTokens?: number;
+  onUsage?: (usage: { inputTokens?: number; outputTokens?: number }) => void;
 }
 
 export interface LlmConfig {
@@ -136,6 +138,21 @@ export async function chat(
   opts: ChatOptions = {},
   cfg: LlmConfig = aiConfig(),
 ): Promise<string> {
+  if (process.env.NODE_ENV !== "test" && !cfg.accountId) throw new Error("An owner is required for paid AI calls");
+  const reservation = process.env.NODE_ENV === "test" ? null : await reserveUsage(cfg.accountId!, "AI");
+  let usage: { inputTokens?: number; outputTokens?: number } = {};
+  const metered = { ...opts, onUsage: (value: typeof usage) => { usage = value; opts.onUsage?.(value); } };
+  try {
+    const result = await dispatchChat(messages, metered, cfg);
+    if (reservation) await finishUsage(reservation.id, { provider: cfg.provider, model: cfg.model, status: "SUCCEEDED", ...usage });
+    return result;
+  } catch (error) {
+    if (reservation) await finishUsage(reservation.id, { provider: cfg.provider, model: cfg.model, status: "FAILED", ...usage }).catch(() => {});
+    throw error;
+  }
+}
+
+async function dispatchChat(messages: ChatMessage[], opts: ChatOptions, cfg: LlmConfig): Promise<string> {
   if (cfg.provider === "codex") return codexSubscriptionChat(messages, opts, cfg);
   if (cfg.provider === "claude-subscription") return claudeSubscriptionChat(messages, opts, cfg);
   if (cfg.provider === "gemini-subscription") return geminiSubscriptionChat(messages, opts, cfg);
@@ -186,6 +203,7 @@ async function openAiCompatibleChat(
 ): Promise<string> {
   const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
     method: "POST",
+    signal: AbortSignal.timeout(90_000),
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${cfg.apiKey}`,
@@ -203,7 +221,9 @@ async function openAiCompatibleChat(
 
   const data = (await res.json()) as {
     choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
+  opts.onUsage?.({ inputTokens: data.usage?.prompt_tokens, outputTokens: data.usage?.completion_tokens });
   return data.choices?.[0]?.message?.content ?? "";
 }
 
@@ -234,6 +254,7 @@ async function anthropicChat(
 
   const res = await fetch(`${cfg.baseUrl}/v1/messages`, {
     method: "POST",
+    signal: AbortSignal.timeout(90_000),
     headers: {
       "Content-Type": "application/json",
       "x-api-key": cfg.apiKey,
@@ -249,7 +270,9 @@ async function anthropicChat(
   });
 
   if (!res.ok) throw await providerFailure(res, cfg, "Claude request");
-  return anthropicText(await res.json());
+  const body = await res.json();
+  opts.onUsage?.({ inputTokens: body.usage?.input_tokens, outputTokens: body.usage?.output_tokens });
+  return anthropicText(body);
 }
 
 /**
@@ -281,6 +304,7 @@ async function claudeSubscriptionChat(
   const baseUrl = cfg.baseUrl.replace(/\/$/, "");
   const res = await fetch(`${baseUrl}/v1/messages`, {
     method: "POST",
+    signal: AbortSignal.timeout(90_000),
     headers: {
       "Content-Type": "application/json",
       // `Authorization: Bearer`, never `x-api-key`: Anthropic validates the
@@ -304,7 +328,9 @@ async function claudeSubscriptionChat(
   });
 
   if (!res.ok) throw await providerFailure(res, cfg, "Claude subscription request");
-  return anthropicText(await res.json());
+  const body = await res.json();
+  opts.onUsage?.({ inputTokens: body.usage?.input_tokens, outputTokens: body.usage?.output_tokens });
+  return anthropicText(body);
 }
 
 function anthropicText(payload: unknown): string {
@@ -351,6 +377,7 @@ async function codexSubscriptionChat(
 
   const res = await fetch(codexResponsesEndpoint(client.baseURL ?? cfg.baseUrl), {
     method: "POST",
+    signal: AbortSignal.timeout(90_000),
     headers,
     body: JSON.stringify({
       model: cfg.model,
@@ -454,6 +481,7 @@ async function geminiChat(
 
   const res = await fetch(url.toString(), {
     method: "POST",
+    signal: AbortSignal.timeout(90_000),
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request.request),
   });
@@ -461,6 +489,7 @@ async function geminiChat(
   if (!res.ok) throw await providerFailure(res, cfg, "Gemini request");
 
   const body = (await res.json()) as any;
+  opts.onUsage?.({ inputTokens: body.usageMetadata?.promptTokenCount, outputTokens: body.usageMetadata?.candidatesTokenCount });
   return body.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
@@ -500,6 +529,7 @@ async function geminiSubscriptionChat(
 
   const res = await fetch(`${clientOptions.baseURL}:generateContent`, {
     method: "POST",
+    signal: AbortSignal.timeout(90_000),
     headers: clientOptions.defaultHeaders,
     body: JSON.stringify(request),
   });

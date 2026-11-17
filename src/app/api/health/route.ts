@@ -19,7 +19,7 @@ export async function GET() {
     {
       status: dbOk ? "ok" : "degraded",
       db: dbOk ? "up" : "down",
-      ai: hasLlmKey() ? "live" : "mock",
+      ai: hasLlmKey() ? "configured" : process.env.DEMO_MODE === "true" ? "demo" : "not configured",
       email: emailEnabled() ? "live" : "off",
       latencyMs: Date.now() - started,
     },
