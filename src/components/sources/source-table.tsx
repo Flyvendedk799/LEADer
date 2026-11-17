@@ -100,6 +100,8 @@ export function SourceTable({ sources }: { sources: SourceRow[] }) {
       setRunStates((s) => ({ ...s, [source.id]: { running: false, result } }));
       if (!res.ok || !result || result.status === "ERROR") {
         toast.error("Run failed", result?.error || "The discovery run did not complete.");
+      } else if (result.status === "QUEUED") {
+        toast.success("Source scan queued", "The persistent worker will scan this source. Follow progress in Automations.");
       } else if (result.status === "SKIPPED") {
         toast.success("Run skipped", result.error || "Nothing to do for this source.");
       } else {
@@ -161,7 +163,7 @@ export function SourceTable({ sources }: { sources: SourceRow[] }) {
                       <div
                         className={
                           "mt-1 text-xs " +
-                          (run.result.status === "SUCCESS"
+                          (["SUCCESS", "QUEUED"].includes(run.result.status)
                             ? "text-success"
                             : run.result.status === "SKIPPED"
                               ? "text-warning"

@@ -5,12 +5,10 @@ import type { AiAction } from "@/lib/types";
 
 export const OWNER_PROFILE_DEFAULT = `Fullstack developer, AI builder, MVP/prototype developer,
 product strategy & technical roadmap advisor, automation consultant, startup/SME-focused
-technical partner. Strong track record landing funded work, but uses that as one acquisition
-lane inside a broader client-acquisition system: direct startups, SME automation, tenders,
+technical partner. Mast3kmedia is a Danish coding bureau. Use only portfolio claims supplied by the user. Acquisition channels include direct startups, SME automation, tenders,
 community/manual leads and warm-network follow-ups.`;
 
-export const SYSTEM_BASE = `You are LEADer, a client-acquisition CRM assistant for a solo
-technical consultant. Be concise, concrete, and honest. Never invent budgets, deadlines, or
+export const SYSTEM_BASE = `You are LEADer, a client-acquisition CRM assistant for a Danish software bureau. Be concise, concrete, and honest. Never invent budgets, deadlines, or
 contact details that are not present in the source text. The UI may be English, but the user's
 working language is Danish by default. Global/International workspace means geography, not
 language: preserve Danish wording in user-facing drafts and Danish search intent unless the user
@@ -46,7 +44,7 @@ Use null when not present. Do not guess.`,
     case "classify":
       return base(
         `Classify this opportunity. Return JSON: { category: string, tags: string[] (3-6),
-fitForSoloTechnicalSupplier: boolean }.`,
+fitForTechnicalSupplier: boolean }.`,
         true,
       );
     case "planDiscoverySearch":

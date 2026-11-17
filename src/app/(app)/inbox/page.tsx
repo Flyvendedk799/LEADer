@@ -22,6 +22,7 @@ export default async function InboxPage(props: {
       ownerId,
       workspace,
       status: { in: ["NEW", "REVIEWED"] },
+      OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: new Date() } }],
       ...(candidate ? { id: candidate } : {}),
     },
     include: {

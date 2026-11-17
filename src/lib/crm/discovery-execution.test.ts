@@ -259,7 +259,7 @@ describe("discovery mission execution", () => {
     );
   });
 
-  it("creates a duplicate snapshot instead of moving an older mission candidate", async () => {
+  it("preserves an older reviewed candidate instead of creating duplicate review records", async () => {
     mocks.db.discoveryMission.findFirst.mockResolvedValue({
       status: "RUNNING",
     });
@@ -295,18 +295,8 @@ describe("discovery mission execution", () => {
       provider: "auto",
     });
 
-    expect(mocks.db.discoveryCandidate.update).not.toHaveBeenCalled();
-    expect(mocks.db.discoveryCandidate.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          missionId: "mission-2",
-          status: "DUPLICATE",
-          reasons: expect.arrayContaining([
-            "Rediscovered in this mission; matching candidate already exists.",
-          ]),
-        }),
-      }),
-    );
+    expect(mocks.db.discoveryCandidate.create).not.toHaveBeenCalled();
+    expect(mocks.db.discoveryCandidate.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "existing-candidate" }, data: {} }));
   });
 
   it("records a phase timing breakdown when a mission completes", async () => {
@@ -439,14 +429,8 @@ describe("discovery mission execution", () => {
         }),
       }),
     );
-    expect(mocks.db.discoveryCandidate.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          missionId: "mission-legacy-dedupe",
-          status: "DUPLICATE",
-        }),
-      }),
-    );
+    expect(mocks.db.discoveryCandidate.create).not.toHaveBeenCalled();
+    expect(mocks.db.discoveryCandidate.update).toHaveBeenCalled();
   });
 
   it("uses the official Danish tender index for focused auto tender missions", async () => {

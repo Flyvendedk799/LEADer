@@ -1,4 +1,5 @@
 "use client";
+import { qualifyCandidate } from "@/lib/discovery/qualification";
 import { EvidenceProvenance } from "./evidence-provenance";
 
 import * as React from "react";
@@ -61,6 +62,7 @@ export function CandidateCard({
   onAction: (id: string, action: CandidateAction) => void;
   hidden?: boolean;
 }) {
+  const qualification = qualifyCandidate(candidate);
   const saved = candidate.status === "SAVED" && candidate.deal;
   const closed =
     candidate.status === "DISMISSED" || candidate.status === "DUPLICATE";
@@ -166,6 +168,11 @@ export function CandidateCard({
         />
       </div>
 
+      <div className="my-3 space-y-2 rounded border p-3 text-sm">
+        <div className="flex flex-wrap gap-2"><Badge variant="secondary">{qualification.kind}</Badge><Badge variant="outline">{qualification.engagement}</Badge><Badge variant="outline">{qualification.valueBasis}</Badge></div>
+        <p>{qualification.nextAction}</p>
+        {qualification.missing.length > 0 && <p className="text-muted-foreground">Still to verify: {qualification.missing.join(", ")}.</p>}
+      </div>
       {(candidate.signals.length > 0 || candidate.reasons.length > 0) && (
         <div className="mt-4 flex flex-wrap gap-1.5">
           {[...candidate.signals, ...candidate.reasons]

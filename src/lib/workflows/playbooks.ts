@@ -1,11 +1,11 @@
+import { refreshDealEvidence } from "@/lib/crm/refresh-evidence";
 import type { Prisma } from "@prisma/client";
 
 import { dispatchForOwner, type DispatchResult } from "@/lib/alerts/dispatch";
-import { saveCandidateAsDeal } from "@/lib/crm";
 import { filterVisibleLaneCandidates } from "@/lib/crm/lanes";
 import { nineAmCopenhagen } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { runDueDiscovery, type RunResult } from "@/lib/ingestion";
+import { runDueDiscovery, runDiscoveryForSource, type RunResult } from "@/lib/ingestion";
 import type { Workspace } from "@/lib/types";
 import { formatWorkflowElapsed, workflowLogEntry } from "./logging";
 import {
@@ -225,27 +225,27 @@ export async function createWorkflowRun(
   });
 }
 
-export async function executeWorkflowRun(ownerId: string, runId: string, input: WorkflowRunInput) {
+export async function executeWorkflowRun(ownerId: string, runId: string, input: WorkflowRunInput, leaseToken?: string) {
   const workerStartedAt = Date.now();
   const persistedPlaybookLogs = new Set<string>();
   const isCanceled = async () => {
     const current = await db.workflowRun.findFirst({
-      where: { id: runId, ownerId },
+      where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}) },
       select: { status: true },
     });
-    return current?.status === "CANCELED";
+    return !current || current.status === "CANCELED";
   };
   async function recordPlaybookLog(entry: string) {
     persistedPlaybookLogs.add(entry);
     await db.workflowRun.updateMany({
-      where: { id: runId, ownerId, status: { not: "CANCELED" } },
+      where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}), status: { not: "CANCELED" } },
       data: { log: { push: entry } },
     });
   }
 
   try {
     const started = await db.workflowRun.updateMany({
-      where: { id: runId, ownerId, status: { not: "CANCELED" } },
+      where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}), status: { not: "CANCELED" } },
       data: {
         status: "RUNNING",
         startedAt: new Date(),
@@ -254,27 +254,27 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
       },
     });
     if (started.count === 0) {
-      return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
+      return db.workflowRun.findFirst({ where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}) } });
     }
 
     const result = await runWorkflowPlaybook(ownerId, input, {
       onLog: recordPlaybookLog,
       isCanceled,
     });
-    const current = await db.workflowRun.findFirst({ where: { id: runId, ownerId }, select: { status: true } });
+    const current = await db.workflowRun.findFirst({ where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}) }, select: { status: true } });
     if (current?.status === "CANCELED") {
-      return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
+      return db.workflowRun.findFirst({ where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}) } });
     }
 
     for (const entry of result.log) {
       if (persistedPlaybookLogs.has(entry)) continue;
-      await db.workflowRun.update({ where: { id: runId }, data: { log: { push: entry } } });
+      await db.workflowRun.updateMany({ where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}), status: "RUNNING" }, data: { log: { push: entry } } });
     }
 
     const finished = await db.workflowRun.updateMany({
-      where: { id: runId, ownerId, status: { not: "CANCELED" } },
+      where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}), status: { not: "CANCELED" } },
       data: {
-        status: "SUCCESS",
+        status: result.playbook === "daily-sweep" && result.sources.failed > 0 ? "PARTIAL" : "SUCCESS",
         result: JSON.parse(JSON.stringify(result)) as Prisma.InputJsonValue,
         finishedAt: new Date(),
         log: {
@@ -285,13 +285,13 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
       },
     });
     if (finished.count === 0) {
-      return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
+      return db.workflowRun.findFirst({ where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}) } });
     }
-    return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
+    return db.workflowRun.findFirst({ where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}) } });
   } catch (error) {
     if (error instanceof WorkflowRunCanceledError) {
       await db.workflowRun.updateMany({
-        where: { id: runId, ownerId, status: "CANCELED" },
+        where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}), status: "CANCELED" },
         data: {
           log: {
             push: workflowLogEntry(
@@ -300,11 +300,11 @@ export async function executeWorkflowRun(ownerId: string, runId: string, input: 
           },
         },
       }).catch(() => {});
-      return db.workflowRun.findFirst({ where: { id: runId, ownerId } });
+      return db.workflowRun.findFirst({ where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}) } });
     }
 
     await db.workflowRun.updateMany({
-      where: { id: runId, ownerId, status: { not: "CANCELED" } },
+      where: { id: runId, ownerId, ...(leaseToken ? { leaseToken } : {}), status: { not: "CANCELED" } },
       data: {
         status: "ERROR",
         result: {
@@ -343,9 +343,14 @@ export async function runDailySweep(
   const includeAlerts = options?.includeAlerts !== false;
 
   await throwIfWorkflowCanceled(context);
-  const sourceResults = includeSources ? await runDueDiscovery(ownerId) : [];
+  if (options?.sourceId && !await db.source.count({ where: { id: options.sourceId, ownerId } })) throw new Error("Source not found in your workspace");
+  const sourceResults = includeSources ? options?.sourceId ? [await runDiscoveryForSource(options.sourceId)] : await runDueDiscovery(ownerId) : [];
   await throwIfWorkflowCanceled(context);
   const sourceSummary = summarizeSourceRuns(sourceResults);
+  if (includeSources && !options?.sourceId && process.env.NODE_ENV !== "test") {
+    const refreshed = await refreshDealEvidence(ownerId, workspace, context.isCanceled);
+    log.push(workflowLogEntry(`Source rechecks: ${refreshed.checked} checked, ${refreshed.changed} changed/expired, ${refreshed.failed} unreadable. Owner fields preserved.`));
+  }
   if (includeSources) {
     log.push(
       workflowLogEntry(
@@ -568,6 +573,7 @@ export async function runCandidateHarvest(
       ownerId,
       workspace,
       status: "NEW",
+            OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: new Date() } }],
       pursuitScore: { gte: minScore },
     },
     orderBy: [{ pursuitScore: "desc" }, { createdAt: "desc" }],
@@ -580,36 +586,14 @@ export async function runCandidateHarvest(
   const candidateIds: string[] = [];
   const dealIds: string[] = [];
   const taskIds: string[] = [];
-  let saved = 0;
-  let alreadyInPipeline = 0;
-
+  const saved = 0;
+  const alreadyInPipeline = 0;
   for (const candidate of candidates) {
     await throwIfWorkflowCanceled(context);
-    const result = await saveCandidateAsDeal(ownerId, candidate.id);
     candidateIds.push(candidate.id);
-    dealIds.push(result.deal.id);
-    if (result.created) {
-      saved++;
-      log.push(workflowLogEntry(`Saved candidate "${candidate.title}" as a deal.`));
-    } else {
-      alreadyInPipeline++;
-      log.push(workflowLogEntry(`Candidate "${candidate.title}" was already in the pipeline.`));
-    }
-
-    await throwIfWorkflowCanceled(context);
-    const task = await db.task.findFirst({
-      where: {
-        ownerId,
-        dealId: result.deal.id,
-        title: "Qualify buyer, budget and next step",
-      },
-      orderBy: { createdAt: "desc" },
-      select: { id: true },
-    });
-    if (task) taskIds.push(task.id);
+    log.push(workflowLogEntry(`Ready for your review: "${candidate.title}". Accept it in Review leads to create a deal.`));
   }
-
-  log.push(workflowLogEntry(`Reviewed ${candidates.length} hot candidates; saved ${saved} new deals.`));
+  log.push(workflowLogEntry(`Shortlisted ${candidates.length} candidates; acceptance remains manual.`));
   log.push(workflowLogEntry(`Candidate harvest options: min score ${minScore}, limit ${limit}.`));
 
   const durationMs = Date.now() - startedAt;

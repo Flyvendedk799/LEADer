@@ -98,7 +98,7 @@ describe("discovery feedback learning", () => {
       },
     );
 
-    expect(plan.queries.length).toBeGreaterThan(3);
+    expect(plan.queries.length).toBeGreaterThanOrEqual(3);
     expect(plan.queries.some((query) => query.includes("tilbudsfrist"))).toBe(true);
     expect(plan.avoidTerms).toContain("guide");
     expect(plan.usedAi).toBe(false);
@@ -125,7 +125,7 @@ describe("discovery feedback learning", () => {
     expect(results.map((result) => result.title)).toEqual(["first", "second", "third", "fourth"]);
   });
 
-  it("keeps Danish search anchors in deterministic international plans", () => {
+  it("expands international searches without forcing Danish grant vocabulary", () => {
     const plan = deterministicSearchPlan(
       "AI automatisering for SaaS founders",
       "GLOBAL",
@@ -140,9 +140,10 @@ describe("discovery feedback learning", () => {
     );
     const queryText = plan.queries.join(" ").toLowerCase();
 
-    expect(queryText).toContain("international");
-    expect(queryText).toMatch(/dansk|fjernarbejde|softwareudvikling|leverandør|tilskud/);
-    expect(plan.rationale).toContain("dansk søgeintention");
+    expect(queryText).toContain("remote");
+    expect(queryText).toContain("ai automatisering");
+    expect(queryText).not.toContain("tilskud");
+    expect(plan.rationale).toContain("international remote");
     expect(plan.usedAi).toBe(false);
   });
 

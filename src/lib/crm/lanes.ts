@@ -1,3 +1,4 @@
+import { qualifyCandidate } from "@/lib/discovery/qualification";
 import { db } from "@/lib/db";
 import { hasConcreteSoftwareTenderScope, isBroadFrameworkTender, isResearchPolicyTender } from "@/lib/discovery/tender-quality";
 import type { SourceType, Workspace } from "@/lib/types";
@@ -61,6 +62,10 @@ export type LaneCandidateGateResult = {
 };
 
 export const DEFAULT_DISCOVERY_LANES: LaneDefinition[] = [
+  { slug: "client-projects", name: "Client projects", description: "Companies seeking a delivery partner for websites, applications, integrations and software.", workspace: "DK", sourceTypes: ["PUBLIC_WEB", "RSS", "NEWSLETTER", "MANUAL"], queryTemplates: ["søger leverandør softwareudvikling hjemmeside integration Danmark", "company seeking software development agency Denmark"], positiveKeywords: ["software", "udvikling", "leverandør", "website", "integration"], negativeKeywords: ["unpaid", "equity only", "internship"], scoringConfig: { technicalNeed: 1, contactability: 1 }, evidenceRequirements: ["buyer", "explicit technical need", "reason to act now"], conversionGuidance: "Use verified buyer context and offer a specific next step. Do not claim an advertised project when only a signal exists." },
+  { slug: "freelance-contracts", name: "Freelance contracts", description: "Paid external consultant assignments and temporary delivery contracts.", workspace: "DK", sourceTypes: ["PUBLIC_WEB", "RSS", "NEWSLETTER", "MANUAL"], queryTemplates: ["freelance udvikler konsulent opgave Danmark kontrakt", "remote freelance software developer contract Europe"], positiveKeywords: ["freelance", "contract", "konsulent", "opgave"], negativeKeywords: ["unpaid", "equity only", "internship"], scoringConfig: { technicalNeed: 1, contactability: 1 }, evidenceRequirements: ["buyer", "explicit technical need", "reason to act now"], conversionGuidance: "Use verified buyer context and offer a specific next step. Do not claim an advertised project when only a signal exists." },
+  { slug: "agency-partners", name: "Agency subcontracting", description: "Agencies seeking delivery partners and additional technical capacity.", workspace: "DK", sourceTypes: ["PUBLIC_WEB", "RSS", "NEWSLETTER", "MANUAL"], queryTemplates: ["bureau søger freelance udvikler samarbejdspartner", "agency seeking subcontractor development partner remote"], positiveKeywords: ["agency", "bureau", "partner", "subcontractor"], negativeKeywords: ["unpaid", "equity only", "internship"], scoringConfig: { technicalNeed: 1, contactability: 1 }, evidenceRequirements: ["buyer", "explicit technical need", "reason to act now"], conversionGuidance: "Use verified buyer context and offer a specific next step. Do not claim an advertised project when only a signal exists." },
+  { slug: "buying-signals", name: "Buying signals", description: "Evidence of company needs worth researching; not an advertised assignment.", workspace: "DK", sourceTypes: ["PUBLIC_WEB", "RSS", "NEWSLETTER", "MANUAL"], queryTemplates: ["virksomhed digitalisering investering nyt system Danmark", "startup funding expansion product development Denmark"], positiveKeywords: ["expansion", "funding", "digitalisering", "investment"], negativeKeywords: ["unpaid", "equity only", "internship"], scoringConfig: { technicalNeed: 1, contactability: 1 }, evidenceRequirements: ["buyer", "explicit technical need", "reason to act now"], conversionGuidance: "Use verified buyer context and offer a specific next step. Do not claim an advertised project when only a signal exists." },
   {
     slug: "funded-work",
     name: "Funded work",
@@ -124,14 +129,9 @@ export const DEFAULT_DISCOVERY_LANES: LaneDefinition[] = [
       "cofounder",
       "cofounder only",
       "equity only",
-      "hiring",
       "internship",
-      "job",
       "job posting only",
-      "jobs",
-      "linkedin",
       "recruitment",
-      "the hub",
     ],
     scoringConfig: { founderIntent: 1, technicalNeed: 1, budgetClarity: 0.7 },
     evidenceRequirements: ["explicit product or technical need", "reachable founder/company", "reason to act now"],
@@ -174,16 +174,9 @@ export const DEFAULT_DISCOVERY_LANES: LaneDefinition[] = [
       "arkiv",
       "archive",
       "udbud.co",
-      "linkedin",
-      "the hub",
-      "job",
-      "jobs",
       "recruitment",
       "cofounder",
-      "enterprise",
       "hardware",
-      "million",
-      "portal",
       "rammeaftale",
     ],
     scoringConfig: { formalFit: 1, scopeFit: 1, deadline: 1 },
@@ -228,19 +221,7 @@ export async function ensureDefaultDiscoveryLanes(ownerId: string) {
     DEFAULT_DISCOVERY_LANES.map((lane) =>
       db.discoveryLane.upsert({
         where: { ownerId_slug: { ownerId, slug: lane.slug } },
-        update: {
-          name: lane.name,
-          description: lane.description,
-          workspace: lane.workspace,
-          sourceTypes: lane.sourceTypes,
-          queryTemplates: lane.queryTemplates,
-          positiveKeywords: lane.positiveKeywords,
-          negativeKeywords: lane.negativeKeywords,
-          scoringConfig: lane.scoringConfig,
-          evidenceRequirements: lane.evidenceRequirements,
-          conversionGuidance: lane.conversionGuidance,
-          active: true,
-        },
+        update: {}, // Keep owner edits and paused lanes intact.
         create: {
           ownerId,
           ...lane,
@@ -422,6 +403,7 @@ function hasTechnicalTenderScope(text: string) {
 }
 
 function isJobOrRecruitingResult(text: string, host: string, path: string) {
+  if (/freelanc|subcontract|contractor|konsulentopgave|ekstern konsulent|contract role|contract position/.test(text)) return false;
   return /thehub\.io/.test(host) ||
     /\/jobs?\b|\/careers?\b|\/stillinger?\b|\/jobopslag\b/.test(path) ||
     /job posting|jobannonce|job ad|startup jobs|how to get .*job|full.?time|part.?time|internship|praktik|cofounder|co-founder|equity.?based|recruitment|hiring|søger en developer|søger developer|webudvikler til|technical cofounder|cto role|jobmakker/.test(
@@ -568,6 +550,8 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
   const text = candidateText(candidate);
   const evidenceText = candidateEvidenceText(candidate);
   const { host, path, url } = candidateUrlParts(candidate.url);
+  const qualification = qualifyCandidate(candidate);
+  if (!["warm-network", "community-manual"].includes(lane.slug) && ["Employment", "Unpaid"].includes(qualification.kind)) return { allowed: false, reason: "not a paid company engagement" };
 
   if (lane.slug === "direct-startup-mvp" && isJobOrRecruitingResult(text, host, path)) {
     return { allowed: false, reason: "job/recruiting result" };

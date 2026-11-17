@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { reserveUsage, finishUsage } from "@/lib/jobs/usage";
+import { db } from "@/lib/db";
 import { aiConfig, hasLlm } from "./provider";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -73,33 +75,42 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-async function providerEmbed(text: string): Promise<Embedding> {
-  const cfg = aiConfig();
+async function providerEmbed(text: string, ownerId: string, aiKeys: unknown): Promise<Embedding> {
+  const cfg = aiConfig(aiKeys, ownerId);
   if (cfg.provider !== "openai" || !cfg.embeddingModel) {
     return { vector: localEmbed(text), model: LOCAL_EMBED_MODEL };
   }
+  const reservation = await reserveUsage(ownerId, "AI");
+  try {
   const res = await fetch(`${cfg.baseUrl}/embeddings`, {
     method: "POST",
+    signal: AbortSignal.timeout(90_000),
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
     body: JSON.stringify({ model: cfg.embeddingModel, input: text.slice(0, 8000) }),
   });
   if (!res.ok) {
     throw new Error(`Embeddings request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
   }
-  const data = (await res.json()) as { data?: { embedding?: number[] }[] };
+  const data = (await res.json()) as { data?: { embedding?: number[] }[]; usage?: { prompt_tokens?: number } };
   const vector = data.data?.[0]?.embedding;
   if (!vector?.length) throw new Error("Embeddings response missing vector");
+  await finishUsage(reservation.id, { status: "SUCCEEDED", provider: cfg.provider, model: cfg.embeddingModel, inputTokens: data.usage?.prompt_tokens });
   return { vector, model: cfg.embeddingModel };
+  } catch (error) {
+    await finishUsage(reservation.id, { status: "FAILED", provider: cfg.provider, model: cfg.embeddingModel }).catch(() => {});
+    throw error;
+  }
 }
 
 /**
  * Embed text. Uses the provider when configured, otherwise the local fallback.
  * Never throws for the offline path; provider failures bubble up to the caller.
  */
-export async function embed(text: string): Promise<Embedding> {
-  const cfg = aiConfig();
-  if (hasLlm() && cfg.provider === "openai" && cfg.embeddingModel) {
-    return providerEmbed(text);
+export async function embed(text: string, ownerId?: string): Promise<Embedding> {
+  if (ownerId && process.env.NODE_ENV !== "test") {
+    const owner = await db.user.findUniqueOrThrow({ where: { id: ownerId }, select: { aiKeys: true } });
+    const cfg = aiConfig(owner.aiKeys, ownerId);
+    if (hasLlm(owner.aiKeys) && cfg.provider === "openai" && cfg.embeddingModel) return providerEmbed(text, ownerId, owner.aiKeys);
   }
   return { vector: localEmbed(text), model: LOCAL_EMBED_MODEL };
 }

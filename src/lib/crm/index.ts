@@ -1,3 +1,5 @@
+import { citeCandidateFields } from "@/lib/discovery/field-evidence";
+import { qualifyCandidate } from "@/lib/discovery/qualification";
 import { linkOpportunityForDeal } from "@/lib/crm/promote";
 import { taskWorkspaceWhere } from "@/lib/tasks/scope";
 import { dealQuery } from "@/lib/crm/deal-query";
@@ -608,7 +610,7 @@ export async function getCockpit(ownerId: string, workspace: Workspace = "DK") {
     db.deal.count({ where: { ownerId, workspace, status: "WON" } }),
     db.deal.count({ where: { ownerId, workspace, status: "LOST" } }),
     db.discoveryCandidate.findMany({
-      where: { ownerId, workspace, status: "NEW", pursuitScore: { gte: 70 } },
+      where: { ownerId, workspace, status: "NEW", OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: new Date() } }], pursuitScore: { gte: 70 } },
       include: {
         lane: true,
         evidence: { take: 1, orderBy: { createdAt: "desc" } },
@@ -816,15 +818,24 @@ export async function executeDiscoveryMission(
   ownerId: string,
   missionId: string,
   input: DiscoveryMissionInput,
+  leaseToken?: string,
 ) {
   const workerStartedAt = Date.now();
-  const missionWhere = { id: missionId, ownerId };
+  const missionWhere = { id: missionId, ownerId, ...(leaseToken ? { leaseToken } : {}) };
+  type Checkpoint = { version: 1; prepared: Awaited<ReturnType<typeof prepareDiscoveryMission>>; result?: Awaited<ReturnType<typeof runDiscoverySearch>> };
+  const stored = leaseToken ? await db.discoveryMission.findFirst({ where: missionWhere, select: { checkpoint: true } }) : null;
+  const checkpoint = stored?.checkpoint as Checkpoint | null;
+  const saveCheckpoint = async (value: Checkpoint) => {
+    if (!leaseToken) return;
+    const updated = await db.discoveryMission.updateMany({ where: { ...missionWhere, status: "RUNNING" }, data: { checkpoint: JSON.parse(JSON.stringify(value)) } });
+    if (!updated.count) throw new Error("Worker lease lost or mission canceled");
+  };
   const isCanceled = async () => {
     const mission = await db.discoveryMission.findFirst({
       where: missionWhere,
       select: { status: true },
     });
-    return mission?.status === "CANCELED";
+    return !mission || mission.status === "CANCELED";
   };
   const canceledMission = () =>
     db.discoveryMission.findFirstOrThrow({
@@ -880,7 +891,8 @@ export async function executeDiscoveryMission(
         ? "Planning search probes with AI; wide missions can take a few minutes."
         : "Compiling lane search probes without AI planning.",
     );
-    const prepared = await prepareDiscoveryMission(ownerId, input);
+    const prepared = checkpoint?.version === 1 ? checkpoint.prepared : await prepareDiscoveryMission(ownerId, input);
+    if (!checkpoint) await saveCheckpoint({ version: 1, prepared });
     const prepareMs = Date.now() - prepareStartedAt;
     const preparedUpdate = await db.discoveryMission.updateMany({
       where: { ...missionWhere, status: { not: "CANCELED" } },
@@ -929,7 +941,7 @@ export async function executeDiscoveryMission(
       );
     }
 
-    const result = await runDiscoverySearch(ownerId, {
+    const result = checkpoint?.result ?? await runDiscoverySearch(ownerId, {
       query:
         cleanTerm(input.query || input.freeformBrief, 500) || prepared.query,
       queryVariants: prepared.queries,
@@ -948,6 +960,8 @@ export async function executeDiscoveryMission(
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
       onProgress: appendLog,
     });
+    if (!checkpoint?.result) await saveCheckpoint({ version: 1, prepared, result });
+    else await appendLog("Resuming from saved search results; provider requests were not repeated.");
     const laneFiltered = filterCandidatesForLane(
       prepared.scoringLane,
       result.candidates,
@@ -1029,6 +1043,7 @@ export async function executeDiscoveryMission(
           prepared.scoringLane,
           candidate,
           prepared.workspace,
+          leaseToken,
         ),
       );
     }
@@ -1038,7 +1053,7 @@ export async function executeDiscoveryMission(
     const finished = await db.discoveryMission.updateMany({
       where: { ...missionWhere, status: { not: "CANCELED" } },
       data: {
-        status: "SUCCESS",
+        status: warnings.some(w => /failed|skipped|not configured|allowance|paused|HTTP [45]/i.test(w)) ? "PARTIAL" : "SUCCESS",
         finishedAt: new Date(),
         warnings,
         sourceScanCount: result.sourceScanCount,
@@ -1126,9 +1141,9 @@ function laneFitMetadata(fit: LaneFitResult) {
   };
 }
 
-async function persistCandidate(
+export async function persistCandidate(
   ownerId: string,
-  missionId: string,
+  missionId: string | null,
   lane: {
     id: string;
     slug: string;
@@ -1140,7 +1155,9 @@ async function persistCandidate(
   },
   candidate: DiscoveryCandidateDto,
   workspace: Workspace,
+  leaseToken?: string,
 ) {
+  const persist = async (client: Prisma.TransactionClient) => {
   const fit = laneFit(lane, candidate);
   const matchScore = clampScore((candidate.matchScore ?? 50) + fit.delta);
   const confidence = clampScore(
@@ -1171,6 +1188,7 @@ async function persistCandidate(
     total: matchScore,
     originalTotal: candidate.matchScore,
     laneFit: laneFitMetadata(fit),
+    qualification: qualifyCandidate(candidate),
   };
   const reasons = [...new Set([...fit.reasons, ...candidate.reasons])].slice(
     0,
@@ -1180,7 +1198,7 @@ async function persistCandidate(
     0,
     12,
   );
-  const existing = await db.discoveryCandidate.findFirst({
+  const existing = await client.discoveryCandidate.findFirst({
     where: discoveryCandidateDedupeWhere(
       ownerId,
       lane,
@@ -1219,15 +1237,15 @@ async function persistCandidate(
     dedupeKey,
   };
 
-  const sameMission = existing?.missionId === missionId;
+  const sameMission = Boolean(existing);
   const saved =
     existing && sameMission
-      ? await db.discoveryCandidate.update({
+      ? await client.discoveryCandidate.update({
           where: { id: existing.id },
-          data,
+          data: existing.status === "NEW" ? { ...data, missionId: existing.missionId ?? missionId } : {},
           include: { evidence: true, lane: true },
         })
-      : await db.discoveryCandidate.create({
+      : await client.discoveryCandidate.create({
           data: {
             ownerId,
             ...data,
@@ -1244,8 +1262,8 @@ async function persistCandidate(
           include: { evidence: true, lane: true },
         });
 
-  if (saved.evidence.length === 0) {
-    await db.evidence.create({
+  if (!saved.evidence.some((e) => (e.url ?? "") === (candidate.url ?? "") && e.snippet === (candidate.rawContent || candidate.description || candidate.title).slice(0, 2000))) {
+    await client.evidence.create({
       data: {
         ownerId,
         candidateId: saved.id,
@@ -1265,6 +1283,7 @@ async function persistCandidate(
             status: "snippet",
             retrievedAt: new Date().toISOString(),
           },
+          fieldCitations: citeCandidateFields(candidate),
           contacts: candidate.contacts,
           attachments: candidate.attachments,
           sourceKind: candidate.sourceKind,
@@ -1278,7 +1297,17 @@ async function persistCandidate(
       },
     });
   }
-  return saved;
+  return { ...saved, ingestedNew: !existing };
+  };
+  if (process.env.NODE_ENV === "test") return persist(db);
+  return db.$transaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`ingest:${ownerId}`}))`;
+    if (leaseToken && missionId) {
+      const current = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "DiscoveryMission" WHERE id = ${missionId} AND "ownerId" = ${ownerId} AND "leaseToken" = ${leaseToken} AND status = 'RUNNING' AND "leaseUntil" > NOW() FOR UPDATE`;
+      if (!current.length) throw new Error("Worker lease lost or mission canceled");
+    }
+    return persist(tx);
+  });
 }
 
 export async function saveCandidateAsDeal(
@@ -1528,7 +1557,7 @@ export async function importPastedDiscovery(
       }),
       workspace,
     );
-    if (saved.status === "DUPLICATE") duplicates++;
+    if (!saved.ingestedNew) duplicates++;
     else created++;
   }
 

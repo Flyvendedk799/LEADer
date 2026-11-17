@@ -7,6 +7,7 @@ const nextConfig = {
   serverExternalPackages: [
     "exceljs",
     "pdf-lib",
+    "unpdf",
     "rss-parser",
     "cheerio",
     "playwright",

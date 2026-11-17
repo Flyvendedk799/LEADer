@@ -21,8 +21,8 @@ function zonedFields(date: Date) {
 }
 
 /** 09:00 Copenhagen time on the given Copenhagen calendar day (month is 1-based, overflow normalises). */
-function nineOnDay(year: number, month: number, day: number) {
-  const wallClockAsUtc = Date.UTC(year, month - 1, day, 9, 0, 0, 0);
+export function copenhagenDate(year: number, month: number, day: number, hour = 9, minute = 0) {
+  const wallClockAsUtc = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
   let instant = wallClockAsUtc;
   // Two passes settle the UTC offset, including across DST changes.
   for (let i = 0; i < 2; i += 1) {
@@ -36,5 +36,17 @@ function nineOnDay(year: number, month: number, day: number) {
 /** 09:00 Copenhagen time on the Copenhagen calendar day of `date`, shifted by `dayOffset` days. */
 export function nineAmCopenhagen(date: Date, dayOffset = 0) {
   const f = zonedFields(date);
-  return nineOnDay(f.year, f.month, f.day + dayOffset);
+  return copenhagenDate(f.year, f.month, f.day + dayOffset);
+}
+
+/** HTML datetime-local value in the company's operating timezone. */
+export function copenhagenDateInput(date: Date) {
+  const f = zonedFields(date), pad = (n: number) => String(n).padStart(2, "0");
+  return `${f.year}-${pad(f.month)}-${pad(f.day)}T${pad(f.hour)}:${pad(f.minute)}`;
+}
+export function parseCopenhagenInput(value: string) {
+  const [year, month, day, hour, minute] = value.split(/[-T:]/).map(Number);
+  const date = copenhagenDate(year, month, day, hour, minute);
+  if (copenhagenDateInput(date) !== value) throw new Error("This Copenhagen date or time does not exist");
+  return date;
 }

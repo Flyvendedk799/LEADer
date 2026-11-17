@@ -6,6 +6,7 @@ import { cosineSimilarity, embed, opportunityEmbedText } from "@/lib/ai/embeddin
 
 type TextFields = {
   id: string;
+  ownerId?: string;
   title: string | null;
   description: string | null;
   organization: string | null;
@@ -21,7 +22,7 @@ type EmbeddableOpp = TextFields & {
 /** Compute + persist an embedding for an already-loaded row. Returns the vector. */
 async function embedAndStore(o: TextFields): Promise<{ vector: number[]; model: string } | null> {
   try {
-    const { vector, model } = await embed(opportunityEmbedText(o));
+    const { vector, model } = await embed(opportunityEmbedText(o), o.ownerId);
     await db.opportunity.update({
       where: { id: o.id },
       data: { embedding: vector, embeddingModel: model, embeddedAt: new Date() },
@@ -37,7 +38,7 @@ export async function ensureEmbedding(opportunityId: string): Promise<boolean> {
   const o = await db.opportunity.findUnique({
     where: { id: opportunityId },
     select: {
-      id: true, title: true, description: true, organization: true, category: true,
+      id: true, ownerId: true, title: true, description: true, organization: true, category: true,
       rawContent: true, embedding: true, embeddingModel: true,
     },
   });
@@ -99,7 +100,7 @@ export async function findSimilar(
   const target = (await db.opportunity.findFirst({
     where: { id: opportunityId, ownerId },
     select: {
-      id: true, title: true, description: true, organization: true, category: true,
+      id: true, ownerId: true, title: true, description: true, organization: true, category: true,
       rawContent: true, embedding: true, embeddingModel: true, workspace: true,
     },
   })) as (EmbeddableOpp & { workspace: string }) | null;
@@ -120,7 +121,7 @@ export async function findSimilar(
   const peers = (await db.opportunity.findMany({
     where: { ownerId, id: { not: opportunityId }, workspace: target.workspace as "DK" | "GLOBAL" },
     select: {
-      id: true, title: true, description: true, organization: true, category: true,
+      id: true, ownerId: true, title: true, description: true, organization: true, category: true,
       rawContent: true, embedding: true, embeddingModel: true, matchScore: true,
       deadline: true, status: true,
     },

@@ -39,7 +39,7 @@ console.log(
   `PostgreSQL ready on ${url.hostname}:${url.port || 5432}. Data persists in ${directory}.`,
 );
 console.log(
-  "First run: npm run db:migrate:deploy, then npm run db:seed. Start the app with npm run dev in another terminal.",
+  "First run: npm run setup. Start npm run dev and npm run worker in separate terminals. Demo data is optional: npm run db:seed.",
 );
 let stopping = false;
 const stop = async () => {

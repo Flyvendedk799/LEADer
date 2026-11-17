@@ -1,3 +1,4 @@
+import { OperationsPanel } from "@/components/settings/operations-panel";
 export const dynamic = "force-dynamic";
 import Link from "next/link";
 import {
@@ -104,6 +105,7 @@ export default async function TodayPage(props: {
             </Link>
           </Button>
         </PageHeader>
+      <OperationsPanel />
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[

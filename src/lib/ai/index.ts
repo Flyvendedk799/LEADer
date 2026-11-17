@@ -1,3 +1,6 @@
+import { extractBudget, extractExplicitDeadline, detectApplicationRoute } from "@/lib/ingestion/extract";
+import { db } from "@/lib/db";
+import { companyContext } from "@/lib/company-profile";
 import type { AiAction, AiExtractResult, AiResult } from "@/lib/types";
 import { aiConfig, chat, hasLlm, isMissingSubscriptionLoginError } from "./provider";
 import { buildPrompt } from "./prompts";
@@ -29,10 +32,16 @@ export async function runAi(args: RunAiArgs): Promise<AiResult> {
   const cfg = aiConfig(aiKeys, accountId);
 
   if (!hasLlm(aiKeys)) {
+    if (process.env.NODE_ENV !== "test" && process.env.DEMO_MODE !== "true") throw new Error("AI is not connected. Configure a provider in Settings → AI.");
     return mockResult(action, context);
   }
 
-  const { system, user, json } = buildPrompt(action, { profile, context, extra });
+  let fullProfile = profile;
+  if (accountId && process.env.NODE_ENV !== "test") {
+    const owner = await db.user.findUniqueOrThrow({ where: { id: accountId }, select: { companyProfile: true } });
+    fullProfile = [companyContext(owner.companyProfile), profile].filter(Boolean).join("\n");
+  }
+  const { system, user, json } = buildPrompt(action, { profile: fullProfile, context, extra });
   let raw: string;
   try {
     raw = await chat(
@@ -44,7 +53,7 @@ export async function runAi(args: RunAiArgs): Promise<AiResult> {
       cfg,
     );
   } catch (error) {
-    if (isMissingSubscriptionLoginError(error)) {
+    if (isMissingSubscriptionLoginError(error) && (process.env.NODE_ENV === "test" || process.env.DEMO_MODE === "true")) {
       return mockResult(action, context);
     }
     throw error;
@@ -69,6 +78,10 @@ export async function aiExtract(
   aiKeys?: unknown,
   accountId?: string,
 ): Promise<AiExtractResult> {
+  if (!hasLlm(aiKeys) && process.env.DEMO_MODE !== "true") {
+    const budget = extractBudget(context);
+    return { title: context.split("\n").find(line => line.trim())?.slice(0, 200) || "Imported lead", description: context.slice(0, 1600), budgetMin: budget.min, budgetMax: budget.max, currency: budget.currency, deadline: extractExplicitDeadline(context)?.toISOString(), applicationRoute: detectApplicationRoute(context) };
+  }
   const res = await runAi({ action: "extract", context, profile, aiKeys, accountId });
   return (res.data as AiExtractResult) || {};
 }
@@ -166,7 +179,7 @@ function mockResult(action: AiAction, context = ""): AiResult {
         data: {
           category: "Software / MVP development",
           tags: ["startup", "fullstack", "mvp", "ai"],
-          fitForSoloTechnicalSupplier: true,
+          fitForTechnicalSupplier: true,
         },
       };
     case "planDiscoverySearch":

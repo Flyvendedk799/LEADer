@@ -1,0 +1,21 @@
+import { readFileSync } from "node:fs";
+import { z } from "zod";
+import { DEFAULT_DISCOVERY_LANES, laneCandidateGate } from "../src/lib/crm/lanes";
+import { evaluationReport } from "../src/lib/discovery/evaluation";
+import { qualifyCandidate } from "../src/lib/discovery/qualification";
+const schema = z.object({ records: z.array(z.object({ id: z.string(), lane: z.string(), reviewedBy: z.string().trim().min(1), rationale: z.string().trim().min(1), expected: z.boolean(), candidate: z.object({ title: z.string(), description: z.string().nullable().optional(), rawContent: z.string().nullable().optional(), url: z.string().nullable().optional(), organization: z.string().nullable().optional(), deadline: z.string().nullable().optional(), budgetMin: z.number().nullable().optional(), budgetMax: z.number().nullable().optional() }).passthrough() })) });
+const path = process.argv[2];
+if (!path) throw new Error("Usage: npm run evaluate:discovery -- reviewed-examples.json. Download a template from Settings → Discovery health.");
+const input = schema.parse(JSON.parse(readFileSync(path, "utf8")));
+if (new Set(input.records.map(r => r.id)).size !== input.records.length) throw new Error("Duplicate example IDs");
+const judgements = input.records.map(record => {
+  const lane = DEFAULT_DISCOVERY_LANES.find(l => l.slug === record.lane);
+  if (!lane) throw new Error(`Unknown lane: ${record.lane}`);
+  return { ...record, predicted: laneCandidateGate(lane, record.candidate).allowed && !qualifyCandidate(record.candidate).expired };
+});
+const report = evaluationReport(judgements);
+const automated = DEFAULT_DISCOVERY_LANES.filter(l => !["community-manual", "warm-network"].includes(l.slug));
+const missing = automated.filter(l => !report.lanes[l.slug] || report.lanes[l.slug].tp + report.lanes[l.slug].fn < 3 || report.lanes[l.slug].fp + report.lanes[l.slug].tn < 2).map(l => l.slug);
+const passed = input.records.length >= 60 && missing.length === 0 && Object.values(report.lanes).every(lane => lane.precision !== null && lane.recall !== null && lane.precision >= .8 && lane.recall >= .8);
+console.log(JSON.stringify({ ...report, requiredExamples: 60, missingCoverage: missing, passed, mistakes: judgements.filter(r => r.expected !== r.predicted).map(r => ({ id: r.id, lane: r.lane, expected: r.expected, predicted: r.predicted })) }, null, 2));
+if (!passed) process.exitCode = 1;

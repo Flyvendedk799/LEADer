@@ -1,0 +1,4 @@
+ALTER TABLE "ProviderUsage" ADD COLUMN "provider" TEXT, ADD COLUMN "model" TEXT,
+ADD COLUMN "inputTokens" INTEGER, ADD COLUMN "outputTokens" INTEGER,
+ADD COLUMN "status" TEXT NOT NULL DEFAULT 'RESERVED', ADD COLUMN "actualUsd" DECIMAL(14,6),
+ADD COLUMN "invoiceReference" TEXT;

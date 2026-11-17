@@ -1,12 +1,11 @@
 import { db } from "@/lib/db";
 import { scoreOpportunity } from "@/lib/scoring";
 import { loadCalibration, recomputeCalibration } from "@/lib/scoring/outcomes";
-import { embed, opportunityEmbedText } from "@/lib/ai/embeddings";
-import { ensureDealForOpportunity } from "@/lib/crm/promote";
+import { persistCandidate } from "@/lib/crm";
+import { ensureDefaultDiscoveryLanes, laneCandidateGate } from "@/lib/crm/lanes";
 import type { ScoreWeights, SourceType } from "@/lib/types";
 import { assertAutomatable, isAllowedByRobots } from "./compliance";
 import { type OpportunityCandidate, dedupeHash } from "./dedupe";
-import { enrichOpportunityText } from "./enrich";
 import { fetchRssCandidates } from "./rss";
 import { fetchWebCandidates } from "./web";
 import {
@@ -34,6 +33,7 @@ export interface RunResult {
 
 type SourceRow = {
   id: string;
+  name: string;
   ownerId: string;
   type: string;
   url: string | null;
@@ -121,7 +121,7 @@ export async function runDiscoveryForSource(
 
   const owner = await db.user.findUnique({ where: { id: source.ownerId } });
   const weights = (owner?.scoringWeights as Partial<ScoreWeights>) || undefined;
-  const budgetMaxDkk = owner?.budgetMaxDkk ?? 100000;
+  const budgetMaxDkk = owner?.budgetMaxDkk ?? 0;
   // Rank newly ingested leads through what this owner has actually won.
   const calibration = await loadCalibration(source.ownerId);
 
@@ -144,148 +144,23 @@ export async function runDiscoveryForSource(
 
     candidates = (await fetchCandidates(source)).map(enrich);
 
+    await ensureDefaultDiscoveryLanes(source.ownerId);
+    const lane = await db.discoveryLane.findUniqueOrThrow({
+      where: { ownerId_slug: { ownerId: source.ownerId, slug: ["dba-assignments", "need-assignments"].includes(source.parserKey ?? "") ? "freelance-contracts" : source.type === "PROCUREMENT" ? "tenders-procurement" : "client-projects" } },
+    });
     for (const c of candidates) {
-      const hash = dedupeHash(c);
-      const breakdown = scoreOpportunity(
-        { ...c, contacts: c.contacts },
-        { budgetMaxDkk, weights, calibration },
-      );
-      breakdown.computedAt = new Date().toISOString();
-      const isActive =
-        !c.deadline || new Date(c.deadline).getTime() >= Date.now();
-
-      const existing = await db.opportunity.findUnique({
-        where: { dedupeHash: hash },
-      });
-      if (existing) {
-        await db.opportunity.update({
-          where: { id: existing.id },
-          data: {
-            // Refresh derived fields; never overwrite user status/notes.
-            isActive,
-            matchScore: breakdown.total,
-            scoreBreakdown: breakdown as object,
-            deadline: c.deadline ?? existing.deadline,
-            budgetMin: c.budgetMin ?? existing.budgetMin,
-            budgetMax: c.budgetMax ?? existing.budgetMax,
-          },
-        });
-        await ensureDealForOpportunity(source.ownerId, existing.id);
-        updated++;
-      } else {
-        const opp = await db.opportunity.create({
-          data: {
-            ownerId: source.ownerId,
-            sourceId: source.id,
-            title: c.title,
-            description: c.description,
-            rawContent: c.rawContent,
-            url: c.url,
-            organization: c.organization,
-            location: c.location,
-            country: c.country ?? source.country ?? "DK",
-            region: c.region ?? source.region,
-            category: c.category ?? source.category,
-            workspace: (source.workspace as "DK" | "GLOBAL") ?? "DK",
-            budgetMin: c.budgetMin,
-            budgetMax: c.budgetMax,
-            currency: c.currency ?? "DKK",
-            deadline: c.deadline ?? undefined,
-            postedAt: c.postedAt ?? undefined,
-            isActive,
-            applicationRoute: c.applicationRoute ?? "UNKNOWN",
-            ingestMethod: "AUTOMATED",
-            matchScore: breakdown.total,
-            scoreBreakdown: breakdown as object,
-            dedupeHash: hash,
-            status: "NEW",
-            contacts: c.contacts?.length
-              ? {
-                  create: c.contacts.map((ct) => ({
-                    name: ct.name,
-                    email: ct.email,
-                    role: ct.role,
-                  })),
-                }
-              : undefined,
-            attachments: c.attachments?.length
-              ? {
-                  create: c.attachments.map((a) => ({
-                    url: a.url,
-                    label: a.label,
-                    kind: a.kind,
-                  })),
-                }
-              : undefined,
-            activities: {
-              create: {
-                type: "IMPORT",
-                message: "Discovered via automated source",
-              },
-            },
-          },
-        });
-        created++;
-        const deal = await ensureDealForOpportunity(source.ownerId, opp.id);
-        // Embed for semantic similarity (best-effort; never fail the run).
-        try {
-          const { vector, model } = await embed(opportunityEmbedText(opp));
-          await db.opportunity.update({
-            where: { id: opp.id },
-            data: {
-              embedding: vector,
-              embeddingModel: model,
-              embeddedAt: new Date(),
-            },
-          });
-        } catch {
-          /* embedding is non-critical; backfill later */
-        }
-        try {
-          const enriched = await enrichOpportunityText({
-            title: opp.title,
-            description: opp.description,
-            rawContent: opp.rawContent,
-            aiKeys: owner?.aiKeys,
-            accountId: source.ownerId,
-          });
-          if (enriched) {
-            await db.opportunity.update({
-              where: { id: opp.id },
-              data: {
-                aiSummary: enriched.aiSummary,
-                whyRelevant: enriched.whyRelevant,
-                nextAction: enriched.nextAction,
-              },
-            });
-            await db.deal.update({
-              where: { id: deal.id },
-              data: {
-                summary: enriched.aiSummary,
-                nextAction: enriched.nextAction,
-              },
-            });
-          }
-        } catch {
-          /* enrichment is optional; the scored deal still lands */
-        }
-        // High-match alert.
-        if (breakdown.total >= 80) {
-          await db.alert.create({
-            data: {
-              ownerId: source.ownerId,
-              type: "NEW_HIGH_MATCH",
-              title: `New high-match lead: ${opp.title}`,
-              body: `Score ${breakdown.total}. ${c.url ?? ""}`,
-              payload: {
-                opportunityId: opp.id,
-                dealId: deal.id,
-                score: breakdown.total,
-              },
-            },
-          });
-        }
-      }
+      if (c.deadline && c.deadline.getTime() < Date.now()) continue;
+      if (!laneCandidateGate(lane, c).allowed) continue;
+      const breakdown = scoreOpportunity(c, { budgetMaxDkk, weights, calibration });
+      const saved = await persistCandidate(source.ownerId, null, lane, {
+        ...c,
+        id: dedupeHash(c), candidateKind: "opportunity", freshness: c.deadline ? "active" : "unknown",
+        deadline: c.deadline?.toISOString(), postedAt: c.postedAt?.toISOString(),
+        sourceName: source.name, sourceKind: "source-scan", provider: "public-source", query: source.keywords.join(" "),
+        matchScore: breakdown.total, scoreBreakdown: breakdown, reasons: [], signals: [],
+        applicationRoute: c.applicationRoute ?? "UNKNOWN", contacts: c.contacts ?? [], attachments: c.attachments ?? [],
+      }, source.workspace === "GLOBAL" ? "GLOBAL" : "DK");
+      if (saved.ingestedNew) created++; else updated++;
     }
 
     await db.source.update({

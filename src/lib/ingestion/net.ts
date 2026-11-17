@@ -97,7 +97,7 @@ const MAX_BYTES = 5 * 1024 * 1024; // 5MB cap per fetched page/feed
 export async function safeFetch(
   target: string,
   init: RequestInit & { maxRedirects?: number } = {},
-): Promise<{ url: string; status: number; text: string }> {
+): Promise<{ url: string; status: number; text: string; bytes?: Uint8Array; contentType?: string }> {
   const maxRedirects = init.maxRedirects ?? 4;
   let current = target;
 
@@ -116,7 +116,7 @@ export async function safeFetch(
     const reader = res.body?.getReader();
     if (!reader) {
       const text = await res.text();
-      return { url: current, status: res.status, text: text.slice(0, MAX_BYTES) };
+      return { url: current, status: res.status, text: text.slice(0, MAX_BYTES), bytes: Buffer.from(text), contentType: res.headers.get("content-type") ?? undefined };
     }
     const chunks: Uint8Array[] = [];
     let total = 0;
@@ -126,14 +126,14 @@ export async function safeFetch(
       if (value) {
         total += value.length;
         if (total > MAX_BYTES) {
-          reader.cancel();
-          break;
+          await reader.cancel();
+          throw new Error("Source exceeds the maximum response size");
         }
         chunks.push(value);
       }
     }
-    const text = Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf-8");
-    return { url: current, status: res.status, text };
+    const bytes = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+    return { url: current, status: res.status, text: bytes.toString("utf-8"), bytes, contentType: res.headers.get("content-type") ?? undefined };
   }
   throw new SsrfError(`Too many redirects fetching ${target}`);
 }

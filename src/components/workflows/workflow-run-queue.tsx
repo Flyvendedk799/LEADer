@@ -58,7 +58,7 @@ type WorkflowRunAction = "CANCEL" | "CANCEL_ALL" | "RERUN" | "MOVE_UP" | "MOVE_D
 
 function statusVariant(status: string) {
   if (status === "SUCCESS") return "success";
-  if (status === "ERROR") return "warning";
+  if (["ERROR", "PARTIAL", "BUDGET_PAUSED"].includes(status)) return "warning";
   if (status === "CANCELED") return "muted";
   if (status === "RUNNING" || status === "QUEUED") return "secondary";
   return "outline";
@@ -66,7 +66,7 @@ function statusVariant(status: string) {
 
 function StatusIcon({ status }: { status: string }) {
   if (status === "SUCCESS") return <CheckCircle2 className="h-4 w-4 text-success" />;
-  if (status === "ERROR") return <XCircle className="h-4 w-4 text-warning" />;
+  if (["ERROR", "PARTIAL", "BUDGET_PAUSED"].includes(status)) return <XCircle className="h-4 w-4 text-warning" />;
   if (status === "RUNNING") return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
   if (status === "CANCELED") return <XCircle className="h-4 w-4 text-muted-foreground" />;
   return <Clock3 className="h-4 w-4 text-muted-foreground" />;

@@ -11,8 +11,9 @@ import {
 import { confidenceScore, pursuitScore } from "./scoring";
 
 describe("CRM discovery lanes", () => {
-  it("ships the six initial client-acquisition lanes", () => {
+  it("covers bureau projects, contracts, partnerships and relationships", () => {
     expect(DEFAULT_DISCOVERY_LANES.map((lane) => lane.slug)).toEqual([
+      "client-projects", "freelance-contracts", "agency-partners", "buying-signals",
       "funded-work",
       "direct-startup-mvp",
       "sme-ai-automation",

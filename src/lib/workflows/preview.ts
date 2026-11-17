@@ -104,6 +104,7 @@ export async function previewWorkflowRun(
             ownerId,
             workspace: input.workspace,
             status: "NEW",
+            OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: new Date() } }],
             pursuitScore: { gte: harvestOptions.minScore },
           },
           include: { lane: true },

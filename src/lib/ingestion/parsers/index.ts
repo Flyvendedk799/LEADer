@@ -1,6 +1,6 @@
 import type * as cheerio from "cheerio";
 import type { OpportunityCandidate } from "../dedupe";
-import { extractDeadline } from "../extract";
+import { extractDeadline, extractExplicitDeadline } from "../extract";
 import { extractStructured } from "./structured";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -45,7 +45,8 @@ export interface CardConfig {
 function abs(href: string | undefined, pageUrl: string): string | undefined {
   if (!href) return undefined;
   try {
-    return new URL(href, pageUrl).toString();
+    const url = new URL(href, pageUrl);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : undefined;
   } catch {
     return undefined;
   }
@@ -89,7 +90,7 @@ export function extractCards(
     seen.add(key);
 
     const deadlineText = cfg.deadline ? clean($el.find(cfg.deadline).first().text()) : "";
-    const deadline = extractDeadline(deadlineText) ?? extractDeadline(description);
+    const deadline = extractDeadline(deadlineText) ?? extractExplicitDeadline(description);
 
     out.push({
       title: title.slice(0, 250),
@@ -224,7 +225,31 @@ const procurement = fromConfig({
   minDescription: 20,
 });
 
+/** Verified against dba-consult.dk/jobs/ on 2026-11-17. The broker is not the end buyer. */
+function dbaAssignments($: cheerio.CheerioAPI, pageUrl: string): OpportunityCandidate[] {
+  if (!$(".dba-job-cards").length) throw new Error("DBA listing markup changed: expected .dba-job-cards");
+  return extractCards($, pageUrl, { item: ".dba-job-cards > li.job", title: "h3 a", link: "h3 a", minDescription: 10 }).map(candidate => ({
+    ...candidate, description: `Freelance assignment via dba consult. ${candidate.description}`,
+    rawContent: candidate.rawContent, applicationRoute: "APPLICATION", category: "Freelance contract",
+  }));
+}
+
+function needAssignments($: cheerio.CheerioAPI, pageUrl: string): OpportunityCandidate[] {
+  const cards = $("li").filter((_, el) => $(el).find("h3 a[href^='/it-freelance-opgaver/']").length > 0);
+  if (!cards.length && !/ingen (?:ledige|aktuelle|åbne) opgaver/i.test($("main").text())) throw new Error("Need Consult listing markup changed: no assignment rows");
+  const out: OpportunityCandidate[] = [];
+  cards.each((_, el) => {
+    const row = $(el), rawContent = clean(row.text());
+    if (!row.find("span").toArray().some(span => /Åben/.test($(span).text()))) return;
+    const link = row.find("h3 a").first(), title = clean(link.text());
+    out.push({ title, rawContent, description: `Freelance assignment via Need Consult. ${rawContent}`, url: abs(link.attr("href"), pageUrl), applicationRoute: "APPLICATION", category: "Freelance contract" });
+  });
+  return out;
+}
+
 export const PARSERS: Record<string, SiteParser> = {
+  "need-assignments": needAssignments,
+  "dba-assignments": dbaAssignments,
   ehsys: ($, pageUrl) => {
     const procurementRows = ehsysProcurement($, pageUrl);
     return procurementRows.length ? procurementRows : ehsys($, pageUrl);

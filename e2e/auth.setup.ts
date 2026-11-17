@@ -1,5 +1,5 @@
 import { expect, test as setup } from "@playwright/test";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 // Logs in with the seeded power-user credentials and saves the session cookie so
@@ -16,5 +16,12 @@ setup("authenticate", async ({ request }) => {
     data: { email: EMAIL, password: PASSWORD },
   });
   expect(res.ok(), `login failed (${res.status()}) — is the DB seeded?`).toBeTruthy();
-  await request.storageState({ path: STORAGE_STATE });
+  const state = await request.storageState();
+  const origin = new URL(process.env.BASE_URL || "http://127.0.0.1:3000");
+  // Chromium trusts loopback HTTP, but APIRequestContext will not send a Secure
+  // cookie there. Relax only the local test fixture; production cookies stay Secure.
+  if (origin.protocol === "http:" && ["localhost", "127.0.0.1"].includes(origin.hostname)) {
+    for (const cookie of state.cookies) cookie.secure = false;
+  }
+  writeFileSync(STORAGE_STATE, JSON.stringify(state));
 });

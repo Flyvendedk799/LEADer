@@ -1,3 +1,4 @@
+import { safeFetch } from "./net";
 import { AUTOMATABLE_SOURCE_TYPES, type SourceType } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -47,11 +48,11 @@ export async function isAllowedByRobots(targetUrl: string): Promise<boolean> {
   let rules = cached?.rules;
   if (!fresh) {
     try {
-      const res = await fetch(`${host}/robots.txt`, {
+      const res = await safeFetch(`${host}/robots.txt`, {
         headers: { "User-Agent": userAgent() },
         signal: AbortSignal.timeout(8000),
       });
-      rules = res.ok ? parseRobots(await res.text()) : [];
+      rules = res.status >= 200 && res.status < 300 ? parseRobots(res.text) : [];
     } catch {
       rules = []; // no robots.txt reachable → no explicit disallow
     }

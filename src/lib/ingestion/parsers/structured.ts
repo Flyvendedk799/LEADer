@@ -1,3 +1,4 @@
+import { extractDeadline } from "../extract";
 import type * as cheerio from "cheerio";
 import type { OpportunityCandidate } from "../dedupe";
 
@@ -30,6 +31,7 @@ function str(v: unknown): string | undefined {
 function toDate(v: unknown): Date | null {
   const s = str(v);
   if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return extractDeadline(s);
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 }
@@ -44,7 +46,8 @@ function typeOf(node: Json): string[] {
 function absUrl(url: string | undefined, pageUrl: string): string | undefined {
   if (!url) return undefined;
   try {
-    return new URL(url, pageUrl).toString();
+    const parsed = new URL(url, pageUrl);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.toString() : undefined;
   } catch {
     return undefined;
   }
@@ -118,7 +121,7 @@ function nodeToCandidate(node: Json, pageUrl: string): OpportunityCandidate | nu
   return {
     title: title.slice(0, 250),
     description: description?.slice(0, 1200),
-    rawContent: description?.slice(0, 4000),
+    rawContent: [description?.slice(0, 4000), node.employmentType ? `Employment type: ${asArray(node.employmentType).join(", ")}` : "", (node.baseSalary as Json)?.value && typeof (node.baseSalary as Json).value === "object" ? `Rate period: ${((node.baseSalary as Json).value as Json).unitText ?? "unknown"}` : ""].filter(Boolean).join("\n"),
     url,
     organization,
     location,

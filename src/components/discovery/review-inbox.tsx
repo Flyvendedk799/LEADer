@@ -1,4 +1,6 @@
 "use client";
+import { qualifyCandidate } from "@/lib/discovery/qualification";
+import { CandidateEditor } from "./candidate-editor";
 import { EvidenceProvenance } from "./evidence-provenance";
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -97,23 +99,27 @@ export function ReviewInbox({
   const [selectedLane, setSelectedLane] = useState<string>("ALL");
   const [minScore, setMinScore] = useState<string>("ALL");
 
-  async function act(id: string, action: "save" | "dismiss") {
+  const [lastDismissed, setLastDismissed] = useState<string | null>(null);
+  const [dismissalReason, setDismissalReason] = useState("Not a fit");
+  async function act(id: string, action: "save" | "dismiss" | "snooze" | "restore") {
     setPending(id);
     try {
       const res = await fetch(`/api/discovery/candidates/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...(action === "dismiss" ? { reason: dismissalReason } : {}) }),
       });
       const data = await res.json();
       if (!res.ok)
         throw new Error(
           typeof data.error === "string" ? data.error : "Please try again.",
         );
-      setRemoved((ids) => [...ids, id]);
+      setRemoved((ids) => action === "restore" ? ids.filter(item => item !== id) : [...ids, id]);
+      if (action === "dismiss" || action === "snooze") setLastDismissed(id);
+      if (action === "restore") setLastDismissed(null);
       setSelectedIds((ids) => ids.filter((selectedId) => selectedId !== id));
       toast.success(
-        action === "save" ? "Added to your pipeline" : "Lead dismissed",
+        action === "save" ? "Added to your pipeline" : action === "restore" ? "Lead restored" : action === "snooze" ? "Snoozed for seven days" : "Lead dismissed",
       );
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("leader:counts-refresh"));
@@ -231,6 +237,7 @@ export function ReviewInbox({
         title="Inbox zero"
         description="Review new leads here and add the promising ones to your pipeline."
       >
+        {lastDismissed && <Button variant="outline" onClick={() => act(lastDismissed, "restore")} disabled={pending !== null}>Undo last dismissal / snooze</Button>}
         <Button asChild>
           <Link href={`/discover?workspace=${workspace}`}>
             Find leads
@@ -397,6 +404,7 @@ export function ReviewInbox({
         </div>
       )}
 
+      <div className="flex flex-wrap items-center gap-3 text-sm"><label>Dismissal reason <select className="ml-2 rounded border bg-background p-2" value={dismissalReason} onChange={e => setDismissalReason(e.target.value)}>{["Not a fit", "Expired", "Employment rather than contract", "No paid opportunity", "Too little evidence", "Already known"].map(reason => <option key={reason}>{reason}</option>)}</select></label>{lastDismissed && <Button variant="outline" onClick={() => act(lastDismissed, "restore")} disabled={pending !== null}>Undo last dismissal / snooze</Button>}</div>
       {/* Leads list */}
       {filteredLeads.map((lead) => (
         <article
@@ -430,6 +438,8 @@ export function ReviewInbox({
                 Check buyer, scope, budget and deadline against the source. Match
                 scores are estimates.
               </p>
+              <p className="mt-2 text-sm font-medium">{qualifyCandidate(lead).kind} · {qualifyCandidate(lead).engagement}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{qualifyCandidate(lead).nextAction}</p>
               {lead.description && (
                 <p className="mt-3 max-w-4xl text-sm leading-7 text-muted-foreground">
                   {lead.description}
@@ -470,6 +480,7 @@ export function ReviewInbox({
                   </div>
                 </details>
               )}
+              <CandidateEditor lead={lead} />
               <div className="mt-5 flex flex-wrap items-center gap-2 border-t pt-4">
                 <Button
                   size="sm"
@@ -494,6 +505,7 @@ export function ReviewInbox({
                   <X className="h-4 w-4" />
                   Dismiss
                 </Button>
+                <Button variant="outline" size="sm" className="min-h-11" disabled={pending !== null} onClick={() => act(lead.id, "snooze")}>Snooze 7 days</Button>
                 {lead.url && (
                   <Button
                     asChild
