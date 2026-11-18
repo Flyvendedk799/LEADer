@@ -4,10 +4,10 @@
   "private": true,
   "description": "LEADer \u2014 personal lead-intelligence platform for funded startup work, voucher assignments and tender-like opportunities (Denmark-first, global-ready).",
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run db:migrate:deploy && next dev",
     "prebuild": "prisma generate",
     "build": "next build",
-    "start": "next start",
+    "start": "npm run db:migrate:deploy && next start",
     "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -23,11 +23,13 @@
     "embeddings:backfill": "tsx scripts/backfill-embeddings.ts",
     "setup": "prisma generate && prisma migrate deploy",
     "db:local": "node scripts/local-db.mjs",
-    "worker": "tsx scripts/worker.ts",
+    "worker": "npm run db:migrate:deploy && tsx scripts/worker.ts",
     "check:acquisition": "tsx scripts/check-acquisition.ts",
     "evaluate:discovery": "tsx scripts/evaluate-discovery.ts",
     "check:restore": "tsx scripts/check-restore.ts",
-    "check:browser": "tsx scripts/check-browser.ts"
+    "check:browser": "tsx scripts/check-browser.ts",
+    "build:deploy": "npm run db:migrate:deploy && npm run build",
+    "check:startup": "tsx scripts/check-startup.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -64,7 +66,8 @@
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7",
     "unpdf": "^1.4.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "prisma": "^5.22.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.2",
@@ -78,7 +81,6 @@
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.5.27",
     "postcss": "^8.4.49",
-    "prisma": "^5.22.0",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",

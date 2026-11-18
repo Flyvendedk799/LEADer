@@ -36,4 +36,4 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/prisma ./prisma
 EXPOSE 3000
 # Apply versioned, non-destructive migrations before accepting traffic.
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run start"]
+CMD ["npm", "run", "start"]

@@ -30,6 +30,8 @@ steps:
     run: npm run check:acquisition
   - name: Build
     run: BASE_URL=http://localhost:3000 EMAIL_PROVIDER=console npm run build
+  - name: Existing-database startup and login regression
+    run: npm run check:startup
   # playwright.config.ts starts `npm run start` itself (webServer).
   - name: E2E (Playwright)
     run: BASE_URL=http://localhost:3000 EMAIL_PROVIDER=console npm run test:e2e

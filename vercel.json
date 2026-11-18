@@ -13,5 +13,6 @@
       "path": "/api/cron/workflows",
       "schedule": "0 8 * * *"
     }
-  ]
+  ],
+  "buildCommand": "npm run build:deploy"
 }

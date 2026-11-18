@@ -15,7 +15,9 @@ Demo records are opt-in: `npm run db:seed`. Mock AI is also opt-in via `DEMO_MOD
 
 ## Hosted runtime
 
-`docker compose --profile full up --build` runs web, PostgreSQL and a persistent worker. Set stable `AUTH_SECRET` and `AI_KEYS_ENCRYPTION_SECRET` values, a random URL-safe `POSTGRES_PASSWORD`, and the public HTTPS `NEXTAUTH_URL`. The web container applies versioned migrations; it does not use `db push`. The worker waits for the web health check before starting. A production reverse proxy must terminate HTTPS. Do not expose the database publicly.
+`docker compose --profile full up --build` runs web, PostgreSQL and a persistent worker. Set stable `AUTH_SECRET` and `AI_KEYS_ENCRYPTION_SECRET` values, a random URL-safe `POSTGRES_PASSWORD`, and the public HTTPS `NEXTAUTH_URL`. `npm start`, `npm run dev` and `npm run worker` apply versioned migrations before starting and stop on a migration failure. Docker uses the same startup command; it does not use `db push`. The worker waits for the web health check before starting. A production reverse proxy must terminate HTTPS. Do not expose the database publicly.
+
+Vercel uses `npm run build:deploy` from `vercel.json` to migrate its configured database before building the release. Other hosts should use `npm start` (not `next start` directly), or run `npm run db:migrate:deploy` in their release step. Plain `npm run build` remains available for database-independent builds. After deploying this fix, existing databases receive the missing `User.companyProfile` column and the other pending migrations; no account reset or reseeding is needed.
 
 Discovery run rows are the queue. Workers claim atomically with PostgreSQL `FOR UPDATE SKIP LOCKED`, refresh 90-second leases every 15 seconds, and stop if heartbeat renewal fails. Discovery resumes after a crashed lease expires. Transient discovery failures retry up to three claims with backoff. Interrupted workflows require inspection before retry because a workflow may have already created drafts/tasks. A browser reload never steals a running worker's job. Search plans and completed results are checkpointed before ingestion; recovered missions reuse saved results. A crash before the result checkpoint may repeat paid requests, within the remaining allowance. Candidate writes check the active lease transactionally.
 
@@ -41,6 +43,7 @@ The operations panel reports source acceptance, contact, proposal, win/loss and 
 
 - `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
 - `npm run check:acquisition`: creates isolated test owners in the configured database and removes them afterward; verifies claims, recovery, fencing, cancellation, dedupe, owner separation, manual acceptance and concurrent usage limits.
+- `npm run check:startup`: after building, creates an isolated local database at the pre-acquisition schema, reproduces the missing-column error, starts the actual production command and verifies migration plus login with the existing account.
 - `npm run check:browser`: after `npm run build`, creates a dedicated local test database, applies migrations and seeds, runs Playwright with a real worker, then removes only that database. Run `npx playwright install chromium` once. `npm run test:e2e` remains the CI entry point.
 - `npm run check:restore`: uses a local database and Docker PostgreSQL client to restore into a generated empty database, compare row counts and checksums across all tables, then remove its temporary database and dump.
 - EHSYS, dba consult and Need Consult public lists were checked on 17 November 2026. Captured freelance-listing fixtures verify live markup, closed-listing exclusion and preservation of unknown buyers/deadlines. This is adapter validation, not a live discovery-quality benchmark.
