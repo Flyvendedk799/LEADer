@@ -64,7 +64,7 @@ import {
   type LaneLike,
 } from "@/lib/crm/lanes";
 import { recoverDiscoveryQueue } from "@/lib/crm/discovery-queue";
-import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
+import { maintainDiscoveryCandidates } from "@/lib/crm/lane-hygiene";
 import { DEAL_STATUS_META } from "@/lib/crm/status";
 import { discoveryMissionHref } from "@/lib/discovery-links";
 import { isSourceDue } from "@/lib/ingestion";
@@ -215,7 +215,7 @@ export default async function WorkflowsPage(props: {
   const staleCutoff = new Date(now.getTime() - 14 * 86400000);
   await ensureDefaultDiscoveryLanes(ownerId);
   await ensureDefaultWorkflowPresets(ownerId);
-  await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
+  await maintainDiscoveryCandidates(ownerId).catch(() => null);
   const discoveryQueue = await recoverDiscoveryQueue(ownerId);
   const workflowQueue = await recoverWorkflowQueue(ownerId);
 

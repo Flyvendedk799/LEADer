@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fundedWorkGate } from "./lanes";
+import { fundedWorkGate, PUBLIC_TENDER_WITHOUT_FUNDING } from "./lanes";
 
 describe("funded work gate", () => {
   it("drops grant programmes and application guides", () => {
@@ -42,18 +42,23 @@ describe("funded work gate", () => {
     }
   });
 
-  it("accepts a notice page on a tendering platform", () => {
-    expect(
-      fundedWorkGate("it-system til kommunen https://udbud.dk/detaljevisning?noticeid=abc").allowed,
-    ).toBe(true);
-    expect(
-      fundedWorkGate("civilstyrelsen: udbud af kontrakt om softwareudvikling og modernisering").allowed,
-    ).toBe(true);
+  it("leaves ordinary public tender notices to the Tenders lane", () => {
+    for (const text of [
+      "it-system til kommunen https://udbud.dk/detaljevisning?noticeid=abc",
+      "civilstyrelsen: udbud af kontrakt om softwareudvikling og modernisering",
+      "it-system til kommunen https://nyplatform.eu/tender/12345",
+    ]) {
+      expect(fundedWorkGate(text)).toEqual({ allowed: false, reason: PUBLIC_TENDER_WITHOUT_FUNDING });
+    }
   });
 
-  it("recognises a notice page by the shape of its address, on any platform", () => {
-    expect(fundedWorkGate("it-system til kommunen https://nyplatform.eu/tender/12345").allowed).toBe(true);
-    expect(fundedWorkGate("software supplier https://example.org/notice/987?lang=da").allowed).toBe(true);
+  it("keeps tender notices that show the work is funded", () => {
+    expect(fundedWorkGate("app til borgere, finansieret af eu-midler https://udbud.dk/detaljevisning?noticeid=abc").allowed).toBe(true);
+    expect(fundedWorkGate("platform støttet af innovationsfonden https://nyplatform.eu/tender/12345").allowed).toBe(true);
+  });
+
+  it("keeps direct supplier requests on a notice-shaped address", () => {
+    expect(fundedWorkGate("we are seeking a development partner https://example.org/notice/987?lang=da").allowed).toBe(true);
     expect(fundedWorkGate("a blog post about software https://example.org/blog/tender-tips-2024").allowed).toBe(false);
   });
 

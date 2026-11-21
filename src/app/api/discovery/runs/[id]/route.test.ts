@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requireOwnerId: vi.fn(),
-  dismissInvalidNewLaneCandidates: vi.fn(),
+  maintainDiscoveryCandidates: vi.fn(),
   discoveryMissionDisplayWarnings: vi.fn(),
   discoveryMissionProviderLabel: vi.fn(),
   hiddenDiscoveryCandidatesWarning: vi.fn(),
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ requireOwnerId: mocks.requireOwnerId }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("@/lib/crm/lane-hygiene", () => ({
-  dismissInvalidNewLaneCandidates: mocks.dismissInvalidNewLaneCandidates,
+  maintainDiscoveryCandidates: mocks.maintainDiscoveryCandidates,
 }));
 vi.mock("@/lib/crm/discovery-queue", () => ({
   visibleDiscoveryQueueSnapshotForOwner:
@@ -43,7 +43,7 @@ describe("discovery run detail API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireOwnerId.mockResolvedValue("owner-1");
-    mocks.dismissInvalidNewLaneCandidates.mockResolvedValue({ dismissed: 0 });
+    mocks.maintainDiscoveryCandidates.mockResolvedValue({ dismissed: 0 });
     mocks.discoveryMissionDisplayWarnings.mockImplementation(
       (_mission, warnings) => warnings,
     );

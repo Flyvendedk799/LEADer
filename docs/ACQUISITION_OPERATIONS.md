@@ -39,6 +39,17 @@ Draft editing saves a new version with parent-version provenance; originals are 
 
 The operations panel reports source acceptance, contact, proposal, win/loss and average days to win. Outcome timestamps are recorded by the database across all update paths; historical closed deals have unknown closure dates and are excluded from duration averages. Costs for calls that lack token reporting remain explicitly unknown.
 
+## Review-queue quality rules
+
+- **Supplier fit** (`src/lib/crm/supplier-fit.ts`) scores whether a small studio can realistically deliver a lead, from its title and summary: IT infrastructure/outsourcing (cap 35), standard products/SaaS licences (cap 50), consultant-hour frameworks (cap 55), frameworks (cap 60), operations contracts (cap 65), heavy EU procedures (cap 70), contract value above 3M DKK, and guide/grant-scheme titles (cap 25). Custom build scope earns a small bonus and softens product/framework penalties, never infrastructure or staffing. Open candidates are rescored once per `SUPPLIER_FIT_VERSION`.
+- **Concrete opportunity pages**: web lanes (and Funded work) reject front pages, short top-level pages without a stated need, listing/search/category/career/pagination pages, articles, guides, grant-scheme and Q&A pages, judged by address shape and title rather than platform lists.
+- **Lane ownership of tenders**: public tender notices found by web lanes, and by Funded work without funding evidence, move to Tenders / procurement. Funded work no longer reads the udbud.dk index.
+- **Cross-lane dedupe**: dedupe keys no longer depend on the lane; a tender with buyer, title and deadline, or the same URL, is one lead. The best-scoring copy stays (tie: Tenders lane, then newest).
+- **Expiry**: NEW candidates whose deadline passed more than a day ago are dismissed (`Auto-dismissed: deadline passed`).
+- **Lane rotation**: scheduled missions are queued least-recently-successful lane first, below manual runs, so allowance exhaustion never starves the same lanes.
+
+These run in `maintainDiscoveryCandidates()` after each mission and when Discover/Workflows/run history load.
+
 ## Verification and remaining release gates
 
 - `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.

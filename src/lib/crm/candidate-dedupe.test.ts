@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { discoveryCandidateDedupeKey } from "./candidate-dedupe";
+import { discoveryCandidateDedupeKey, discoveryCandidateDedupeKeys } from "./candidate-dedupe";
 import { DEFAULT_DISCOVERY_LANES } from "./lanes";
 
 describe("discovery candidate dedupe keys", () => {
@@ -34,5 +34,22 @@ describe("discovery candidate dedupe keys", () => {
         url: "https://example.com/opportunity",
       }),
     ).toBe("https://example.com/opportunity");
+  });
+});
+
+describe("cross-lane dedupe", () => {
+  it("gives the same tender the same key whichever lane found it", () => {
+    const tender = {
+      title: "Udbud af udvikling af Den Veterinære Receptløsning",
+      organization: "Lægemiddelstyrelsen",
+      deadline: "2026-12-02T12:00:00.000Z",
+    };
+    const funded = discoveryCandidateDedupeKey({ slug: "funded-work" }, { ...tender, url: "https://udbud.dk/detaljevisning?noticeid=1" });
+    const tenders = discoveryCandidateDedupeKey({ slug: "tenders-procurement" }, { ...tender, url: "https://udbud.dk/detaljevisning?noticeid=1&x=2" });
+    expect(funded).toBe(tenders);
+    expect(discoveryCandidateDedupeKeys({ ...tender, url: "https://udbud.dk/detaljevisning?noticeid=1" })).toEqual([
+      funded,
+      "https://udbud.dk/detaljevisning?noticeid=1",
+    ]);
   });
 });

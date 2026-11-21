@@ -12,7 +12,7 @@ import {
   runDiscoverySearch,
   type DiscoveryCandidateDto,
 } from "@/lib/discovery";
-import { discoveryCandidateDedupeKey } from "@/lib/crm/candidate-dedupe";
+import { discoveryCandidateDedupeKey, discoveryCandidateDedupeKeys } from "@/lib/crm/candidate-dedupe";
 import {
   extractPastedLeads,
   pastedLeadToCandidate,
@@ -23,7 +23,8 @@ import {
   discoveryPhaseTimingSummary,
   formatDiscoveryElapsed,
 } from "@/lib/crm/discovery-logging";
-import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
+import { maintainDiscoveryCandidates } from "@/lib/crm/lane-hygiene";
+import { applySupplierFit, supplierFit } from "@/lib/crm/supplier-fit";
 import {
   ensureDefaultDiscoveryLanes,
   filterVisibleLaneCandidates,
@@ -249,18 +250,17 @@ function discoveryCandidateDedupeWhere(
   deadline: Date | undefined,
   dedupeKey: string,
 ): Prisma.DiscoveryCandidateWhereInput {
-  const alternatives: Prisma.DiscoveryCandidateWhereInput[] = [{ dedupeKey }];
+  // Matching is owner-wide, not per lane: the same tender or page found by two
+  // lanes is one lead.
+  const alternatives: Prisma.DiscoveryCandidateWhereInput[] = [
+    ...new Set([dedupeKey, ...discoveryCandidateDedupeKeys(candidate, deadline ?? null)]),
+  ].map((key) => ({ dedupeKey: key }));
   const title = cleanTerm(candidate.title, 220);
   const organization = cleanTerm(candidate.organization, 180);
+  void lane;
 
-  if (
-    lane.slug === "tenders-procurement" &&
-    title &&
-    organization &&
-    deadline
-  ) {
+  if (title && organization && deadline) {
     alternatives.push({
-      laneId: lane.id,
       title: { equals: title, mode: "insensitive" },
       organization: { equals: organization, mode: "insensitive" },
       deadline: dayRange(deadline),
@@ -590,7 +590,7 @@ export async function listDeals(ownerId: string, params: URLSearchParams) {
 export async function getCockpit(ownerId: string, workspace: Workspace = "DK") {
   const now = new Date();
   const staleCutoff = new Date(now.getTime() - 14 * 86400000);
-  await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
+  await maintainDiscoveryCandidates(ownerId).catch(() => null);
 
   const [
     openDeals,
@@ -954,9 +954,9 @@ export async function executeDiscoveryMission(
       provider: broadWebProvider,
       resultKind: "opportunities",
       tenderLane: prepared.lane.slug === "tenders-procurement",
-      includeOfficialTenders:
-        prepared.lane.slug === "tenders-procurement" ||
-        prepared.lane.slug === "funded-work",
+      // Funded work no longer reads the public tender index: ordinary public
+      // tenders belong to the Tenders lane (see fundedWorkGate).
+      includeOfficialTenders: prepared.lane.slug === "tenders-procurement",
       useAiPlanner: input.useAiPlanner !== false && !prepared.plan,
       onProgress: appendLog,
     });
@@ -1175,29 +1175,36 @@ export async function persistCandidate(
       fit.confidenceBonus -
       (fit.blockedKeywords.length ? 8 : 0),
   );
-  const pursuit = pursuitScore({
-    matchScore,
-    confidenceScore: confidence,
-    deadline: candidate.deadline,
-    priority: fit.priority,
-  });
+  const supplier = supplierFit(candidate);
+  const adjusted = applySupplierFit(
+    {
+      matchScore,
+      pursuitScore: pursuitScore({
+        matchScore,
+        confidenceScore: confidence,
+        deadline: candidate.deadline,
+        priority: fit.priority,
+      }),
+    },
+    supplier,
+  );
+  const pursuit = adjusted.pursuitScore;
   const deadline = dateOrUndefined(candidate.deadline);
   const dedupeKey = discoveryCandidateDedupeKey(lane, candidate, deadline);
   const scoreBreakdown = {
     ...(candidate.scoreBreakdown as unknown as Record<string, unknown>),
-    total: matchScore,
+    total: adjusted.matchScore,
     originalTotal: candidate.matchScore,
     laneFit: laneFitMetadata(fit),
+    supplierFit: supplier,
     qualification: qualifyCandidate(candidate),
   };
-  const reasons = [...new Set([...fit.reasons, ...candidate.reasons])].slice(
-    0,
-    8,
-  );
-  const signals = [...new Set([...candidate.signals, ...fit.signals])].slice(
-    0,
-    12,
-  );
+  const reasons = [
+    ...new Set([...supplier.reasons, ...fit.reasons, ...candidate.reasons]),
+  ].slice(0, 8);
+  const signals = [
+    ...new Set([...candidate.signals, ...fit.signals, ...supplier.signals]),
+  ].slice(0, 14);
   const existing = await client.discoveryCandidate.findFirst({
     where: discoveryCandidateDedupeWhere(
       ownerId,
@@ -1228,10 +1235,10 @@ export async function persistCandidate(
     currency: candidate.currency ?? "DKK",
     deadline,
     applicationRoute: candidate.applicationRoute,
-    matchScore,
+    matchScore: adjusted.matchScore,
     confidenceScore: confidence,
     pursuitScore: pursuit,
-    scoreBreakdown: scoreBreakdown as Prisma.InputJsonValue,
+    scoreBreakdown: scoreBreakdown as unknown as Prisma.InputJsonValue,
     reasons,
     signals,
     dedupeKey,
@@ -1242,7 +1249,12 @@ export async function persistCandidate(
     existing && sameMission
       ? await client.discoveryCandidate.update({
           where: { id: existing.id },
-          data: existing.status === "NEW" ? { ...data, missionId: existing.missionId ?? missionId } : {},
+          // A lead found again by another lane keeps its lane and scores; the new
+          // sighting is still recorded as evidence below.
+          data:
+            existing.status === "NEW" && (!existing.laneId || existing.laneId === lane.id)
+              ? { ...data, missionId: existing.missionId ?? missionId }
+              : {},
           include: { evidence: true, lane: true },
         })
       : await client.discoveryCandidate.create({

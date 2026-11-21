@@ -11,7 +11,7 @@ import {
   filterReviewableDiscoveryCandidates,
   hiddenDiscoveryCandidatesWarning,
 } from "@/lib/crm/discovery-display";
-import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
+import { maintainDiscoveryCandidates } from "@/lib/crm/lane-hygiene";
 import {
   discoveryLogEntry,
   discoveryQueueLogMessage,
@@ -221,7 +221,7 @@ function visibleMissionDetail<
 export async function GET(req: Request) {
   try {
     const ownerId = await requireOwnerId();
-    await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
+    await maintainDiscoveryCandidates(ownerId).catch(() => null);
     const queue = await recoverDiscoveryQueue(ownerId);
     const search = discoveryHistorySearch(req);
     const { scope, laneId } = discoveryHistoryLaneScope(req);

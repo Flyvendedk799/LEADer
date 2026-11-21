@@ -12,6 +12,7 @@ import { executeWorkflowRun } from "../src/lib/workflows/playbooks";
 import { discoveryRunCreateSchema } from "../src/lib/validators";
 import { workflowRunInputSchema } from "../src/lib/workflows/types";
 import { queueDueWorkflowPresetsAllOwners } from "../src/lib/workflows/preset-runs";
+import { laneRotationPriorities } from "../src/lib/jobs/lane-rotation";
 
 const workerId = process.env.LEADER_WORKER_ID || `worker:${randomUUID()}`;
 let stopping = false;
@@ -83,11 +84,13 @@ async function schedule() {
       if (Number(part("hour")) < profile.discoveryHour) continue;
       if (profile.dailySearchQueries > 0 && profile.monthlySearchQueries > 0 && discoveryProviderReadiness(user.aiKeys).searchConfigured) {
         const lanes = await tx.discoveryLane.findMany({ where: { ownerId: user.id, active: true, slug: { notIn: ["community-manual", "warm-network"] } } });
+        const lastSuccess = await tx.discoveryMission.groupBy({ by: ["laneId"], where: { ownerId: user.id, status: { in: ["SUCCESS", "PARTIAL"] } }, _max: { finishedAt: true } });
+        const priorities = laneRotationPriorities(lanes, new Map(lastSuccess.filter(row => row._max.finishedAt).map(row => [row.laneId, row._max.finishedAt!])));
         for (const lane of lanes) {
           const workspaces = profile.internationalDiscovery && ["client-projects", "freelance-contracts", "agency-partners"].includes(lane.slug) ? ["DK", "GLOBAL"] as const : [lane.workspace];
           for (const workspace of workspaces) {
             const input = { laneId: lane.id, workspace, useAiPlanner: false, searchMode: "focused", maxResults: 12, includeWeb: true, includeSources: false, provider: "auto" };
-            await tx.discoveryMission.upsert({ where: { id: `discovery:${user.id}:${lane.id}:${workspace}:${day}` }, update: {}, create: { id: `discovery:${user.id}:${lane.id}:${workspace}:${day}`, ownerId: user.id, laneId: lane.id, query: lane.queryTemplates[0] || lane.name, workspace, status: "QUEUED", input } });
+            await tx.discoveryMission.upsert({ where: { id: `discovery:${user.id}:${lane.id}:${workspace}:${day}` }, update: {}, create: { id: `discovery:${user.id}:${lane.id}:${workspace}:${day}`, ownerId: user.id, laneId: lane.id, query: lane.queryTemplates[0] || lane.name, workspace, status: "QUEUED", queuePriority: priorities.get(lane.id) ?? -100, input } });
           }
         }
       }

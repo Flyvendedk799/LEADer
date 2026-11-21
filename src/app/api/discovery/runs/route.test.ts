@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireOwnerId: vi.fn(),
   createDiscoveryMission: vi.fn(),
-  dismissInvalidNewLaneCandidates: vi.fn(),
+  maintainDiscoveryCandidates: vi.fn(),
   discoveryMissionDisplayWarnings: vi.fn(),
   discoveryMissionProviderLabel: vi.fn(),
   filterReviewableDiscoveryCandidates: vi.fn(),
@@ -36,7 +36,7 @@ vi.mock("@/lib/crm/discovery-display", () => ({
   hiddenDiscoveryCandidatesWarning: mocks.hiddenDiscoveryCandidatesWarning,
 }));
 vi.mock("@/lib/crm/lane-hygiene", () => ({
-  dismissInvalidNewLaneCandidates: mocks.dismissInvalidNewLaneCandidates,
+  maintainDiscoveryCandidates: mocks.maintainDiscoveryCandidates,
 }));
 vi.mock("@/lib/crm/lanes", () => ({ filterLaneCandidates: mocks.filterLaneCandidates }));
 vi.mock("@/lib/crm/discovery-queue", () => ({
@@ -76,7 +76,7 @@ describe("discovery run API controls", () => {
     vi.clearAllMocks();
     mocks.requireOwnerId.mockResolvedValue("owner-1");
     mocks.recoverDiscoveryQueue.mockResolvedValue({ activeMissionId: null, queuedMissionIds: [] });
-    mocks.dismissInvalidNewLaneCandidates.mockResolvedValue(undefined);
+    mocks.maintainDiscoveryCandidates.mockResolvedValue(undefined);
     mocks.discoveryMissionDisplayWarnings.mockImplementation((_mission, warnings) => warnings);
     mocks.discoveryMissionProviderLabel.mockImplementation((mission) => mission.provider ?? "auto");
     mocks.filterReviewableDiscoveryCandidates.mockImplementation((_lane, candidates) => ({
