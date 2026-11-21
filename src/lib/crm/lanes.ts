@@ -529,6 +529,21 @@ const TENDER_NOTICE_URL =
 const SOCIAL_HOST =
   /(?:^|[\s/.])(?:instagram|facebook|linkedin|twitter|x|tiktok|youtube)\.com\//;
 
+/** Evidence that the work is paid for by a grant, fund or programme. */
+const FUNDING_CUE =
+  /finansieret af|medfinansieret|bevilget|bevilling|støttet af|støtte fra|tilskud|eu-midler|eu-finansieret|eu-funded|funded by|grant(?:-funded| funded)?\b|innovationsfonden|horizon europe|interreg|regionalfonden|socialfonden|erhvervsfremme|markedsmodningsfonden|digital europe|life programme/;
+
+export const TENDER_NOTICE_IN_WEB_LANE = "public tender notice (covered by the Tenders lane)";
+
+/** Gate reasons for leads that should move to the Tenders lane rather than be dismissed. */
+export const TENDER_LANE_RELOCATION_REASONS = new Set<string>([
+  "public tender without funding evidence (covered by the Tenders lane)",
+  TENDER_NOTICE_IN_WEB_LANE,
+]);
+
+export const PUBLIC_TENDER_WITHOUT_FUNDING =
+  "public tender without funding evidence (covered by the Tenders lane)";
+
 export function fundedWorkGate(text: string): LaneCandidateGateResult {
   if (SOCIAL_HOST.test(text)) {
     return { allowed: false, reason: "social media post, not an opportunity page" };
@@ -542,6 +557,81 @@ export function fundedWorkGate(text: string): LaneCandidateGateResult {
   }
   if (!seeking) {
     return { allowed: false, reason: "no sign a buyer is asking suppliers to deliver funded work" };
+  }
+  // An ordinary public tender notice is the Tenders lane's job. Funded work
+  // needs evidence that a grant or fund pays for it.
+  const tenderNotice = TENDER_NOTICE_URL.test(text) || /\budbud af\b|\budbyder\b|call for tenders?|invitation to tender/.test(text);
+  const directRequest = /søger (?:en |et )?(?:ekstern(?:e)? )?(?:leverandør|udvikler|udviklingspartner|partner|softwarehus|it-partner)|leverandør(?:er)? søges|tilbudsindhentning|indhent(?:er)? tilbud|request for (?:proposal|quotation)|\brfp\b|\brfq\b|seeking (?:a |an )?(?:supplier|vendor|developer|development partner)|looking for (?:a |an )?(?:supplier|vendor|development partner)|hiring (?:an )?external|external developer/.test(text);
+  if (tenderNotice && !directRequest && !FUNDING_CUE.test(text)) {
+    return { allowed: false, reason: PUBLIC_TENDER_WITHOUT_FUNDING };
+  }
+  return { allowed: true };
+}
+
+/** Lanes fed by open web search, where a result is often not an opportunity at all. */
+const WEB_OPPORTUNITY_LANES = new Set([
+  "client-projects",
+  "freelance-contracts",
+  "agency-partners",
+  "buying-signals",
+  "sme-ai-automation",
+  "direct-startup-mvp",
+]);
+
+const LANGUAGE_SEGMENT = /^(?:[a-z]{2}(?:[-_][a-z]{2})?)$/;
+
+/** A title that states a need, so even a short address can be a real request. */
+const TITLE_INTENT_CUE =
+  /\b(?:needs?|seeks?|seeking|looking for|wants?|wanted|request(?:ing)?|søger|søges|efterlyser|ønsker|har brug for|tender|udbud|rfp|rfq|call for)\b/;
+
+/**
+ * Rejects web results that cannot be a specific opportunity, judged by the shape
+ * of the address and title (never by a list of platforms):
+ * - a site's front page or a short top-level page (services, about, a category);
+ * - listing, search, category, career and pagination pages;
+ * - articles, blogs, grant-scheme and how-to pages.
+ */
+export function concreteOpportunityPageGate(
+  candidate: CandidateLike,
+  parts: { host: string; path: string; url: string },
+): LaneCandidateGateResult {
+  if (!parts.host) return { allowed: true }; // pasted/manual leads without a URL
+  const title = (candidate.title ?? "").toLowerCase();
+  const segments = parts.path.split("/").filter(Boolean).filter((segment, index) => !(index === 0 && LANGUAGE_SEGMENT.test(segment)));
+  const last = segments.at(-1) ?? "";
+  const words = last.split(/[-_]+/).filter(Boolean);
+  const specificSlug = /\d{3,}|[~_][a-z0-9]{6,}|[0-9a-f]{8}-/.test(last) || words.length >= 5 || last.length > 40;
+
+  if (segments.length === 0) return { allowed: false, reason: "site front page, not a specific opportunity" };
+  if (
+    segments.length === 1 &&
+    !specificSlug &&
+    !/[?&](?:id|noticeid|jobid)=/.test(parts.url) &&
+    !TITLE_INTENT_CUE.test(title)
+  ) {
+    return { allowed: false, reason: "top-level site page, not a specific opportunity" };
+  }
+  if (
+    /\/page\/\d+\/?$|\/(?:search|soeg|søg|job-search|kategorier|categories|category|tag|tags|country|locations?|specialisms?|recruitment-services|ydelser|services?)(?:\/|$)|\/(?:career|careers|karriere|jobs?)\/(?:freelance\/?)?$|\/freelance-jobs\/(?:dashboard\/?)?$|\/startups\/[^/]+\/?$|\/contracts\/[^/]+\/(?:remote|onsite)\/?$/.test(parts.path) ||
+    /\bjobs (?:in|for)\b|\bjobs \(|jobs, employment|\bjobs$/.test(title)
+  ) {
+    return { allowed: false, reason: "listing or search page, not a specific opportunity" };
+  }
+  if (
+    /\/(?:blog|blogs|insights?|news|nyheder|nyhedsarkiv|aktuelt|articles?|artikler|magazine|presse|press|note|resources|news-resources|funding-programmes|grants?|subsidies|tilskud|tilskudspuljer)(?:\/|$)/.test(parts.path) ||
+    /\bguide\b|how to\b|how is .{0,60}(?:evaluated|assessed)|what is\b|hvad er\b|sådan (?:får|søger)|s&#xe5;dan|komplet guide|\bsubsid(?:y|ies)\b|tilskud til\b|-tilskud\b|funded up to|amounts and how|we can help you apply|\bspotlight\b|webinar/.test(title)
+  ) {
+    return { allowed: false, reason: "article, guide or grant-scheme page, not a buyer" };
+  }
+  const scope = `${title} ${(candidate.description ?? "").toLowerCase()}`;
+  if (/grant programme|grant program\b|tilskudsordning|tilskudspulje|støtteordning|funding programme|funding instrument|non-dilutive|call for (?:proposals|expression of interest)|open call for expression/.test(scope)) {
+    return { allowed: false, reason: "article, guide or grant-scheme page, not a buyer" };
+  }
+  if (/\/(?:support|faq|help|hjaelp|hjælp|proc-qa|q-and-a)(?:\/|$)/.test(parts.path)) {
+    return { allowed: false, reason: "help or Q&A page, not a specific opportunity" };
+  }
+  if (/\/jobannonce\/|\/job-ad\//.test(parts.path)) {
+    return { allowed: false, reason: "job/recruiting result" };
   }
   return { allowed: true };
 }
@@ -559,6 +649,16 @@ export function laneCandidateGate(lane: LaneLike, candidate: CandidateLike): Lan
 
   if (lane.slug === "direct-startup-mvp" && !hasStartupOpportunityIntent(candidate, text, host, path)) {
     return { allowed: false, reason: "missing explicit startup opportunity" };
+  }
+
+  if (WEB_OPPORTUNITY_LANES.has(lane.slug) || lane.slug === "funded-work") {
+    const page = concreteOpportunityPageGate(candidate, { host, path, url });
+    if (!page.allowed) return page;
+  }
+
+  // A public tender notice found by a web lane belongs to the Tenders lane.
+  if (WEB_OPPORTUNITY_LANES.has(lane.slug) && TENDER_NOTICE_URL.test(url)) {
+    return { allowed: false, reason: TENDER_NOTICE_IN_WEB_LANE };
   }
 
   if (lane.slug === "funded-work") return fundedWorkGate(text);

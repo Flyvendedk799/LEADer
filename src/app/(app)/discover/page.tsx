@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { LaneMissionControl } from "@/components/discovery/lane-mission-control";
 import { requireOwnerId } from "@/lib/auth";
 import { ensureDefaultDiscoveryLanes } from "@/lib/crm/lanes";
-import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
+import { maintainDiscoveryCandidates } from "@/lib/crm/lane-hygiene";
 import { discoveryProviderReadiness } from "@/lib/discovery";
 import { AUTOMATABLE_SOURCE_TYPES } from "@/lib/types";
 import { hasLlm } from "@/lib/ai/provider";
@@ -25,7 +25,7 @@ export default async function DiscoverPage(props: {
   const initialMissionId = searchParams?.mission ?? searchParams?.run ?? null;
   const initialWorkspace = workspaceFromRoute("/discover", searchParams);
   await ensureDefaultDiscoveryLanes(ownerId);
-  await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
+  await maintainDiscoveryCandidates(ownerId).catch(() => null);
   const [lanes, latestMission] = await Promise.all([
     db.discoveryLane.findMany({
       where: { ownerId, active: true },

@@ -9,7 +9,7 @@ import {
   splitReviewableDiscoveryCandidates,
 } from "@/lib/crm/discovery-display";
 import { visibleDiscoveryQueueSnapshotForOwner } from "@/lib/crm/discovery-queue";
-import { dismissInvalidNewLaneCandidates } from "@/lib/crm/lane-hygiene";
+import { maintainDiscoveryCandidates } from "@/lib/crm/lane-hygiene";
 import { db } from "@/lib/db";
 
 export async function GET(
@@ -21,7 +21,7 @@ export async function GET(
     const ownerId = await requireOwnerId();
     const includeHidden =
       new URL(req.url).searchParams.get("includeHidden") === "1";
-    await dismissInvalidNewLaneCandidates(ownerId).catch(() => null);
+    await maintainDiscoveryCandidates(ownerId).catch(() => null);
     const mission = await db.discoveryMission.findFirst({
       where: { id: params.id, ownerId },
       include: {

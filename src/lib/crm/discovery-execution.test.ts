@@ -69,7 +69,7 @@ const candidate = {
   title: "Concrete software opportunity",
   description: "A real software assignment, financed by a grant. The buyer søger en ekstern udvikler.",
   rawContent: "A real software assignment, financed by a grant. The buyer søger en ekstern udvikler.",
-  url: "https://example.com/opportunity",
+  url: "https://example.com/projekter/software-opportunity-2026",
   organization: "Example buyer",
   category: "Software",
   sourceName: "Example",
@@ -414,7 +414,7 @@ describe("discovery mission execution", () => {
               ),
             }),
             expect.objectContaining({
-              laneId: "tender-lane-1",
+              // Owner-wide: no laneId, so another lane's copy also matches.
               title: { equals: "Intranet", mode: "insensitive" },
               organization: {
                 equals: "METROSELSKABET I/S",
