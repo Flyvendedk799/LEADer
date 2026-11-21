@@ -198,6 +198,46 @@ describe("udbud.dk discovery source", () => {
     expect(candidate?.rawContent).toContain("CPV: 72000000");
   });
 
+  it("uses the official estimated value instead of numbers in the description", () => {
+    const deadline = new Date(Date.now() + 30 * 86400000).toISOString();
+    const candidate = udbudDkResultToCandidate(
+      {
+        noticeId: "86b79148-3753-44a7-ba82-00b857c54fb3",
+        dataDa: {
+          titel: "Udbud af udvikling af Den Veterinære Receptløsning",
+          ordregiver: "Lægemiddelstyrelsen",
+          cpvKode: "72000000",
+          cpvTitel: "It-tjenester: rådgivning, programmeludvikling, internet og support",
+          tidsfrister: [deadline],
+          anslaaetVaerdi: 19600000,
+          anslaaetVaerdiValuta: "DKK",
+          beskrivelse:
+            "Leverandøren skal udvikle Den Veterinære Receptløsning. Danmark har i alt omkring 6.000 dyrlæger fordelt på ca. 1.000 dyrlægepraksis.",
+        },
+      },
+      "software",
+    );
+    expect(candidate).toMatchObject({ budgetMax: 19_600_000, currency: "DKK" });
+    expect(candidate?.rawContent).toContain("Anslået værdi: 19.600.000 DKK");
+  });
+
+  it("leaves the value unknown when the notice has none and the text has no money", () => {
+    const candidate = udbudDkResultToCandidate(
+      {
+        noticeId: "n-2",
+        dataDa: {
+          titel: "Udvikling af app",
+          ordregiver: "Kommune",
+          cpvKode: "72200000",
+          tidsfrister: [new Date(Date.now() + 30 * 86400000).toISOString()],
+          beskrivelse: "Appen skal bruges af omkring 6.000 borgere og 1.000 medarbejdere.",
+        },
+      },
+      "software",
+    );
+    expect(candidate?.budgetMax).toBeUndefined();
+  });
+
   it("uses the latest future udbud.dk deadline when a notice has multiple tender deadlines", () => {
     const earlyDeadline = new Date(Date.now() + 5 * 86400000).toISOString();
     const finalDeadline = new Date(Date.now() + 45 * 86400000).toISOString();

@@ -32,11 +32,13 @@ import { dedupeHash, type OpportunityCandidate } from "@/lib/ingestion/dedupe";
 import {
   detectApplicationRoute,
   extractBudget,
+  parseAmount,
   extractExplicitDeadline,
 } from "@/lib/ingestion/extract";
 import { assertPublicUrl, safeFetch } from "@/lib/ingestion/net";
 import { fetchRssCandidates } from "@/lib/ingestion/rss";
 import { fetchWebCandidates } from "@/lib/ingestion/web";
+import { tedEstimatedValues, tedPublicationNumber } from "./ted";
 import { DEFAULT_DISCOVERY_LANES, filterLaneCandidates } from "@/lib/crm/lanes";
 import {
   hasConcreteSoftwareTenderScope,
@@ -142,6 +144,8 @@ type UdbudDkResultData = {
   formulartypeKode?: string;
   tidsfrister?: string[];
   alleOrdregivere?: string[];
+  /** Official estimated contract value, in anslaaetVaerdiValuta. */
+  anslaaetVaerdi?: number | string | null;
   anslaaetVaerdiValuta?: string;
   beskrivelse?: string;
   bkSubType?: string;
@@ -1517,11 +1521,60 @@ function enrichCandidate(
   } satisfies OpportunityCandidate;
 }
 
+export type PageBudget = { min?: number; max?: number; currency?: string; quote?: string; source: "structured" | "page" };
+
+const BLOCK_ELEMENTS =
+  "p,div,li,dt,dd,td,th,tr,h1,h2,h3,h4,h5,h6,section,article,aside,header,footer,main,table,ul,ol,dl,blockquote,figcaption,label";
+
+/** Prices published as data: JSON-LD (JobPosting.baseSalary, Offer, …) and price meta tags. */
+export function structuredPagePrice($: cheerio.CheerioAPI): PageBudget | null {
+  const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && /^\s*\d[\d.,\s]*$/.test(v) ? parseAmount(v) : NaN);
+  const found: PageBudget[] = [];
+  const visit = (node: unknown, currency?: string) => {
+    if (!node || typeof node !== "object" || found.length > 20) return;
+    if (Array.isArray(node)) return node.forEach((n) => visit(n, currency));
+    const o = node as Record<string, unknown>;
+    const cur = (typeof o.priceCurrency === "string" && o.priceCurrency) || (typeof o.currency === "string" && o.currency) || currency;
+    const unit = typeof o.unitText === "string" ? o.unitText.toUpperCase() : "";
+    const lo = num(o.minValue ?? o.lowPrice);
+    const hi = num(o.maxValue ?? o.highPrice ?? o.price ?? (typeof o.value !== "object" ? o.value : undefined));
+    if (Number.isFinite(hi) && hi > 0 && hi <= 2_147_483_647 && (cur || o["@type"] === "MonetaryAmount" || o["@type"] === "QuantitativeValue")) {
+      found.push({ min: Number.isFinite(lo) ? Math.round(lo) : undefined, max: Math.round(hi), currency: cur?.toUpperCase(), quote: `${unit ? `${unit} ` : ""}${lo > 0 ? `${lo}–` : ""}${hi} ${cur ?? ""}`.trim(), source: "structured" });
+    }
+    for (const [key, value] of Object.entries(o)) if (key !== "@context") visit(value, cur);
+  };
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      visit(JSON.parse($(el).contents().text()));
+    } catch {
+      // malformed JSON-LD is common; ignore it
+    }
+  });
+  const metaAmount = $('meta[property="product:price:amount"],meta[property="og:price:amount"]').attr("content");
+  if (metaAmount && Number.isFinite(num(metaAmount))) {
+    const currency = $('meta[property="product:price:currency"],meta[property="og:price:currency"]').attr("content");
+    found.push({ max: Math.round(num(metaAmount)), currency: currency?.toUpperCase(), quote: `${metaAmount} ${currency ?? ""}`.trim(), source: "structured" });
+  }
+  return found.sort((a, b) => (b.max ?? 0) - (a.max ?? 0))[0] ?? null;
+}
+
+/** Text with a line break after every block, so "Budget" and "50.000 kr" stay apart. */
+function blockSeparatedText($: cheerio.CheerioAPI, root: ReturnType<cheerio.CheerioAPI>) {
+  return root.text().replace(/[ \t]*\n[\s\n]*/g, "\n").replace(/[ \t\u00a0]+/g, " ").trim();
+}
+
+function pageBudgetFromText(text: string): PageBudget | null {
+  const budget = extractBudget(text);
+  return budget.max != null ? { ...budget, source: "page" } : null;
+}
+
 export async function fetchReadablePage(url?: string): Promise<{
   provenance?: OpportunityCandidate["provenance"];
   title?: string;
   description?: string;
   text?: string;
+  /** A price the page states, from data, main content, or header/sidebar fact boxes. */
+  budget?: PageBudget | null;
   attachments?: { label?: string; url: string; kind?: string }[];
 }> {
   if (!url) return {};
@@ -1550,20 +1603,32 @@ export async function fetchReadablePage(url?: string): Promise<{
       const { extractPdfText } = await import("@/lib/ingestion/pdf");
       const text = await extractPdfText(res.bytes);
       return {
-        title: attachmentLabel(finalUrl), description: text.slice(0, 700), text,
+        title: attachmentLabel(finalUrl), description: text.slice(0, 700), text, budget: pageBudgetFromText(text),
         provenance: { status: "read", retrievedAt: new Date().toISOString(), url: finalUrl },
         attachments: [{ label: attachmentLabel(finalUrl), url: finalUrl, kind: "pdf" }],
       };
     }
     const $ = cheerio.load(res.text);
-    $("script,style,noscript,svg,nav,footer,header,[role=navigation]").remove();
+    const structuredBudget = structuredPagePrice($);
+    $("script,style,noscript,svg").remove();
+    $("br").replaceWith("\n");
+    $(BLOCK_ELEMENTS).each((_, el) => {
+      $(el).append("\n");
+    });
+    // Navigation and footers never state the opportunity's price; drop them first.
+    $("nav,footer,[role=navigation]").remove();
+    // Price boxes often sit in a header or sidebar, which the readable text drops.
+    const fullText = blockSeparatedText($, $("body"));
+    $("header").remove();
     const title = cleanText($("h1").first().text() || $("title").text(), 220);
     const description = cleanText(
       $('meta[name="description"]').attr("content") || $("p").first().text(),
       700,
     );
     const main = $("main,article,[role=main]").first();
-    const text = cleanText((main.length ? main : $("body")).text(), 9000);
+    const mainText = blockSeparatedText($, main.length ? main : $("body"));
+    const text = cleanText(mainText, 9000);
+    const budget = structuredBudget ?? pageBudgetFromText(mainText) ?? pageBudgetFromText(fullText);
     if (
       text.length < 100 ||
       /^(access denied|just a moment|verify you are human|403 forbidden)/i.test(
@@ -1576,6 +1641,7 @@ export async function fetchReadablePage(url?: string): Promise<{
       title,
       description,
       text,
+      budget,
       attachments,
       provenance: {
         status: "read",
@@ -1613,7 +1679,7 @@ async function enrichWithDetailPage(
     return { ...input, provenance: page.provenance };
 
   const rawContent = cleanText(
-    [input.rawContent, page.description, page.text].filter(Boolean).join("\n"),
+    [page.budget?.quote, input.rawContent, page.description, page.text].filter(Boolean).join("\n"),
     9000,
   );
   const attachments = dedupeAttachments([
@@ -1631,7 +1697,14 @@ async function enrichWithDetailPage(
       ) || input.description,
     rawContent: rawContent || input.rawContent,
     attachments,
+    ...pageBudgetFields(input, page.budget),
   });
+}
+
+/** The page's stated price wins over a guess from a search excerpt. */
+function pageBudgetFields(input: Pick<OpportunityCandidate, "budgetMin" | "budgetMax" | "currency">, budget?: PageBudget | null) {
+  if (!budget?.max || input.budgetMax != null || input.budgetMin != null) return {};
+  return { budgetMin: budget.min, budgetMax: budget.max, currency: budget.currency ?? input.currency };
 }
 
 async function googleGroundedSearch(
@@ -2029,6 +2102,61 @@ function latestFutureDeadline(values: string[] = []) {
   return dates[0] ?? null;
 }
 
+function udbudDkEstimatedValue(data: UdbudDkResultData): number | undefined {
+  const raw = data.anslaaetVaerdi;
+  const value = typeof raw === "number" ? raw : typeof raw === "string" ? parseAmount(raw) : NaN;
+  return Number.isFinite(value) && value > 0 && value <= 2_147_483_647 ? Math.round(value) : undefined;
+}
+
+/**
+ * EU notices the udbud.dk index lists without an estimate often carry one on
+ * TED. One batched lookup per run; a TED failure leaves values unknown.
+ */
+async function fillTedValues(candidates: OpportunityCandidate[]) {
+  const missing = candidates.filter((c) => c.budgetMax == null && c.budgetMin == null && c.url);
+  const publication = (c: OpportunityCandidate) => {
+    try {
+      return new URL(c.url!).searchParams.get("noticePublicationNumber");
+    } catch {
+      return null;
+    }
+  };
+  const ids = missing.map(publication).filter((id): id is string => Boolean(id));
+  if (!ids.length) return;
+  const values = await tedEstimatedValues(ids).catch(() => new Map<string, { value: number; currency: string }>());
+  for (const candidate of missing) {
+    const id = tedPublicationNumber(publication(candidate));
+    const found = id ? values.get(id) : undefined;
+    if (!found) continue;
+    candidate.budgetMax = found.value;
+    candidate.currency = found.currency;
+    candidate.rawContent = `Anslået værdi (TED): ${found.value.toLocaleString("da-DK")} ${found.currency}\n${candidate.rawContent ?? ""}`;
+  }
+}
+
+/** The official estimated value of a udbud.dk notice: the index, else TED. */
+export async function udbudDkNoticeValue(
+  noticeId: string,
+  title: string,
+  publicationNumber?: string | null,
+): Promise<{ value: number; currency: string; source: string } | null> {
+  // Full titles can return nothing from the free-text index; try a shorter one too.
+  const words = title.split(/\s+/);
+  for (const query of [...new Set([title.slice(0, 120), words.slice(0, 5).join(" "), words.slice(0, 3).join(" ")])]) {
+    const results = await udbudDkSearch(query, 25).catch(() => []);
+    const match = results.find((r) => r.noticeId === noticeId);
+    if (!match) continue;
+    const data = match.dataDa ?? match.dataEn;
+    const value = data ? udbudDkEstimatedValue(data) : undefined;
+    if (value) return { value, currency: data?.anslaaetVaerdiValuta || "DKK", source: "udbud.dk estimate" };
+    break;
+  }
+  const id = tedPublicationNumber(publicationNumber);
+  if (!id) return null;
+  const ted = (await tedEstimatedValues([id]).catch(() => null))?.get(id);
+  return ted ? { ...ted, source: "TED estimate" } : null;
+}
+
 function udbudDkResultToCandidate(
   result: UdbudDkResult,
   query: string,
@@ -2059,6 +2187,10 @@ function udbudDkResultToCandidate(
 
   const deadlineText = (data.tidsfrister ?? []).join(", ");
   const cpv = [data.cpvKode, data.cpvTitel].filter(Boolean).join(" ");
+  const value = udbudDkEstimatedValue(data);
+  const valueText = value
+    ? `Anslået værdi: ${value.toLocaleString("da-DK")} ${data.anslaaetVaerdiValuta || "DKK"}`
+    : "";
   const rawContent = cleanText(
     [
       title,
@@ -2068,6 +2200,7 @@ function udbudDkResultToCandidate(
       cpv ? `CPV: ${cpv}` : "",
       data.formulartype ? `Formulartype: ${data.formulartype}` : "",
       data.bkSubType ? `Bekendtgørelsestype: ${data.bkSubType}` : "",
+      valueText,
       description,
     ].join("\n"),
     5000,
@@ -2091,6 +2224,9 @@ function udbudDkResultToCandidate(
     country: "DK",
     category: "Tender",
     currency: data.anslaaetVaerdiValuta || "DKK",
+    // The official estimate. Without one, the description is still read, but
+    // only for amounts marked as money (see extractBudget).
+    ...(value ? { budgetMax: value } : {}),
     deadline,
     postedAt: parseDanishDisplayDate(data.publiceringsdato),
     applicationRoute: "APPLICATION",
@@ -2209,6 +2345,8 @@ async function udbudDkCandidates(
     )
     // Deadline order only decides what gets scored; relevance decides what is returned.
     .slice(0, Math.max(maxResults, 40));
+
+  await fillTedValues(selectedCandidates.map((item) => item.candidate));
 
   const candidates: DiscoveryCandidateDto[] = [];
   for (const { seed, candidate } of selectedCandidates) {
@@ -2339,7 +2477,7 @@ async function searchResultsToCandidates(
     if (!title) continue;
 
     const rawText = cleanText(
-      [title, result.snippet, page.description, page.text]
+      [title, page.budget?.quote, result.snippet, page.description, page.text]
         .filter(Boolean)
         .join("\n"),
       6000,
@@ -2361,6 +2499,7 @@ async function searchResultsToCandidates(
       workspace,
       postedAt: parseMaybeDate(result.publishedAt),
       attachments: page.attachments,
+      ...pageBudgetFields({}, page.budget),
     } as OpportunityCandidate & { workspace?: Workspace });
 
     candidates.push(

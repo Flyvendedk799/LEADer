@@ -10,7 +10,7 @@ import type { CandidateLike } from "./lanes";
 // procedural boilerplate ("drift", "licens", "EU") that would otherwise trigger
 // on almost every tender.
 
-export const SUPPLIER_FIT_VERSION = 2;
+export const SUPPLIER_FIT_VERSION = 3; // 3: budgets now come from official estimates
 
 /** Contract value above which a lead is out of reach for a small studio (DKK). */
 export const DEFAULT_CAPACITY_DKK = 3_000_000;

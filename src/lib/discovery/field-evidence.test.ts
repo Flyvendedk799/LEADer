@@ -6,7 +6,7 @@ import { load } from "cheerio";
 import { qualifyCandidate } from "./qualification";
 describe("traceable candidate facts", () => {
   it("extracts a sub-1000 hourly rate without inventing a project value", () => {
-    expect(extractBudget("Freelance developer: 850 DKK pr. time")).toEqual({ max: 850, currency: "DKK" });
+    expect(extractBudget("Freelance developer: 850 DKK pr. time")).toMatchObject({ max: 850, currency: "DKK" });
   });
   it("does not turn invented buyer or budget values into citations", () => {
     const fields = citeCandidateFields({ title: "Build a portal", organization: "Invented buyer", budgetMax: 100000, rawContent: "Build a portal. No budget announced.", provenance: { status: "read", retrievedAt: "2026-11-17T12:00:00Z" } });

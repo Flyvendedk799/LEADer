@@ -286,7 +286,7 @@ export async function groundedWebSearch(
     { accessToken, refreshToken: "", expiresAt: 0, email: null, projectId: status.projectId || null, isDogfood: true } as never,
     CLOUD_CODE_DAILY_BASE_URL,
   );
-  const prompt = `Search the web and report concrete, current results for this query. For each distinct result give the organisation or page and, in one or two sentences, what they need or offer. When the query is about finding clients or projects, prefer organisations and postings that are looking to buy or hire over advisers and competitors. Query: ${query}${avoid.length ? `\nIgnore pages about: ${avoid.join(", ")}.` : ""}`;
+  const prompt = `Search the web and report concrete, current results for this query. For each distinct result give the organisation or page and, in one or two sentences, what they need or offer. If the page states a budget, price, contract value or rate, include it exactly as written with its currency and whether it is fixed or hourly; never estimate one. When the query is about finding clients or projects, prefer organisations and postings that are looking to buy or hire over advisers and competitors. Query: ${query}${avoid.length ? `\nIgnore pages about: ${avoid.join(", ")}.` : ""}`;
   const payload = toCodeAssistRequest(model, [{ role: "user", parts: [{ text: prompt }] }], {
     projectId: status.projectId || undefined,
   });
