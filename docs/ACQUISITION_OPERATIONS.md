@@ -48,6 +48,8 @@ The operations panel reports source acceptance, contact, proposal, win/loss and 
 - **Expiry**: NEW candidates whose deadline passed more than a day ago are dismissed (`Auto-dismissed: deadline passed`).
 - **Lane rotation**: scheduled missions are queued least-recently-successful lane first, below manual runs, so allowance exhaustion never starves the same lanes.
 
+- **Prices**: an amount counts only when marked as money (currency next to it, or a value/budget/price label before it); bare counts like "6.000 dyrlæger" never do. A labelled contract value beats a budget/price label, which beats other currency amounts; the largest within a rank wins; rates are kept only when no project amount exists. udbud.dk notices use the official `anslaaetVaerdi`, falling back to TED (`estimated-value-glo`/`-lot`) for EU notices. Source pages are read for JSON-LD/meta prices, then main content, then header/sidebar fact boxes (never nav/footer). Values above the 32-bit column limit stay unknown. `npm run budgets:backfill [-- --apply]` re-derives existing candidates.
+
 These run in `maintainDiscoveryCandidates()` after each mission and when Discover/Workflows/run history load.
 
 ## Verification and remaining release gates

@@ -33,6 +33,33 @@ describe("discovery source evidence", () => {
     expect(result.text).not.toContain("2020");
   });
 
+  it("finds a price in a header or sidebar fact box, never in navigation", async () => {
+    const body = "<p>We need a developer to build an internal reporting application for our operations team. Please contact the project owner to discuss the specification and delivery schedule.</p>";
+    mocks.fetch.mockResolvedValueOnce({
+      status: 200,
+      url: "https://example.com/opgaver/rapportering-123",
+      text: `<html><body><nav>Priser fra 99 kr</nav><header><dl><dt>Budget</dt><dd>85.000 kr.</dd><dt>Start</dt><dd>Januar</dd></dl></header><main><h1>Rapportering</h1>${body}</main></body></html>`,
+    });
+    const priced = await __discoveryTesting.fetchReadablePage("https://example.com/opgaver/rapportering-123");
+    expect(priced.budget).toMatchObject({ max: 85000, currency: "DKK", source: "page" });
+
+    mocks.fetch.mockResolvedValueOnce({
+      status: 200,
+      url: "https://example.com/opgaver/x-456",
+      text: `<html><body><nav>Unrelated budget 999999 DKK</nav><main><h1>X</h1>${body}</main><footer>Abonnement 499 kr/md</footer></body></html>`,
+    });
+    expect((await __discoveryTesting.fetchReadablePage("https://example.com/opgaver/x-456")).budget).toBeNull();
+  });
+
+  it("keeps adjacent elements apart so labels and amounts are read correctly", async () => {
+    mocks.fetch.mockResolvedValueOnce({
+      status: 200,
+      url: "https://example.com/opgaver/y-789",
+      text: `<html><body><main><h1>Y</h1><p>We need a developer to build an internal reporting application for our operations team and the specification is ready.</p><div class="facts"><span>Antal brugere</span></div><div>6.000</div><div>Pris</div><div>120.000 kr.</div></main></body></html>`,
+    });
+    expect((await __discoveryTesting.fetchReadablePage("https://example.com/opgaver/y-789")).budget?.max).toBe(120000);
+  });
+
   it("distinguishes robots restrictions, fetch errors and unread documents", async () => {
     mocks.allowed.mockResolvedValueOnce(false);
     expect(
