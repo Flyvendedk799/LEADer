@@ -68,3 +68,24 @@ describe("supplier fit: non-leads and operations", () => {
     expect(rank("Serviceaftale til datafordeler.dk")).toBeLessThanOrEqual(65);
   });
 });
+
+describe("supplier fit: contract-value limit from settings", () => {
+  const vet = { title: "Udbud af udvikling af Den Veterinære Receptløsning", budgetMax: 19_600_000 };
+  const pursuit = (limit: number) => applySupplierFit({ matchScore: 95, pursuitScore: 100 }, supplierFit(vet, limit)).pursuitScore;
+
+  it("uses the owner's limit and records it", () => {
+    expect(supplierFit(vet, 3_000_000)).toMatchObject({ overCapacity: true, capacityDkk: 3_000_000 });
+    expect(pursuit(3_000_000)).toBeLessThanOrEqual(40);
+    expect(pursuit(10_000_000)).toBeLessThanOrEqual(60); // over, but within 3×
+    expect(pursuit(25_000_000)).toBe(100);
+  });
+
+  it("treats 0 as no limit", () => {
+    expect(supplierFit(vet, 0)).toMatchObject({ overCapacity: false, capacityDkk: 0 });
+    expect(pursuit(0)).toBe(100);
+  });
+
+  it("names the limit in the reason", () => {
+    expect(supplierFit(vet, 3_000_000).reasons.join(" ")).toContain("exceeds your 3M DKK limit");
+  });
+});

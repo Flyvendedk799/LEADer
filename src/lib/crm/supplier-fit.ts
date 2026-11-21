@@ -86,6 +86,8 @@ const BUILD_SCOPE =
 
 export interface SupplierFit {
   version: number;
+  /** The contract-value limit this was scored with (0 = no limit). */
+  capacityDkk: number;
   delta: number;
   cap: number;
   signals: string[];
@@ -114,7 +116,7 @@ export function supplierFit(
   const notALead = NOT_A_LEAD_TITLE.test((candidate.title ?? "").toLowerCase());
   const buildScope = BUILD_SCOPE.test(text);
   const value = contractValueDkk(candidate);
-  const overCapacity = value != null && value > capacityDkk;
+  const overCapacity = capacityDkk > 0 && value != null && value > capacityDkk;
 
   let delta = hits.reduce((sum, rule) => sum + rule.delta, 0);
   let cap = Math.min(100, ...hits.map((rule) => rule.cap ?? 100));
@@ -125,7 +127,7 @@ export function supplierFit(
     const far = value! > capacityDkk * 3;
     delta -= far ? 25 : 12;
     cap = Math.min(cap, far ? 40 : 60);
-    reasons.push(`Contract value ≈ ${Math.round(value! / 1e6)}M DKK exceeds studio capacity`);
+    reasons.push(`Contract value ≈ ${(value! / 1e6).toLocaleString("da-DK", { maximumFractionDigits: 1 })}M DKK exceeds your ${(capacityDkk / 1e6).toLocaleString("da-DK", { maximumFractionDigits: 1 })}M DKK limit`);
     signals.push("supplier:over-capacity");
   }
 
@@ -151,6 +153,7 @@ export function supplierFit(
 
   return {
     version: SUPPLIER_FIT_VERSION,
+    capacityDkk,
     delta: Math.max(-50, Math.min(6, delta)),
     cap,
     signals,

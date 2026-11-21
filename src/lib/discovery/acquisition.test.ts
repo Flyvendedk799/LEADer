@@ -48,3 +48,11 @@ describe("bureau acquisition", () => {
     expect(total(50000)).toEqual(total(500000));
   });
 });
+
+describe("contract-value limit setting", () => {
+  it("defaults to 3M DKK and accepts 0 as no limit", () => {
+    expect(companyProfile({}).maxContractValueDkk).toBe(3_000_000);
+    expect(companyProfile({ maxContractValueDkk: 0 }).maxContractValueDkk).toBe(0);
+    expect(companyProfileSchema.safeParse({ maxContractValueDkk: -1 }).success).toBe(false);
+  });
+});
