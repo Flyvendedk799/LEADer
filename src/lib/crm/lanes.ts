@@ -524,7 +524,7 @@ const SUPPLIER_SEEKING_CUE =
  * (detail/notice/tender paths), never by a list of platforms: new ones keep appearing.
  */
 const TENDER_NOTICE_URL =
-  /https?:\/\/[^\s]*\/(?:detaljevisning|notices?|tenders?|udbud|ausschreibung|aanbesteding|appel-d-offres|licitaci[oó]n)(?:[/?#\s]|$)/;
+  /https?:\/\/[^\s]*\/(?:detaljevisning|notices?|tenders?|udbud(?:det)?|ausschreibung|aanbesteding|appel-d-offres|licitaci[oó]n)(?:[/?#\s]|$)/;
 
 const SOCIAL_HOST =
   /(?:^|[\s/.])(?:instagram|facebook|linkedin|twitter|x|tiktok|youtube)\.com\//;
@@ -629,6 +629,14 @@ export function concreteOpportunityPageGate(
   }
   if (/\/(?:support|faq|help|hjaelp|hjælp|proc-qa|q-and-a)(?:\/|$)/.test(parts.path)) {
     return { allowed: false, reason: "help or Q&A page, not a specific opportunity" };
+  }
+  // A supplier describing its own services, or a directory of freelancers, is a
+  // competitor, not a buyer.
+  if (
+    /^(?:[\w.-]+ — )?(?:ydelse|offer|service|tilbud)\s*:|\b(?:vi tilbyder|we offer|tilbyder skræddersyet|our services|vores ydelser)\b|\b\d+ (?:kandidater|candidates|freelancere|freelancers|profiler|profiles)\b/.test(title) ||
+    /\/(?:jobtitel|kandidater|candidates|freelancers|freelancere|profiles|profiler|consultants)(?:\/|$)/.test(parts.path)
+  ) {
+    return { allowed: false, reason: "supplier's own service page or freelancer directory, not a buyer" };
   }
   if (/\/jobannonce\/|\/job-ad\//.test(parts.path)) {
     return { allowed: false, reason: "job/recruiting result" };

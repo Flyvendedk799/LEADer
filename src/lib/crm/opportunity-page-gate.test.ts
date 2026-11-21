@@ -39,7 +39,14 @@ describe("concrete opportunity page gate", () => {
     expect(allowed("Konsulent til styring", "https://www.jobindex.dk/jobannonce/r14104017/konsulent-til-styring-og-fremdrift")).toBe(false);
   });
 
+  it("rejects suppliers' own service pages and freelancer directories", () => {
+    expect(allowed("makeable.dk — Ydelse: Tilbyder skræddersyet udvikling af e-handelsapps", "https://makeable.dk/digital-produktudvikling/teknologi/webshop-i-app/")).toBe(false);
+    expect(allowed("Freelance webdesigner | Design der omsætter – 3 kandidater", "https://bureaudanmark.dk/jobtitel/web-design/")).toBe(false);
+  });
+
   it("sends tender notices found by web lanes to the Tenders lane", () => {
+    const web = { slug: "client-projects", name: "Client", positiveKeywords: [], negativeKeywords: [], evidenceRequirements: [], queryTemplates: [] };
+    expect(laneCandidateGate(web as never, { title: "SaaS baseret telefoniplatform – Region Nordjylland", url: "https://mineudbud.dk/udbuddet/saas-baseret-telefoniplatform-cmwbfzgwy0" })).toEqual({ allowed: false, reason: TENDER_NOTICE_IN_WEB_LANE });
     const lane = { slug: "buying-signals", name: "Buying", positiveKeywords: [], negativeKeywords: [], evidenceRequirements: [], queryTemplates: [] };
     expect(laneCandidateGate(lane as never, { title: "Drift af cloud", url: "https://udbud.dk/detaljevisning?noticeId=e68fdcd6-73a8" })).toEqual({ allowed: false, reason: TENDER_NOTICE_IN_WEB_LANE });
   });
