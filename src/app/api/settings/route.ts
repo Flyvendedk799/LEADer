@@ -5,6 +5,8 @@ import { buildStoredAiKeys, publicAiKeys } from "@/lib/ai/keys";
 import { settingsSchema } from "@/lib/validators";
 import { apiError } from "@/lib/api";
 import type { Prisma } from "@prisma/client";
+import { companyProfile } from "@/lib/company-profile";
+import { rescoreOpenCandidatesForSupplierFit } from "@/lib/crm/lane-hygiene";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Settings API — reads/updates the current owner's profile + preferences.
@@ -66,6 +68,13 @@ export async function PATCH(req: Request) {
     if (d.completeOnboarding) data.onboardedAt = new Date();
 
     const updated = await db.user.update({ where: { id: user.id }, data });
+    // A new contract-value limit re-ranks the open review queue right away.
+    if (
+      d.companyProfile !== undefined &&
+      companyProfile(d.companyProfile).maxContractValueDkk !== companyProfile(user.companyProfile).maxContractValueDkk
+    ) {
+      await rescoreOpenCandidatesForSupplierFit(user.id, 1000).catch(() => 0);
+    }
     return NextResponse.json(safeUser(updated));
   } catch (err) {
     return apiError(err);

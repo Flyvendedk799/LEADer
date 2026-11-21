@@ -5,6 +5,8 @@ export const companyProfileSchema = z.object({
   services: z.string().max(4000).default("Software development, websites, apps, integrations, AI automation, MVPs"),
   customers: z.string().max(2000).default("Danish companies and international remote clients"),
   capacity: z.string().max(2000).default(""),
+  /** Largest contract value (DKK) worth bidding on; larger leads are ranked down. 0 = no limit. */
+  maxContractValueDkk: z.number().int().min(0).max(2_000_000_000).default(3_000_000),
   portfolio: z.string().max(8000).default(""),
   commercialPreferences: z.string().max(2000).default("Projects, freelance contracts, agency subcontracting and recurring work"),
   draftLanguage: z.enum(["Danish", "English"]).default("Danish"),
@@ -28,5 +30,5 @@ export function companyProfile(value: unknown): CompanyProfile {
 }
 export function companyContext(value: unknown) {
   const p = companyProfile(value);
-  return `Company: ${p.name}\nServices: ${p.services}\nCustomers: ${p.customers}\nCapacity: ${p.capacity || "Not specified; do not assume solo delivery"}\nCommercial preferences: ${p.commercialPreferences}\nVerified portfolio supplied by owner: ${p.portfolio || "None supplied; do not invent references"}\nWrite drafts in ${p.draftLanguage}.`;
+  return `Company: ${p.name}\nServices: ${p.services}\nCustomers: ${p.customers}\nCapacity: ${p.capacity || "Not specified; do not assume solo delivery"}\nLargest contract worth bidding on: ${p.maxContractValueDkk ? `${p.maxContractValueDkk.toLocaleString("da-DK")} DKK` : "no limit"}\nCommercial preferences: ${p.commercialPreferences}\nVerified portfolio supplied by owner: ${p.portfolio || "None supplied; do not invent references"}\nWrite drafts in ${p.draftLanguage}.`;
 }

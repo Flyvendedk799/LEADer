@@ -24,7 +24,8 @@ import {
   formatDiscoveryElapsed,
 } from "@/lib/crm/discovery-logging";
 import { maintainDiscoveryCandidates } from "@/lib/crm/lane-hygiene";
-import { applySupplierFit, supplierFit } from "@/lib/crm/supplier-fit";
+import { applySupplierFit, DEFAULT_CAPACITY_DKK, supplierFit } from "@/lib/crm/supplier-fit";
+import { companyProfile } from "@/lib/company-profile";
 import {
   ensureDefaultDiscoveryLanes,
   filterVisibleLaneCandidates,
@@ -1141,6 +1142,16 @@ function laneFitMetadata(fit: LaneFitResult) {
   };
 }
 
+/** The owner's contract-value limit from Settings → Company (default 3M DKK). */
+async function ownerContractLimitDkk(client: Prisma.TransactionClient, ownerId: string) {
+  try {
+    const owner = await client.user.findUnique({ where: { id: ownerId }, select: { companyProfile: true } });
+    return companyProfile(owner?.companyProfile).maxContractValueDkk;
+  } catch {
+    return DEFAULT_CAPACITY_DKK;
+  }
+}
+
 export async function persistCandidate(
   ownerId: string,
   missionId: string | null,
@@ -1175,7 +1186,7 @@ export async function persistCandidate(
       fit.confidenceBonus -
       (fit.blockedKeywords.length ? 8 : 0),
   );
-  const supplier = supplierFit(candidate);
+  const supplier = supplierFit(candidate, await ownerContractLimitDkk(client, ownerId));
   const adjusted = applySupplierFit(
     {
       matchScore,

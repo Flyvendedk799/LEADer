@@ -26,6 +26,11 @@ export function CompanyForm({ value }: { value: unknown }) {
       } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save"); } finally { setBusy(false); }
     }}>
       {Object.entries(fields).map(([key, label]) => <div key={key} className="space-y-1"><Label htmlFor={`company-${key}`}>{label}</Label><Textarea id={`company-${key}`} value={profile[key as keyof typeof fields]} onChange={e => setProfile({ ...profile, [key]: e.target.value })} /></div>)}
+      <div className="space-y-1">
+        <Label htmlFor="max-contract-value">Largest contract worth bidding on (DKK)</Label>
+        <Input id="max-contract-value" type="number" min={0} step={100000} value={profile.maxContractValueDkk} onChange={e => setProfile({ ...profile, maxContractValueDkk: Math.max(0, Math.round(Number(e.target.value) || 0)) })} />
+        <p className="text-sm text-muted-foreground">Leads with a stated value above this are ranked down (far above it: strongly). 0 = no limit. Saving re-ranks the review queue.</p>
+      </div>
       <div><Label htmlFor="draft-language">Draft language</Label><select id="draft-language" className="ml-3 rounded border bg-background p-2" value={profile.draftLanguage} onChange={e => setProfile({ ...profile, draftLanguage: e.target.value as "Danish" | "English" })}><option>Danish</option><option>English</option></select></div>
       <p className="text-sm text-muted-foreground">Paid discovery is paused until both daily and monthly allowances are set. Zero disables that service. Request limits and reserved-spend budgets both apply. Reservations are conservative estimates, not reconciled provider invoices. Adjust per-call reserves for your chosen provider/model; provider pricing varies. Failed requests count because providers may charge for them. Periods reset in UTC.</p>
       <div className="grid gap-3 sm:grid-cols-2">{Object.entries(limits).map(([key, label]) => <div key={key}><Label htmlFor={key}>{label}</Label><Input id={key} type="number" min={0} max={key.startsWith("daily") ? 10000 : 100000} value={profile[key as keyof typeof limits]} onChange={e => setProfile({ ...profile, [key]: Number(e.target.value) })} /></div>)}</div>

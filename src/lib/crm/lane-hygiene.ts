@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { discoveryCandidateDedupeKeys, DUPLICATE_CANDIDATE_REASON } from "@/lib/crm/candidate-dedupe";
 import { laneCandidateGate, TENDER_LANE_RELOCATION_REASONS, type CandidateLike, type LaneLike } from "@/lib/crm/lanes";
 import { pursuitScore } from "@/lib/crm/scoring";
+import { companyProfile } from "@/lib/company-profile";
 import { applySupplierFit, SUPPLIER_FIT_VERSION, supplierFit } from "@/lib/crm/supplier-fit";
 
 export const EXPIRED_DISMISSAL_PREFIX = "Auto-dismissed: deadline passed";
@@ -25,14 +26,19 @@ export function duplicateKeeperOrder<T extends { pursuitScore?: number | null; c
 
 /**
  * Open candidates scored before supplier fit existed get it applied once.
- * Marked by scoreBreakdown.supplierFit.version so each row is rescored once per
- * version. Rescoring starts from the lane-adjusted score, not a prior adjustment.
+ * Marked by scoreBreakdown.supplierFit.version and .capacityDkk, so each row is
+ * rescored once per version and again when the contract-value limit changes. Rescoring starts from the lane-adjusted score, not a prior adjustment.
  */
 export async function rescoreOpenCandidatesForSupplierFit(ownerId: string, limit = 300) {
+  const owner = await db.user.findUnique({ where: { id: ownerId }, select: { companyProfile: true } });
+  const capacity = companyProfile(owner?.companyProfile).maxContractValueDkk;
   const ids = await db.$queryRaw<Array<{ id: string }>>`
     SELECT id FROM "DiscoveryCandidate"
     WHERE "ownerId" = ${ownerId} AND status IN ('NEW', 'REVIEWED')
-      AND COALESCE(("scoreBreakdown"->'supplierFit'->>'version')::int, 0) < ${SUPPLIER_FIT_VERSION}
+      AND (
+        COALESCE(("scoreBreakdown"->'supplierFit'->>'version')::int, 0) < ${SUPPLIER_FIT_VERSION}
+        OR COALESCE(("scoreBreakdown"->'supplierFit'->>'capacityDkk')::bigint, -1) <> ${capacity}
+      )
     LIMIT ${limit}`;
   if (!ids.length) return 0;
   const rows = await db.discoveryCandidate.findMany({
@@ -45,7 +51,7 @@ export async function rescoreOpenCandidatesForSupplierFit(ownerId: string, limit
   for (const row of rows) {
     const breakdown = (row.scoreBreakdown ?? {}) as Record<string, unknown>;
     const laneFit = (breakdown.laneFit ?? {}) as { priority?: number };
-    const fit = supplierFit(row);
+    const fit = supplierFit(row, capacity);
     // Undo an earlier supplier adjustment so versions don't compound.
     const previous = (breakdown.supplierFit ?? null) as { delta?: number } | null;
     const matchScore = Math.max(0, Math.min(100, (row.matchScore ?? 50) - (previous?.delta ?? 0)));
