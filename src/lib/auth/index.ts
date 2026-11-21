@@ -8,6 +8,7 @@ import {
   getSessionUserId,
   revokeAllSessions,
 } from "./session";
+import { getApiTokenUserId } from "./api-tokens";
 
 // ─────────────────────────────────────────────────────────────────────────
 // AUTH — real, multi-user, session-backed.
@@ -26,6 +27,12 @@ function devBypassEnabled(): boolean {
 }
 
 export async function getCurrentUser(): Promise<User | null> {
+  // A bearer API token takes precedence. An invalid one never falls back to the
+  // session cookie or the dev bypass, so a revoked token fails loudly.
+  const tokenUserId = await getApiTokenUserId();
+  if (tokenUserId !== undefined) {
+    return tokenUserId ? db.user.findUnique({ where: { id: tokenUserId } }) : null;
+  }
   const userId = await getSessionUserId();
   if (userId) {
     const user = await db.user.findUnique({ where: { id: userId } });

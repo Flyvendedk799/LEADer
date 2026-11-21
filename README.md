@@ -8,7 +8,7 @@ Built for one power user (you) but on SaaS-ready foundations. Optimised for some
 reviews opportunities every day: clean intelligence-dashboard UI, transparent match
 scoring, compliant ingestion, AI assistance, and one-click exports.
 
-> 📐 Full architecture & rationale: [`docs/PLAN.md`](docs/PLAN.md) ·
+> 📐 Full architecture & rationale: [`docs/PLAN.md`](docs/PLAN.md) · [`docs/API.md`](docs/API.md) (API tokens + MCP) ·
 > [`docs/OUTCOME_LEARNING.md`](docs/OUTCOME_LEARNING.md) ·
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 > [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md) ·

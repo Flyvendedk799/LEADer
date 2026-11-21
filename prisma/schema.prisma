@@ -219,6 +219,7 @@ model User {
   drafts              Draft[]
   notes               Note[]
   sessions            Session[]
+  apiTokens           ApiToken[]
   accounts            Account[]
   people              Person[]
   deals               Deal[]
@@ -250,6 +251,25 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+// Personal API tokens for scripts and agents (Authorization: Bearer ldr_…).
+// Only the SHA-256 of the token is stored; `prefix` is the first characters of
+// the raw token so a list can identify a token without revealing it.
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  prefix     String
+  tokenHash  String    @unique
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  lastUsedIp String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Source {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth/constants";
+import { SESSION_COOKIE, bearerApiToken } from "@/lib/auth/constants";
 
 // Lightweight auth gate. The middleware only checks for the presence of a
 // session cookie (it runs on the edge and can't touch the DB) — full validation
@@ -8,6 +8,7 @@ import { SESSION_COOKIE } from "@/lib/auth/constants";
 // redirected to /login; unauthenticated API requests get a 401.
 //
 // Dev bypass (AUTH_DEV_BYPASS=true, non-prod) skips the gate entirely.
+// API requests may instead carry `Authorization: Bearer ldr_…` (personal API token).
 
 const PUBLIC_PAGES = ["/login", "/register"];
 const PUBLIC_API_PREFIXES = ["/api/auth", "/api/health", "/api/cron"];
@@ -26,6 +27,11 @@ export function middleware(req: NextRequest) {
   const devBypass =
     process.env.NODE_ENV !== "production" && process.env.AUTH_DEV_BYPASS === "true";
   const hasSession = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
+  // API tokens are validated server-side in getCurrentUser(); the edge only
+  // lets a well-formed one through to /api routes.
+  if (pathname.startsWith("/api/") && bearerApiToken(req.headers.get("authorization"))) {
+    return NextResponse.next();
+  }
 
   if (hasSession || devBypass) return NextResponse.next();
 

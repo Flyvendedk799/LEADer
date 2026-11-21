@@ -17,6 +17,7 @@ import { CalibrationPanel } from "@/components/settings/calibration-panel";
 import { PreferencesForm } from "@/components/settings/preferences-form";
 import { AiProviderForm } from "@/components/settings/ai-provider-form";
 import { SecurityForm } from "@/components/settings/security-form";
+import { ApiTokensPanel } from "@/components/settings/api-tokens-panel";
 import type { PublicAiKeys } from "@/components/settings/ai-provider-fields";
 
 const SETTINGS_TABS = [
@@ -141,6 +142,7 @@ export default async function SettingsPage(props: {
             </CardContent>
           </Card>
           <SecurityForm hasPassword={Boolean(user.passwordHash)} />
+          <ApiTokensPanel />
         </TabsContent>
       </Tabs>
     </div>

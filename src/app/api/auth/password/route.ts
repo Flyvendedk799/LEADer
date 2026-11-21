@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { changePassword, createSession, requireUser } from "@/lib/auth";
 import { changePasswordSchema } from "@/lib/validators";
 import { apiError } from "@/lib/api";
+import { requireSessionAuth } from "@/lib/auth/api-tokens";
 
 // Change the signed-in user's password. Revokes all other sessions on success;
 // the current session cookie is re-issued so the user stays logged in here.
 export async function POST(req: Request) {
   try {
     const user = await requireUser();
+    await requireSessionAuth();
     const json = await req.json().catch(() => null);
     const parsed = changePasswordSchema.safeParse(json);
     if (!parsed.success) {
