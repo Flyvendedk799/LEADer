@@ -25,7 +25,9 @@ async function derive(c: { url: string | null; title: string; rawContent: string
     const page = await fetchReadablePage(c.url).catch(() => null);
     if (page?.budget?.max) return { ...page.budget, source: `page (${page.budget.source})` };
   }
-  const text = [c.title, c.description, c.rawContent].filter(Boolean).join("\n");
+  // Only source text: the stored description is LEADer's own Danish summary,
+  // which repeats the previously extracted value ("Budget/pris: op til …").
+  const text = [c.title, c.rawContent].filter(Boolean).join("\n");
   const fromText = extractBudget(text);
   return fromText.max ? { min: fromText.min, max: fromText.max, currency: fromText.currency, source: "stored text" } : { source: "none" };
 }
